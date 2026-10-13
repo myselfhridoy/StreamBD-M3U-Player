@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">StreamBD IPTV</string>
+    <string name="home_all">All</string>
+    <string name="home_live">Live</string>
+    <string name="home_movies">Movies</string>
+    <string name="home_series">Series</string>
+    <string name="home_guide">TV Guide</string>
+    <string name="home_search">Search</string>
+    <string name="home_settings">Settings</string>
+    <string name="home_exit">Exit</string>
+</resources>

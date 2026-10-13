@@ -1,0 +1,2 @@
+-keep class com.streambd.iptv.** { *; }
+-dontwarn org.conscrypt.**
