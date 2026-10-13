@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.data.settings.TrackMode
 import com.streambd.iptv.data.settings.SettingsStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -78,9 +80,11 @@ class PlayerManager @Inject constructor(
                 C.TRACK_TYPE_VIDEO -> video += g
                 C.TRACK_TYPE_AUDIO -> audio += g
             }
+            val keys = currentKeys()
             _state.update {
-                it.copy(tracks = TrackInfo(video, audio))
+                it.copy(tracks = TrackInfo(video, audio, keys.first, keys.second))
             }
+            restoreIfNewMedia(tracks)
         }
     }
 
@@ -106,6 +110,7 @@ class PlayerManager @Inject constructor(
 
     private var retriesLeft = 3
     private var volumeHideJob: Job? = null
+    private var restoredForMediaId: String? = null
 
     init {
         scope.launch {
@@ -135,6 +140,7 @@ class PlayerManager @Inject constructor(
                     player.removeListener(playerListener)
                     player.release()
                     player = createPlayer(s.bufferTimeMs)
+                    restoredForMediaId = null
                     player.volume = volume
                     player.playWhenReady = playWhenReady
                     if (currentMediaItem != null) {
@@ -169,6 +175,21 @@ class PlayerManager @Inject constructor(
         player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
+    }
+
+    fun stopAndClear() {
+        player.stop()
+        player.clearMediaItems()
+        _state.update {
+            it.copy(
+                current = null,
+                isPlaying = false,
+                isBuffering = false,
+                position = 0L,
+                duration = 0L,
+                error = null,
+            )
+        }
     }
 
     fun togglePlayPause() {
@@ -207,5 +228,93 @@ class PlayerManager @Inject constructor(
             }
         }
         player.trackSelectionParameters = b.build()
+        persist(type, choice)
+        _state.update { it.copy(tracks = it.tracks.withCurrent(currentKeys())) }
+    }
+
+    private fun persist(type: Int, choice: TrackChoice) {
+        scope.launch {
+            when (type) {
+                C.TRACK_TYPE_VIDEO -> when (choice) {
+                    TrackChoice.None -> settings.setVideoTrack(TrackMode.NONE, "")
+                    TrackChoice.Auto -> settings.setVideoTrack(TrackMode.AUTO, "")
+                    is TrackChoice.Specific -> settings.setVideoTrack(
+                        TrackMode.SPECIFIC,
+                        formatKey(choice.group, choice.index),
+                    )
+                }
+                C.TRACK_TYPE_AUDIO -> when (choice) {
+                    TrackChoice.None -> settings.setAudioTrack(TrackMode.NONE, "")
+                    TrackChoice.Auto -> settings.setAudioTrack(TrackMode.AUTO, "")
+                    is TrackChoice.Specific -> settings.setAudioTrack(
+                        TrackMode.SPECIFIC,
+                        formatKey(choice.group, choice.index),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun formatKey(group: Tracks.Group, index: Int): String {
+        val format = group.getTrackFormat(index)
+        return listOf(
+            format.id.orEmpty(),
+            format.sampleMimeType.orEmpty(),
+            format.language.orEmpty(),
+            format.label.orEmpty(),
+        ).joinToString("|")
+    }
+
+    private fun currentKeys(): Pair<String?, String?> {
+        val disabledTypes = player.trackSelectionParameters.disabledTrackTypes
+        fun keyOfType(type: Int): String? {
+            if (disabledTypes.contains(type)) return ""
+            for (group in player.currentTracks.groups) {
+                if (group.type != type) continue
+                for (index in 0 until group.length) {
+                    if (group.isTrackSelected(index)) return formatKey(group, index)
+                }
+            }
+            return null
+        }
+        return keyOfType(C.TRACK_TYPE_VIDEO) to keyOfType(C.TRACK_TYPE_AUDIO)
+    }
+
+    private fun restoreIfNewMedia(tracks: Tracks) {
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        if (mediaId == restoredForMediaId) return
+        if (tracks.groups.none {
+                it.type == C.TRACK_TYPE_VIDEO || it.type == C.TRACK_TYPE_AUDIO
+            }
+        ) return
+        restoredForMediaId = mediaId
+        scope.launch {
+            val prefs = settings.trackPrefs.first()
+            applyStored(C.TRACK_TYPE_VIDEO, prefs.videoMode, prefs.videoKey)
+            applyStored(C.TRACK_TYPE_AUDIO, prefs.audioMode, prefs.audioKey)
+        }
+    }
+
+    private fun applyStored(type: Int, mode: TrackMode, key: String) {
+        val builder = player.trackSelectionParameters.buildUpon()
+        when (mode) {
+            TrackMode.NONE -> builder.setTrackTypeDisabled(type, true)
+            TrackMode.AUTO -> builder.setTrackTypeDisabled(type, false).clearOverridesOfType(type)
+            TrackMode.SPECIFIC -> {
+                for (group in player.currentTracks.groups) {
+                    if (group.type != type) continue
+                    for (index in 0 until group.length) {
+                        if (formatKey(group, index) == key) {
+                            builder.setTrackTypeDisabled(type, false)
+                                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+                            player.trackSelectionParameters = builder.build()
+                            return
+                        }
+                    }
+                }
+                builder.setTrackTypeDisabled(type, false).clearOverridesOfType(type)
+            }
+        }
+        player.trackSelectionParameters = builder.build()
     }
 }

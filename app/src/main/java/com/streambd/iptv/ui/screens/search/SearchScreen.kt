@@ -1,0 +1,134 @@
+package com.streambd.iptv.ui.screens.search
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.ui.theme.*
+
+@Composable
+fun SearchScreen(
+    onBack: () -> Unit,
+    onPick: (ChannelEntity) -> Unit,
+    vm: SearchViewModel = hiltViewModel(),
+) {
+    val query by vm.query.collectAsStateWithLifecycle()
+    val results by vm.results.collectAsStateWithLifecycle()
+    val fieldFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
+
+    Column(Modifier.fillMaxSize().background(BgDark)) {
+        Row(
+            Modifier.fillMaxWidth().background(TopBar).padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = TextPrimary,
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onBack).padding(8.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("Search", color = TextPrimary, fontSize = 20.sp)
+        }
+
+        Box(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)
+                .clip(RoundedCornerShape(8.dp)).background(Surface1)
+                .border(2.dp, Accent, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) {
+                    if (query.isEmpty()) Text("Type channel name here…", color = TextMuted, fontSize = 16.sp)
+                    BasicTextField(
+                        value = query,
+                        onValueChange = vm::setQuery,
+                        singleLine = true,
+                        cursorBrush = SolidColor(Accent),
+                        textStyle = TextStyle(color = TextPrimary, fontSize = 16.sp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
+                    )
+                }
+            }
+        }
+
+        when {
+            query.isBlank() -> SearchMessage(
+                "Start typing to search live channels",
+                Modifier.weight(1f).fillMaxWidth(),
+            )
+            results.isEmpty() -> SearchMessage(
+                "No channels match ‘$query’",
+                Modifier.weight(1f).fillMaxWidth(),
+            )
+            else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                items(results, key = { it.id }) { channel ->
+                    SearchResultRow(channel) { onPick(channel) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchMessage(message: String, modifier: Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Text(message, color = TextMuted, fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun SearchResultRow(channel: ChannelEntity, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp)).background(if (focused) Panel else Color.Transparent)
+            .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("%02d".format(channel.number), color = TextMuted, fontSize = 16.sp, modifier = Modifier.width(36.dp))
+        AsyncImage(
+            model = channel.logoUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(channel.name, color = TextPrimary, fontSize = 16.sp, maxLines = 1)
+    }
+}

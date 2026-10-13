@@ -11,11 +11,25 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE kind = :kind AND groupId = :gid ORDER BY number")
     fun observeByKindAndGroup(kind: String, gid: Long): Flow<List<ChannelEntity>>
 
+        @Query(
+                """
+                SELECT * FROM channels
+                WHERE kind = :kind
+                    AND name LIKE '%' || :q || '%' COLLATE NOCASE
+                ORDER BY number
+                LIMIT :limit
+                """,
+        )
+        fun searchByKind(kind: String, q: String, limit: Int = 300): Flow<List<ChannelEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(items: List<ChannelEntity>)
 
     @Query("UPDATE channels SET isFavorite = :fav WHERE id = :id")
     suspend fun setFavorite(id: Long, fav: Boolean)
+
+    @Query("UPDATE channels SET isLocked = :locked WHERE id = :id")
+    suspend fun setLocked(id: Long, locked: Boolean)
 
     @Query("DELETE FROM channels") suspend fun clear()
 

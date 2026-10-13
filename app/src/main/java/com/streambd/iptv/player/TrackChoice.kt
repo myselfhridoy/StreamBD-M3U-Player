@@ -13,7 +13,12 @@ sealed interface TrackChoice {
 data class TrackInfo(
     val videoGroups: List<Tracks.Group>,
     val audioGroups: List<Tracks.Group>,
+    val currentVideoKey: String? = null,
+    val currentAudioKey: String? = null,
 ) {
+    fun withCurrent(keys: Pair<String?, String?>): TrackInfo =
+        copy(currentVideoKey = keys.first, currentAudioKey = keys.second)
+
     companion object {
         fun empty() = TrackInfo(emptyList(), emptyList())
     }

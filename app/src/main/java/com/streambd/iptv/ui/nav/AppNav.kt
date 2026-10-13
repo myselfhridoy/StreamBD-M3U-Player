@@ -1,19 +1,33 @@
 package com.streambd.iptv.ui.nav
 
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.ui.screens.HomeMenuScreen
 import com.streambd.iptv.ui.screens.PlaceholderScreen
+import com.streambd.iptv.ui.screens.activation.ActivationScreen
+import com.streambd.iptv.ui.screens.guide.GuideScreen
 import com.streambd.iptv.ui.screens.live.LiveScreen
+import com.streambd.iptv.ui.screens.search.SearchScreen
 import com.streambd.iptv.ui.screens.settings.SettingsScreen
+import com.streambd.iptv.ui.screens.splash.SplashScreen
+import com.streambd.iptv.ui.screens.vod.VodScreen
 
 object Routes {
+    const val SPLASH = "splash"
     const val HOME = "home"
-    const val LIVE = "live"
-    const val MOVIES = "movies"
-    const val SERIES = "series"
+    const val LIVE_BASE = "live"
+    const val LIVE = "live?channelId={channelId}"
+    fun live(channelId: Long = -1L) = "live?channelId=$channelId"
+    const val MOVIES = "vod/MOVIE"
+    const val SERIES = "vod/SERIES"
+    const val VOD_PATTERN = "vod/{kind}"
     const val GUIDE = "guide"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
@@ -24,36 +38,68 @@ object Routes {
 fun AppNav() {
     val nav = rememberNavController()
 
-    NavHost(navController = nav, startDestination = Routes.HOME) {
+    NavHost(navController = nav, startDestination = Routes.SPLASH) {
+        composable(Routes.SPLASH) {
+            SplashScreen(
+                onToActivation = {
+                    nav.navigate(Routes.ACTIVATION) {
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                },
+                onToHome = {
+                    nav.navigate(Routes.HOME) {
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                },
+            )
+        }
         composable(Routes.HOME) {
-            HomeMenuScreen(onOpen = { route -> nav.navigate(route) })
+            val activity = LocalContext.current as? ComponentActivity
+            HomeMenuScreen(
+                onOpen = { route ->
+                    if (route == Routes.LIVE) nav.navigate(Routes.live()) else nav.navigate(route)
+                },
+                onExit = { activity?.finish() },
+            )
         }
-        composable(Routes.LIVE) {
-            LiveScreen()
+        composable(
+            route = Routes.LIVE,
+            arguments = listOf(navArgument("channelId") {
+                type = NavType.LongType
+                defaultValue = -1L
+            }),
+        ) { entry ->
+            LiveScreen(preselectChannelId = entry.arguments?.getLong("channelId") ?: -1L)
         }
-        composable(Routes.MOVIES) {
-            PlaceholderScreen(title = "Movies") { nav.popBackStack() }
-        }
-        composable(Routes.SERIES) {
-            PlaceholderScreen(title = "Series") { nav.popBackStack() }
-        }
-        composable(Routes.GUIDE) {
-            PlaceholderScreen(title = "TV Guide") { nav.popBackStack() }
-        }
+        composable(
+            route = Routes.VOD_PATTERN,
+            arguments = listOf(navArgument("kind") { type = NavType.StringType }),
+        ) { VodScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.GUIDE) { GuideScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SEARCH) {
-            PlaceholderScreen(title = "Search") { nav.popBackStack() }
+            SearchScreen(
+                onBack = { nav.popBackStack() },
+                onPick = { channel: ChannelEntity -> nav.navigate(Routes.live(channel.id)) },
+            )
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
                 onResetComplete = {
-                    nav.popBackStack(Routes.HOME, inclusive = false)
-                    nav.navigate(Routes.ACTIVATION)
+                    nav.navigate(Routes.ACTIVATION) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                    }
                 },
             )
         }
         composable(Routes.ACTIVATION) {
-            PlaceholderScreen(title = "Activation") { nav.popBackStack() }
+            ActivationScreen(
+                onActivated = {
+                    nav.navigate(Routes.SPLASH) {
+                        popUpTo(Routes.ACTIVATION) { inclusive = true }
+                    }
+                },
+            )
         }
     }
 }

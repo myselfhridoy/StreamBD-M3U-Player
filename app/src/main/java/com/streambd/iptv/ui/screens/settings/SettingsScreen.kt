@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.settings.AppSettings
+import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
@@ -59,6 +60,7 @@ fun SettingsScreen(
     vm: SettingsViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val activationState by vm.activationState.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -119,10 +121,15 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
             SectionHeader("About")
 
+            val active = activationState as? ActivationState.Active
+            val expiryText = active?.expiresAt?.takeIf { it > 0L }?.let {
+                java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+                    .format(java.util.Date(it))
+            } ?: "—"
             InfoRow("Device", "${Build.MANUFACTURER} ${Build.MODEL}")
             InfoRow("OS Version", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            InfoRow("Activation Code", "—")
-            InfoRow("Expiration Date", "—")
+            InfoRow("Activation Code", active?.code ?: "Not activated")
+            InfoRow("Expiration Date", expiryText)
             InfoRow("App", "StreamBD IPTV $APP_VERSION")
             ActionRow("Licenses", onClick = { dlg = Sd.Licenses })
 

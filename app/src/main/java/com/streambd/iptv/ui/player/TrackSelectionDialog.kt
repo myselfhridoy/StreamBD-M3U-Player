@@ -26,6 +26,24 @@ import com.streambd.iptv.ui.theme.*
 
 private data class Option(val label: String, val choice: TrackChoice)
 
+private fun keyOf(group: Tracks.Group, index: Int): String {
+    val format = group.getTrackFormat(index)
+    return listOf(
+        format.id.orEmpty(),
+        format.sampleMimeType.orEmpty(),
+        format.language.orEmpty(),
+        format.label.orEmpty(),
+    ).joinToString("|")
+}
+
+private fun sameChoice(first: TrackChoice, second: TrackChoice): Boolean {
+    if (first is TrackChoice.Specific && second is TrackChoice.Specific) {
+        return first.index == second.index &&
+            first.group.mediaTrackGroup == second.group.mediaTrackGroup
+    }
+    return first == second
+}
+
 @Composable
 fun TrackSelectionDialog(
     info: TrackInfo,
@@ -33,8 +51,21 @@ fun TrackSelectionDialog(
     onDismiss: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(0) }              // 0 = VIDEO, 1 = AUDIO
-    var videoChoice by remember { mutableStateOf<TrackChoice>(TrackChoice.Auto) }
-    var audioChoice by remember { mutableStateOf<TrackChoice>(TrackChoice.Auto) }
+    fun initialChoice(key: String?, groups: List<Tracks.Group>): TrackChoice {
+        if (key == "") return TrackChoice.None
+        if (key == null) return TrackChoice.Auto
+        for (group in groups) for (index in 0 until group.length) {
+            if (keyOf(group, index) == key) return TrackChoice.Specific(group, index)
+        }
+        return TrackChoice.Auto
+    }
+
+    var videoChoice by remember(info.currentVideoKey, info.videoGroups) {
+        mutableStateOf(initialChoice(info.currentVideoKey, info.videoGroups))
+    }
+    var audioChoice by remember(info.currentAudioKey, info.audioGroups) {
+        mutableStateOf(initialChoice(info.currentAudioKey, info.audioGroups))
+    }
 
     val options = remember(tab, info) {
         val groups = if (tab == 0) info.videoGroups else info.audioGroups
@@ -74,8 +105,8 @@ fun TrackSelectionDialog(
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
                 items(options) { opt ->
                     val selected = when (tab) {
-                        0 -> videoChoice == opt.choice
-                        else -> audioChoice == opt.choice
+                        0 -> sameChoice(videoChoice, opt.choice)
+                        else -> sameChoice(audioChoice, opt.choice)
                     }
                     Row(
                         Modifier

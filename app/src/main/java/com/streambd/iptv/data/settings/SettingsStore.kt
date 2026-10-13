@@ -29,6 +29,15 @@ data class AppSettings(
     val bufferTimeMs: Int = 10_000,
 )
 
+enum class TrackMode { NONE, AUTO, SPECIFIC }
+
+data class TrackPrefs(
+    val videoMode: TrackMode = TrackMode.AUTO,
+    val videoKey: String = "",
+    val audioMode: TrackMode = TrackMode.AUTO,
+    val audioKey: String = "",
+)
+
 @Singleton
 class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Context) {
 
@@ -40,6 +49,10 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         val BUFFER_TIME_MS = intPreferencesKey("buffer_time_ms")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_SALT = stringPreferencesKey("pin_salt")
+        val VIDEO_MODE = stringPreferencesKey("track_video_mode")
+        val VIDEO_KEY = stringPreferencesKey("track_video_key")
+        val AUDIO_MODE = stringPreferencesKey("track_audio_mode")
+        val AUDIO_KEY = stringPreferencesKey("track_audio_key")
     }
 
     private val prefs = ctx.settingsDataStore
@@ -56,11 +69,32 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         )
     }
 
+    val trackPrefs: Flow<TrackPrefs> = prefs.data.map { p ->
+        TrackPrefs(
+            videoMode = runCatching { TrackMode.valueOf(p[Keys.VIDEO_MODE] ?: "AUTO") }
+                .getOrDefault(TrackMode.AUTO),
+            videoKey = p[Keys.VIDEO_KEY].orEmpty(),
+            audioMode = runCatching { TrackMode.valueOf(p[Keys.AUDIO_MODE] ?: "AUTO") }
+                .getOrDefault(TrackMode.AUTO),
+            audioKey = p[Keys.AUDIO_KEY].orEmpty(),
+        )
+    }
+
     suspend fun setStartAfterReboot(v: Boolean) = prefs.edit { it[Keys.START_AFTER_REBOOT] = v }
     suspend fun setShowEpgOnSelect(v: Boolean) = prefs.edit { it[Keys.SHOW_EPG_ON_SELECT] = v }
     suspend fun setAspectMode(m: AspectMode) = prefs.edit { it[Keys.ASPECT_MODE] = m.name }
     suspend fun setEpgTimeShift(h: Int) = prefs.edit { it[Keys.EPG_TIME_SHIFT] = h }
     suspend fun setBufferTime(ms: Int) = prefs.edit { it[Keys.BUFFER_TIME_MS] = ms }
+
+    suspend fun setVideoTrack(mode: TrackMode, key: String) = prefs.edit {
+        it[Keys.VIDEO_MODE] = mode.name
+        it[Keys.VIDEO_KEY] = key
+    }
+
+    suspend fun setAudioTrack(mode: TrackMode, key: String) = prefs.edit {
+        it[Keys.AUDIO_MODE] = mode.name
+        it[Keys.AUDIO_KEY] = key
+    }
 
     suspend fun setPin(pin: String) {
         val salt = randomSalt()

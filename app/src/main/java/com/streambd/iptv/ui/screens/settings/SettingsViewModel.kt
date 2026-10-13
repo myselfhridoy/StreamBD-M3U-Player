@@ -3,6 +3,9 @@ package com.streambd.iptv.ui.screens.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streambd.iptv.data.activation.ActivationRepository
+import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.settings.AppSettings
 import com.streambd.iptv.data.settings.SettingsStore
@@ -22,11 +25,20 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settings: SettingsStore,
     private val repo: ChannelRepository,
+    private val activation: ActivationRepository,
+    private val epg: EpgRepository,
     @ApplicationContext private val ctx: Context,
 ) : ViewModel() {
 
     val state: StateFlow<AppSettings> =
         settings.flow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+
+    val activationState: StateFlow<ActivationState> =
+        activation.state.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            ActivationState.NotActivated,
+        )
 
     fun setStartAfterReboot(v: Boolean) = viewModelScope.launch { settings.setStartAfterReboot(v) }
     fun setShowEpg(v: Boolean) = viewModelScope.launch { settings.setShowEpgOnSelect(v) }
@@ -49,6 +61,8 @@ class SettingsViewModel @Inject constructor(
     fun resetApplication(onDone: () -> Unit) = viewModelScope.launch {
         withContext(Dispatchers.IO) { clearDiskCache() }
         repo.clearAll()
+        epg.clear()
+        activation.clear()
         settings.clearAll()
         onDone()
     }

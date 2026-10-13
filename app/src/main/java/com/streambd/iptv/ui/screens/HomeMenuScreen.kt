@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.nav.Routes
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.delay
@@ -40,7 +41,8 @@ private val homeItems = listOf(
 )
 
 @Composable
-fun HomeMenuScreen(onOpen: (String) -> Unit) {
+fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
+    var showExitDialog by remember { mutableStateOf(false) }
     var now by remember { mutableStateOf(LocalTime.now()) }
     LaunchedEffect(Unit) {
         while (true) { now = LocalTime.now(); delay(1000L) }
@@ -58,10 +60,28 @@ fun HomeMenuScreen(onOpen: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(homeItems) { item ->
-                    HomeTile(item) { item.route?.let(onOpen) }
+                    HomeTile(item) {
+                        if (item.route == null) showExitDialog = true
+                        else onOpen(item.route)
+                    }
                 }
             }
         }
+    }
+
+    if (showExitDialog) {
+        ConfirmDialog(
+            title = "Exit StreamBD IPTV?",
+            body = "The app will close and playback will stop.",
+            cancelLabel = "CANCEL",
+            confirmLabel = "EXIT",
+            confirmIsDangerous = true,
+            onCancel = { showExitDialog = false },
+            onConfirm = {
+                showExitDialog = false
+                onExit()
+            },
+        )
     }
 }
 

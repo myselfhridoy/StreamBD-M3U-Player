@@ -7,6 +7,7 @@ import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.M3uParser
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,9 +21,25 @@ class ChannelRepository @Inject constructor(
         channels.observeByKindAndGroup(ChannelKind.LIVE.name, groupId)
     fun liveGroups(): Flow<List<GroupEntity>> = groups.observeByKind(ChannelKind.LIVE.name)
 
+    fun byKind(kind: ChannelKind): Flow<List<ChannelEntity>> =
+        channels.observeByKind(kind.name)
+
+    fun byKindIn(kind: ChannelKind, groupId: Long): Flow<List<ChannelEntity>> =
+        channels.observeByKindAndGroup(kind.name, groupId)
+
+    fun groupsByKind(kind: ChannelKind): Flow<List<GroupEntity>> =
+        groups.observeByKind(kind.name)
+
+    fun searchLive(query: String): Flow<List<ChannelEntity>> {
+        val trimmed = query.trim()
+        return if (trimmed.isBlank()) flowOf(emptyList())
+        else channels.searchByKind(ChannelKind.LIVE.name, trimmed, limit = 300)
+    }
+
     suspend fun hasContent(): Boolean = channels.count() > 0
 
     suspend fun setFavorite(channelId: Long, fav: Boolean) = channels.setFavorite(channelId, fav)
+    suspend fun setLocked(channelId: Long, locked: Boolean) = channels.setLocked(channelId, locked)
 
     suspend fun clearAll() {
         channels.clear()

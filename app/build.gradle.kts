@@ -10,11 +10,12 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.streambd.iptv"
+        applicationId = "streambdiptv.player"
         minSdk = 23
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
+        buildConfigField("String", "ACTIVATION_API", "\"https://api.streambd.example\"")
     }
 
     buildTypes {
@@ -34,7 +35,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
     packaging {

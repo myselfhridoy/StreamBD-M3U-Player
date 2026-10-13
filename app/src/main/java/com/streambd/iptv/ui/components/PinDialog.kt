@@ -107,10 +107,10 @@ private fun Keypad(onDigit: (Char) -> Unit, onBack: () -> Unit, onClear: () -> U
         listOf("CLR", "0", "DEL"),
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        rows.forEach { row ->
+        rows.forEachIndexed { rowIndex, row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { label ->
-                    Key(label) {
+                row.forEachIndexed { columnIndex, label ->
+                    Key(label, requestInitialFocus = rowIndex == 0 && columnIndex == 0) {
                         when (label) {
                             "CLR" -> onClear()
                             "DEL" -> onBack()
@@ -124,9 +124,12 @@ private fun Keypad(onDigit: (Char) -> Unit, onBack: () -> Unit, onClear: () -> U
 }
 
 @Composable
-private fun Key(label: String, onClick: () -> Unit) {
+private fun Key(label: String, requestInitialFocus: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val requester = remember { FocusRequester() }
+    LaunchedEffect(requestInitialFocus) {
+        if (requestInitialFocus) runCatching { requester.requestFocus() }
+    }
     Box(
         Modifier
             .size(72.dp, 56.dp)
