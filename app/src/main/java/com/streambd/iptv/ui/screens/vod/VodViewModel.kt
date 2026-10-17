@@ -11,6 +11,7 @@ import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.data.vod.EpisodeEntry
 import com.streambd.iptv.data.vod.SeriesGroup
 import com.streambd.iptv.data.vod.SeriesGrouping
+import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.player.LockController
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.player.PlayerUiState
@@ -121,6 +122,10 @@ class VodViewModel @Inject constructor(
 
     fun closeFullscreen() = playerManager.setFullscreen(false)
     fun togglePlayPause() = playerManager.togglePlayPause()
+    fun setAspectMode(mode: AspectMode) {
+        playerManager.setAspectMode(mode)
+        viewModelScope.launch { settingsStore.setAspectMode(mode) }
+    }
 
     fun toggleFavorite(item: ChannelEntity) {
         viewModelScope.launch { repo.setFavorite(item.id, !item.isFavorite) }

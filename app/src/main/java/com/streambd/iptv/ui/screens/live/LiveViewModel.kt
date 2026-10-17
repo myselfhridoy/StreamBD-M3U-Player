@@ -139,7 +139,10 @@ class LiveViewModel @Inject constructor(
     fun openFullscreen() = playerManager.setFullscreen(true)
     fun closeFullscreen() = playerManager.setFullscreen(false)
     fun togglePlayPause() = playerManager.togglePlayPause()
-    fun setAspectMode(mode: AspectMode) = playerManager.setAspectMode(mode)
+    fun setAspectMode(mode: AspectMode) {
+        playerManager.setAspectMode(mode)
+        viewModelScope.launch { settingsStore.setAspectMode(mode) }
+    }
     fun applyTrackChoice(type: Int, choice: TrackChoice) =
         playerManager.applyTrackChoice(type, choice)
 

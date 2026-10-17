@@ -43,6 +43,7 @@ import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.player.PlayerUiState
 import com.streambd.iptv.ui.player.FullscreenPlayer
+import com.streambd.iptv.ui.player.PlayerSettingsDialog
 import com.streambd.iptv.ui.player.PlayerSurface
 import com.streambd.iptv.ui.player.TrackSelectionDialog
 import com.streambd.iptv.ui.player.VolumeOverlay
@@ -67,6 +68,7 @@ fun LiveScreen(
     val nowNext by vm.nowNext.collectAsStateWithLifecycle()
 
     var showTracks by remember { mutableStateOf(false) }
+    var showPlayerSettings by remember { mutableStateOf(false) }
     var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
     var actionsChannelId by remember { mutableStateOf<Long?>(null) }
 
@@ -142,7 +144,7 @@ fun LiveScreen(
                 },
                 onToggleLock = { current?.let(vm::toggleLock) },
                 onOpenTracks = { showTracks = true },
-                onOpenSettings = { /* step 4 */ },
+                onOpenSettings = { showPlayerSettings = true },
             )
         }
 
@@ -171,6 +173,14 @@ fun LiveScreen(
                 showTracks = false
             },
             onDismiss = { showTracks = false },
+        )
+    }
+
+    if (showPlayerSettings) {
+        PlayerSettingsDialog(
+            currentAspect = state.aspectMode,
+            onAspectChange = vm::setAspectMode,
+            onDismiss = { showPlayerSettings = false },
         )
     }
 

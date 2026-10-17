@@ -50,6 +50,7 @@ import com.streambd.iptv.data.vod.SeriesGroup
 import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.components.ChannelActionsDialog
 import com.streambd.iptv.ui.player.FullscreenPlayer
+import com.streambd.iptv.ui.player.PlayerSettingsDialog
 import com.streambd.iptv.ui.player.TrackSelectionDialog
 import com.streambd.iptv.ui.player.VolumeOverlay
 import com.streambd.iptv.ui.theme.*
@@ -67,6 +68,7 @@ fun VodScreen(onBack: () -> Unit, vm: VodViewModel = hiltViewModel()) {
     val state by vm.playerState.collectAsStateWithLifecycle()
     val unlocked by vm.sessionUnlocked.collectAsStateWithLifecycle()
     var showTracks by remember { mutableStateOf(false) }
+    var showPlayerSettings by remember { mutableStateOf(false) }
     var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
     var actionsItemId by remember { mutableStateOf<Long?>(null) }
 
@@ -170,7 +172,7 @@ fun VodScreen(onBack: () -> Unit, vm: VodViewModel = hiltViewModel()) {
                 onToggleFavorite = { current?.let(vm::toggleFavorite) },
                 onToggleLock = { current?.let(vm::toggleLock) },
                 onOpenTracks = { showTracks = true },
-                onOpenSettings = { /* reserved */ },
+                onOpenSettings = { showPlayerSettings = true },
             )
         }
     }
@@ -186,6 +188,14 @@ fun VodScreen(onBack: () -> Unit, vm: VodViewModel = hiltViewModel()) {
                 showTracks = false
             },
             onDismiss = { showTracks = false },
+        )
+    }
+
+    if (showPlayerSettings) {
+        PlayerSettingsDialog(
+            currentAspect = state.aspectMode,
+            onAspectChange = vm::setAspectMode,
+            onDismiss = { showPlayerSettings = false },
         )
     }
 
