@@ -22,6 +22,16 @@ interface ChannelDao {
         )
         fun searchByKind(kind: String, q: String, limit: Int = 300): Flow<List<ChannelEntity>>
 
+    @Query(
+        """
+        SELECT * FROM channels
+        WHERE name LIKE '%' || :q || '%' COLLATE NOCASE
+        ORDER BY kind, number
+        LIMIT 300
+        """,
+    )
+    fun searchAll(q: String): Flow<List<ChannelEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(items: List<ChannelEntity>)
 

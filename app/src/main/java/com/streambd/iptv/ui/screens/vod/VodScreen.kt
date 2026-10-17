@@ -56,7 +56,11 @@ import com.streambd.iptv.ui.player.VolumeOverlay
 import com.streambd.iptv.ui.theme.*
 
 @Composable
-fun VodScreen(onBack: () -> Unit, vm: VodViewModel = hiltViewModel()) {
+fun VodScreen(
+    onBack: () -> Unit,
+    directPlayId: Long? = null,
+    vm: VodViewModel = hiltViewModel(),
+) {
     val isSeries = vm.kind == ChannelKind.SERIES
     val groups by vm.groups.collectAsStateWithLifecycle()
     val allItems by vm.allItems.collectAsStateWithLifecycle()
@@ -71,6 +75,16 @@ fun VodScreen(onBack: () -> Unit, vm: VodViewModel = hiltViewModel()) {
     var showPlayerSettings by remember { mutableStateOf(false) }
     var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
     var actionsItemId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(directPlayId, allItems) {
+        val id = directPlayId ?: return@LaunchedEffect
+        val item = allItems.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        if (item.isLocked && !unlocked) pendingUnlock = item else vm.play(item)
+    }
+
+    DisposableEffect(vm) {
+        onDispose { vm.player.pause() }
+    }
 
     val activity = LocalContext.current as? ComponentActivity
     LaunchedEffect(state.isFullscreen) {

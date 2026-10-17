@@ -73,7 +73,10 @@ fun LiveScreen(
     var actionsChannelId by remember { mutableStateOf<Long?>(null) }
 
     DisposableEffect(vm) {
-        onDispose { vm.setJumpEnabled(false) }
+        onDispose {
+            vm.setJumpEnabled(false)
+            vm.player.pause()
+        }
     }
     LaunchedEffect(state.isFullscreen) {
         vm.setJumpEnabled(!state.isFullscreen)

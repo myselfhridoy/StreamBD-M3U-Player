@@ -29,7 +29,7 @@ class SearchViewModel @Inject constructor(
     val results: StateFlow<List<ChannelEntity>> = _query
         .debounce(250L)
         .distinctUntilChanged()
-        .flatMapLatest(repo::searchLive)
+        .flatMapLatest(repo::searchAll)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setQuery(query: String) {

@@ -27,7 +27,8 @@ object Routes {
     fun live(channelId: Long = -1L) = "live?channelId=$channelId"
     const val MOVIES = "vod/MOVIE"
     const val SERIES = "vod/SERIES"
-    const val VOD_PATTERN = "vod/{kind}"
+    const val VOD_PATTERN = "vod/{kind}?playId={playId}"
+    fun vodPlay(kind: String, channelId: Long) = "vod/$kind?playId=$channelId"
     const val GUIDE = "guide"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
@@ -73,13 +74,22 @@ fun AppNav() {
         }
         composable(
             route = Routes.VOD_PATTERN,
-            arguments = listOf(navArgument("kind") { type = NavType.StringType }),
-        ) { VodScreen(onBack = { nav.popBackStack() }) }
+            arguments = listOf(
+                navArgument("kind") { type = NavType.StringType },
+                navArgument("playId") { type = NavType.LongType; defaultValue = -1L },
+            ),
+        ) { entry ->
+            VodScreen(
+                onBack = { nav.popBackStack() },
+                directPlayId = entry.arguments?.getLong("playId")?.takeIf { it > 0L },
+            )
+        }
         composable(Routes.GUIDE) { GuideScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { nav.popBackStack() },
-                onPick = { channel: ChannelEntity -> nav.navigate(Routes.live(channel.id)) },
+                onPickLive = { channel -> nav.navigate(Routes.live(channel.id)) },
+                onPlayVod = { channel -> nav.navigate(Routes.vodPlay(channel.kind, channel.id)) },
             )
         }
         composable(Routes.SETTINGS) {

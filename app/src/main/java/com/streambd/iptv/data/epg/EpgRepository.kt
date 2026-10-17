@@ -55,10 +55,10 @@ class EpgRepository @Inject constructor(
         programs.size
     }
 
-    suspend fun nowNext(tvgId: String, shiftHours: Int = 0): NowNext? {
+    suspend fun nowNext(tvgId: String, shiftMinutes: Int = 0): NowNext? {
         if (tvgId.isBlank()) return null
         val now = System.currentTimeMillis()
-        val shiftMs = shiftHours * 3_600_000L
+        val shiftMs = shiftMinutes * 60_000L
         val from = now - 4L * 3_600_000L - shiftMs
         val rows = dao.windowFor(tvgId, from, limit = 6)
         if (rows.isEmpty()) return null

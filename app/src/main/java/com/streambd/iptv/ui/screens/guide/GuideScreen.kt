@@ -64,7 +64,7 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
         }
     }
 
-    val shiftMs = settings.epgTimeShiftHours * 3_600_000L
+    val shiftMs = settings.epgTimeShiftMins * 60_000L
     val windowStart = remember(now, hourOffset) {
         val aligned = ((now - SLOT_MS) / SLOT_MS) * SLOT_MS
         aligned + hourOffset * 3_600_000L

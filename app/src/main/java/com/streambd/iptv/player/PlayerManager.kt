@@ -88,7 +88,7 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    private fun createPlayer(bufferMs: Int = 10_000): ExoPlayer {
+    private fun createPlayer(bufferMs: Int = 2_500): ExoPlayer {
         val minMs = bufferMs.coerceAtLeast(1_000)
         val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
         return ExoPlayer.Builder(appContext)
@@ -194,6 +194,10 @@ class PlayerManager @Inject constructor(
 
     fun togglePlayPause() {
         if (player.isPlaying) player.pause() else player.play()
+    }
+
+    fun pause() {
+        if (player.isPlaying) player.pause()
     }
 
     fun setFullscreen(on: Boolean) { _state.update { it.copy(isFullscreen = on) } }

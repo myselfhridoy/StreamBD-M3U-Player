@@ -154,6 +154,7 @@ fun FullscreenPlayer(
                     Column(
                         Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                             .background(Color.Black.copy(alpha = 0.55f))
+                            .navigationBarsPadding()
                             .padding(horizontal = 24.dp, vertical = 16.dp),
                     ) {
                         val showSeek = state.duration > 0L
@@ -194,13 +195,13 @@ fun FullscreenPlayer(
                             )
                             Spacer(Modifier.weight(1f))
                             IconAction(
-                                icon = Icons.Filled.Tune,
-                                onClick = { kickControls(); onOpenTracks() },
+                                icon = Icons.Filled.AspectRatio,
+                                onClick = { kickControls(); onOpenSettings() },
                             )
                             Spacer(Modifier.width(8.dp))
                             IconAction(
                                 icon = Icons.Filled.Settings,
-                                onClick = { kickControls(); onOpenSettings() },
+                                onClick = { kickControls(); onOpenTracks() },
                             )
                         }
                     }

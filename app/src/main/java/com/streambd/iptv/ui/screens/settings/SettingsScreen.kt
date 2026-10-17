@@ -97,20 +97,30 @@ fun SettingsScreen(
 
             SliderRow(
                 label = "EPG Time Shift",
-                valueLabel = "${state.epgTimeShiftHours} h",
-                value = state.epgTimeShiftHours.toFloat(),
-                range = -12f..12f,
-                steps = 23,
-                onChange = { vm.setEpgShift(it.roundToInt()) },
+                valueLabel = if (state.epgTimeShiftMins % 60 == 0) {
+                    "${state.epgTimeShiftMins / 60} h"
+                } else {
+                    "%.1f h".format(state.epgTimeShiftMins / 60f)
+                },
+                value = state.epgTimeShiftMins.toFloat(),
+                range = -600f..600f,
+                steps = 39,
+                onChange = {
+                    val snapped = (it / 30f).roundToInt() * 30
+                    vm.setEpgShift(snapped)
+                },
             )
 
             SliderRow(
                 label = "Buffer Time",
                 valueLabel = "${state.bufferTimeMs} ms",
                 value = state.bufferTimeMs.toFloat(),
-                range = 1_000f..30_000f,
-                steps = 28,
-                onChange = { vm.setBuffer(it.roundToInt()) },
+                range = 1_000f..10_000f,
+                steps = 35,
+                onChange = {
+                    val snapped = (it / 250f).roundToInt() * 250
+                    vm.setBuffer(snapped)
+                },
             )
 
             ActionRow("Change PIN Code", onClick = { dlg = Sd.PinCurrent })

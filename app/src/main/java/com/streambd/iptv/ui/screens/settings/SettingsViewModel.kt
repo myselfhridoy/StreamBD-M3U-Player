@@ -43,7 +43,7 @@ class SettingsViewModel @Inject constructor(
     fun setStartAfterReboot(v: Boolean) = viewModelScope.launch { settings.setStartAfterReboot(v) }
     fun setShowEpg(v: Boolean) = viewModelScope.launch { settings.setShowEpgOnSelect(v) }
     fun setAspect(m: AspectMode) = viewModelScope.launch { settings.setAspectMode(m) }
-    fun setEpgShift(h: Int) = viewModelScope.launch { settings.setEpgTimeShift(h) }
+    fun setEpgShift(mins: Int) = viewModelScope.launch { settings.setEpgTimeShiftMins(mins) }
     fun setBuffer(ms: Int) = viewModelScope.launch { settings.setBufferTime(ms) }
 
     suspend fun verifyPin(pin: String) = settings.verifyPin(pin)

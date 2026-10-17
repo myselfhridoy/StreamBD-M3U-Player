@@ -25,8 +25,8 @@ data class AppSettings(
     val startAfterReboot: Boolean = false,
     val showEpgOnSelect: Boolean = true,
     val aspectMode: AspectMode = AspectMode.STRETCH,
-    val epgTimeShiftHours: Int = 0,
-    val bufferTimeMs: Int = 10_000,
+    val epgTimeShiftMins: Int = 0,
+    val bufferTimeMs: Int = 2_500,
 )
 
 enum class TrackMode { NONE, AUTO, SPECIFIC }
@@ -45,7 +45,8 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         val START_AFTER_REBOOT = booleanPreferencesKey("start_after_reboot")
         val SHOW_EPG_ON_SELECT = booleanPreferencesKey("show_epg_on_select")
         val ASPECT_MODE = stringPreferencesKey("aspect_mode")
-        val EPG_TIME_SHIFT = intPreferencesKey("epg_time_shift")
+        val EPG_TIME_SHIFT_MINS = intPreferencesKey("epg_time_shift_mins")
+        val LEGACY_EPG_TIME_SHIFT_HOURS = intPreferencesKey("epg_time_shift")
         val BUFFER_TIME_MS = intPreferencesKey("buffer_time_ms")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_SALT = stringPreferencesKey("pin_salt")
@@ -64,8 +65,9 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
             aspectMode = p[Keys.ASPECT_MODE]?.let {
                 runCatching { AspectMode.valueOf(it) }.getOrNull()
             } ?: AspectMode.STRETCH,
-            epgTimeShiftHours = p[Keys.EPG_TIME_SHIFT] ?: 0,
-            bufferTimeMs = p[Keys.BUFFER_TIME_MS] ?: 10_000,
+            epgTimeShiftMins = p[Keys.EPG_TIME_SHIFT_MINS]
+                ?: ((p[Keys.LEGACY_EPG_TIME_SHIFT_HOURS] ?: 0).coerceIn(-10, 10) * 60),
+            bufferTimeMs = (p[Keys.BUFFER_TIME_MS] ?: 2_500).coerceIn(1_000, 10_000),
         )
     }
 
@@ -83,7 +85,10 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
     suspend fun setStartAfterReboot(v: Boolean) = prefs.edit { it[Keys.START_AFTER_REBOOT] = v }
     suspend fun setShowEpgOnSelect(v: Boolean) = prefs.edit { it[Keys.SHOW_EPG_ON_SELECT] = v }
     suspend fun setAspectMode(m: AspectMode) = prefs.edit { it[Keys.ASPECT_MODE] = m.name }
-    suspend fun setEpgTimeShift(h: Int) = prefs.edit { it[Keys.EPG_TIME_SHIFT] = h }
+    suspend fun setEpgTimeShiftMins(mins: Int) = prefs.edit {
+        it[Keys.EPG_TIME_SHIFT_MINS] = mins.coerceIn(-600, 600)
+        it.remove(Keys.LEGACY_EPG_TIME_SHIFT_HOURS)
+    }
     suspend fun setBufferTime(ms: Int) = prefs.edit { it[Keys.BUFFER_TIME_MS] = ms }
 
     suspend fun setVideoTrack(mode: TrackMode, key: String) = prefs.edit {

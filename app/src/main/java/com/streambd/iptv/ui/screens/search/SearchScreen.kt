@@ -25,7 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -37,7 +39,8 @@ import com.streambd.iptv.ui.theme.*
 @Composable
 fun SearchScreen(
     onBack: () -> Unit,
-    onPick: (ChannelEntity) -> Unit,
+    onPickLive: (ChannelEntity) -> Unit,
+    onPlayVod: (ChannelEntity) -> Unit,
     vm: SearchViewModel = hiltViewModel(),
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -87,16 +90,18 @@ fun SearchScreen(
 
         when {
             query.isBlank() -> SearchMessage(
-                "Start typing to search live channels",
+                "Start typing to search all content",
                 Modifier.weight(1f).fillMaxWidth(),
             )
             results.isEmpty() -> SearchMessage(
-                "No channels match ‘$query’",
+                "No results match ‘$query’",
                 Modifier.weight(1f).fillMaxWidth(),
             )
             else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                 items(results, key = { it.id }) { channel ->
-                    SearchResultRow(channel) { onPick(channel) }
+                    SearchResultRow(channel) {
+                        if (channel.kind == "LIVE") onPickLive(channel) else onPlayVod(channel)
+                    }
                 }
             }
         }
@@ -129,6 +134,33 @@ private fun SearchResultRow(channel: ChannelEntity, onClick: () -> Unit) {
             modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
         )
         Spacer(Modifier.width(12.dp))
-        Text(channel.name, color = TextPrimary, fontSize = 16.sp, maxLines = 1)
+        Text(
+            channel.name,
+            color = TextPrimary,
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        val kindLabel = when (channel.kind) {
+            "MOVIE" -> "MOVIE"
+            "SERIES" -> "SERIES"
+            else -> "LIVE"
+        }
+        val kindColor = when (channel.kind) {
+            "MOVIE" -> Danger
+            "SERIES" -> Color(0xFF30A46C)
+            else -> Accent
+        }
+        Text(
+            text = kindLabel,
+            color = Color.Black,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                .background(kindColor)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
     }
 }

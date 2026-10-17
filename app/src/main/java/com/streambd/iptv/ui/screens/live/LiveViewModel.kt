@@ -85,14 +85,14 @@ class LiveViewModel @Inject constructor(
         }
         viewModelScope.launch {
             combine(playerManager.state, settingsStore.flow) { player, settings ->
-                Triple(player.current?.tvgId, settings.showEpgOnSelect, settings.epgTimeShiftHours)
-            }.distinctUntilChanged().collectLatest { (tvgId, showEpg, shiftHours) ->
+                Triple(player.current?.tvgId, settings.showEpgOnSelect, settings.epgTimeShiftMins)
+            }.distinctUntilChanged().collectLatest { (tvgId, showEpg, shiftMins) ->
                 if (!showEpg || tvgId.isNullOrBlank()) {
                     _nowNext.value = null
                     return@collectLatest
                 }
                 while (true) {
-                    _nowNext.value = runCatching { epg.nowNext(tvgId, shiftHours) }.getOrNull()
+                    _nowNext.value = runCatching { epg.nowNext(tvgId, shiftMins) }.getOrNull()
                     delay(60_000L)
                 }
             }

@@ -36,6 +36,11 @@ class ChannelRepository @Inject constructor(
         else channels.searchByKind(ChannelKind.LIVE.name, trimmed, limit = 300)
     }
 
+    fun searchAll(query: String): Flow<List<ChannelEntity>> {
+        val trimmed = query.trim()
+        return if (trimmed.isBlank()) flowOf(emptyList()) else channels.searchAll(trimmed)
+    }
+
     suspend fun hasContent(): Boolean = channels.count() > 0
 
     suspend fun setFavorite(channelId: Long, fav: Boolean) = channels.setFavorite(channelId, fav)

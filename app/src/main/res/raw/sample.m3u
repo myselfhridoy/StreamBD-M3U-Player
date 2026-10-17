@@ -1,25 +1,381 @@
 #EXTM3U
-#EXTINF:-1 tvg-id="demo1" group-title="Bangla",Bangla One
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo2" group-title="Bangla",Bangla Two
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo3" group-title="Bangla",Bangla Three
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo4" group-title="Bangla",Bangla Four
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo5" group-title="News",News 24
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo6" group-title="News",News Nine
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo7" group-title="News",News Live
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo8" group-title="Sports",Sports One
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo9" group-title="Sports",Sports Two
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo10" group-title="Sports",Sports Extra
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo11" group-title="Kids",Kids TV
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-#EXTINF:-1 tvg-id="demo12" group-title="Kids",Kids Fun
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/03/images_90286f0acbbf34b9a810a209e51ee440_goplay_thumbnail.jpg" group-title="Sports",Ten Cricket HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ten_cricket_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_35c210582ce0f2725636ea0b92623692_goplay_thumbnail_0008_sony_sports_ten_5_hd.jpg" group-title="Sports",Sony Sports Ten 5 HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ten_5_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_92ae3e1f9f72a23d7435dc75a32c98bf_goplay_thumbnail_0002_sony_sports_ten_2_hd.jpg" group-title="Sports",Sony Sports Ten 2 HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ten_2_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_af6fa94170db0440e5fb2e94d8e78ad2_goplay_thumbnail1.jpg" group-title="Sports",Sony Sports Ten 1 HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ten_1_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_bbc57bd68e73739fc9f47ccbfe6ab5b0_goplay_thumbnail1.jpg" group-title="Sports",Euro Sport HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/euro_sports_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://assets.ottplus.bd/uploads/intl-fta-news/2331367964114157568_thumbnail.png" group-title="News",KBS World
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/kbs_world_720/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/08/thumbnails_31dd05470b5a0ec7407944fa856669fe_goplay_thumbnail_copy.jpg" group-title="News",NHK World
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/nhk_world_720/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/08/thumbnails_b9d3c02bf9f21c00f6b6c0b1caac1ed6_goplay_thumbnail_copy.jpg" group-title="News",RTR Planeta
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/rtr_planeta_720/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/08/thumbnails_09c28ab85b66ae893a84cf44a6f57a49_goplay_thumbnail_copy.jpg" group-title="News",Arirang World
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/arirang_world/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/13/images_b1558a4881a60919a4b2c7df71aa7d2e_goplay_thumbnail.png" group-title="News",CNA
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/cna_sd/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://assets.ottplus.bd/uploads/wb-news/2325922398374723584_Thumbnail.png" group-title="News",CNN
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/cnn_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/05/24/images_5ff887df2b4f1fbe657d9a72d6d775c4_goplay_channel_1_thumbnail.png" group-title="News",Channel 1 HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/channel_1_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_1b19ad1fa93d667bb3a9a370bed42da1_goplay_320x480_logo_news_29.jpg" group-title="News",Ekattor TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ekattor_tv_abr/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_067669a96b7420c80a72cdad6a14fe47_goplay_320x480_logo_bd_1_22.jpg" group-title="News",Jamuna TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/jamuna_tv_abr/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_b9e3cb5f19491e85f3d5c1d4ebd43960_goplay_320x480_logo_news_18.jpg" group-title="News",Channel 24
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/channel_24_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_b987866f3375c9798966d0fadc4e50fa_goplay_independent_thumbnail.jpg" group-title="News",Independent TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/independent_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_daf74a6277bb7b0580af78568235d222_goplay_thumbnail_0003_sonmoy_tv.jpg" group-title="News",Somoy TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/somoy_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_ad7f0617f55f95ae59b193c51aee20a7_goplay_thumbnail.jpg" group-title="News",France 24
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/france24/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_d32e15c623e3ae98dd5e08ecb4dbcec9_goplay_thumbnail_0005_rt.jpg" group-title="News",Russia Today
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/russia_today_720/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_4962b447820faaf6f072d0f82ef9b026_goplay_thumbnail_0011_dw.jpg" group-title="News",DW TV ASIA
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/dw_tv_asia/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_6db9dc1fc2ad8bdf12624213874942e3_goplay_thumbnail1.jpg" group-title="Entertainment",Zee Anmol
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_anmol_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_3f444c12fb8036e614a6480fe0d98d6e_goplay_thumbnail.jpg" group-title="Entertainment",Zee Cafe HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_cafe_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_490166c66a4c6e6f960157aa423297cb_goplay_thumbnail.jpg" group-title="Entertainment",Zee Bangla
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_bangla_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/03/images_93f8b8cbe60ccb7ffe207dae00ca330a_goplay_thumbnail.jpg" group-title="Entertainment",Sony Aath
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/sony_aath_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_c5e3559930815055197d5346fa49fbbf_goplay_thumbnail.jpg" group-title="Entertainment",Sony SAB HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/sub_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/03/images_bba0d58ecf591163f1065ddefba3cc86_goplay_thumbnail.jpg" group-title="Entertainment",Sony Entertainmaint HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/sony_ent_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_bc7401c38451eefbe0fbc092f62d99cb_goplay_thumbnail.jpg" group-title="Entertainment",Sony Entertainmaint SD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/sony_ent_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_5e32e6ecbb7318bd197817154eaa4760_goplay_thumbnail.jpg" group-title="Entertainment",Zee TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_tv_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/31/images_addb9ccefe23dc1ca4ee30aed71b037c_goplay_thumbnail1.jpg" group-title="Entertainment",And TV HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/and_tv_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/31/images_2f9d0c6664d64ae4a4e2842353d51d2a_goplay_thumbnail.jpg" group-title="Entertainment",Hum TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/hum_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/31/images_3960f5603c5f81b4a3bdfb565004d46b_goplay_thumbnail.jpg" group-title="Entertainment",Hum Sitarey
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/hum_sitaray_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_50166d84954a8b627b7cd7f49d1a2117_goplay_thumbnail.jpg" group-title="Bangladeshi",Channel S HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/channel_s_hd_abr/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/29/images_5c65d72d510f3f59917b3dc8136e0f64_goplay_thumbnail.png" group-title="Bangladeshi",Desh TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/desh_tv_abr/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/29/images_6c392f324627de84bbca121f344239ac_goplay_thumbnail.png" group-title="Bangladeshi",Ekhon TV HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ekhon_tv_abr/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_484e415f29a96429ceb5caab40bc6e64_goplay_nexus_tv_thumbnail.jpg" group-title="Bangladeshi",Nexus TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/nexus_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_a05838feeaf2e8a3fcb97ccdbed08135_goplay_mohona_tv_thumbnail.jpg" group-title="Bangladeshi",Mohona TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/mohona_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_3173f1aaf95299b26dfd78095eab5f28_goplay_bangla_logopsd_0010_global_tv_hd.jpg" group-title="Bangladeshi",Global TV HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/global_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_55772bd2d26a997195feece1819d2d44_goplay_bijoy_tv_thumb.jpg" group-title="Bangladeshi",Bijoy TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/bijoy_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_84d8cdc2c55c5d0ab996e8f30cbfdeae_goplay_thumbnail.jpg" group-title="Bangladeshi",Bangla TV HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/bangla_tv_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_41e6351858706431e6fd61b746d8361e_goplay_bangla_logopsd_0017_asian_tv_changed.jpg" group-title="Bangladeshi",Asian TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/asian_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/09/images_2172de775871b5ed20dc3950d016556d_goplay_bangla_logopsd_0018_anada_tv.jpg" group-title="Bangladeshi",Ananda TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/ananda_tv_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/14/thumbnails_e6281f9e62fb495d1fd44eb737146e01_goplay_thumbnail.jpg" group-title="Music & Movies",Ifilm
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/i_flim_720/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/06/21/images_0a441f0a961daecc6183a44165efecc6_goplay_group_2.png" group-title="Music & Movies",Zing SD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zing_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_48a3448f6cb00876d8b1d541cbf9e6dd_goplay_thumbnail.jpg" group-title="Music & Movies",Zee Action
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_action_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_2b2a6b1948f5a824d180d9ed20daaaac_goplay_thumbnail.jpg" group-title="Music & Movies",Zee Bollywood
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_bollywood_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_406462665185fb4f78c60b6471039b04_goplay_thumbnail.jpg" group-title="Music & Movies",Zee Bangla Cinema
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_bangla_cinema_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/03/images_99d5aa7f0dfdf616d4c6e800e48bb0e0_goplay_thumbnail.jpg" group-title="Music & Movies",Sony Max 2
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/max_2_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_651fa871861df50c04ffe8046e94c946_goplay_thumbnail.jpg" group-title="Music & Movies",Sony Pix HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/pix_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_e32e56760c9238d54c4d083eba29bbd9_goplay_thumbnail.jpg" group-title="Music & Movies",Sony Max HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/max_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_e32e56760c9238d54c4d083eba29bbd9_goplay_thumbnail.jpg" group-title="Music & Movies",Sony Max
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/sony_max_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_44d2c86d4eb1f93a35d8106f02fc24e7_goplay_thumbnail.jpg" group-title="Music & Movies",And Picture
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/and_picture_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_fd846e23a6fa58f479d350e24d0b66f4_goplay_thumbnail.jpg" group-title="Music & Movies",Zee Cinema HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/zee_cinema_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_4e280822db1b33f6a0d10a2a2e4584ea_goplay_thumbnail1.jpg" group-title="Music & Movies",Movie Bangla
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/movie_bangla_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_be71047d1656bbe5e92f232132bdeea5_goplay_thumbnail.jpg" group-title="Music & Movies",B4u Music
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/b4u_music_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/28/images_c4c12fb18404022a798a973692b692d2_goplay_1thumbnail.jpg" group-title="Music & Movies",B4u Movies
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/b4u_movies_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_5551c8dc53194027a203c0df68c55a4b_goplay_thumbnail.jpg" group-title="Kids",Cartoon Network
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/cn_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/02/images_426fc0a69b5dcfce57f53376f1dfd1a3_goplay_thumbnail.jpg" group-title="Kids",Sony YaY
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/sony_yay_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_9cad6d7f1a5065930333e1aa351a168d_goplay_thumbnail.jpg" group-title="Kids",Pogo
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/pogo_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_eb2d936c6ca149ae1ad47c790b1a01a5_goplay_thumbnail.jpg" group-title="Kids",Discovery Kids
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/discovery_kids_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_6d52e81e290d1be4536cb8f9b94ef367_goplay_thumbnail.jpg" group-title="Kids",Cartoon Network HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/cn_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_ad192d1780b102315f331c942a2cc32a_goplay_thumbnail.png" group-title="Infotainment",Animal Planet SD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/animal_planet_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_8ccbd66ed5892ecd442a37ef7ad103b0_goplay_thumbnail.jpg" group-title="Infotainment",TLC SD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/tlc_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2026/04/10/images_3e7843c64f61a64de4524caf67978e58_goplay_thumbnail.jpg" group-title="Infotainment",Discovery SD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/discovery_sd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/11/03/images_835c0307b3f08c7949c46dbc7bb597ad_goplay_thumbnail.jpg" group-title="Infotainment",Sony BBC Earth HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/bbc_earth_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/31/images_8dd2c8fa065c7b3a2f44c0d01381de02_goplay_thumbnail.jpg" group-title="Infotainment",Hum Masala
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/hum_masala_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_58a02f78b73cf3772565c3242c495082_goplay_thumbnail_0014_cgtn.jpg" group-title="Infotainment",CGTN
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/cgtn_720/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_3b83a48b6dac0b8838d6495c51f15518_goplay_thumbnail_0002_trt_world.jpg" group-title="Infotainment",TRT World
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/trt_world_720/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_b48374be0af532164b9b4db1542e0908_goplay_thumbnail.jpg" group-title="Infotainment",Turbo India
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/discovery_turbo_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_3b88f22349b865a2cf2ed44751cf55c6_goplay_thumbnail1.jpg" group-title="Infotainment",TLC HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/tlc_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/29/images_de7eacf34a8a40b0b737867da00be2a9_goplay_thumbnails.jpg" group-title="Infotainment",ID HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/id_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/27/images_78709d7b05f4f4c103eaa542be3477e9_goplay_thumbnail.jpg" group-title="Infotainment",Discovery Science
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/discovery_science_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/28/images_3e72e884f5211de44fb095fc83651675_goplay_thumbnail.png" group-title="Infotainment",Animal Planet HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/animal_planet_hd_abr/playlist.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/28/images_555888688bec804b437fcbd8c7b8380b_goplay_thumbnail1.jpg" group-title="Infotainment",Discovery HD
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/discovery_hd_abr/index.m3u8
+#EXTINF:-1 tvg-logo="https://assets.ottplus.bd/uploads/religious/2331715275327537152_Thumbnail.jpg" group-title="Religious",Islamic TV
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/islamic_tv/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_e2ad59ac552b906933bd328bd54177ce_goplay_thumbnail.jpg" group-title="Religious",Saudi Quran
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/saudi_quran_720/index.m3u8
+#EXTINF:-1 tvg-logo="https://6rgfinyqha.gpcdn.net/uploads/images/2025/10/30/images_d9be9362d7b43cd11700a2843563244a_goplay_thumbnail.jpg" group-title="Religious",Saudi Sunnah
+#EXTVLCOPT:http-referrer=https://ottplus.bd/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36
+#EXTVLCOPT:http-origin=https://ottplus.bd
+https://drk6xq0vhn.gpcdn.net/live/saudi_sunnah_720/index.m3u8
