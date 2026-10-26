@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -30,6 +31,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -61,6 +63,7 @@ fun LiveScreen(
     val selected by vm.selectedGroup.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
     val allChannels by vm.allChannels.collectAsStateWithLifecycle()
+    val loaded   by vm.loaded.collectAsStateWithLifecycle()
     val focused  by vm.focusedChannel.collectAsStateWithLifecycle()
     val state    by vm.playerState.collectAsStateWithLifecycle()
     val jumpBuffer by vm.jumpDisplay.collectAsStateWithLifecycle()
@@ -71,6 +74,14 @@ fun LiveScreen(
     var showPlayerSettings by remember { mutableStateOf(false) }
     var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
     var actionsChannelId by remember { mutableStateOf<Long?>(null) }
+
+    val emptyText = when {
+        allChannels.isEmpty() ->
+            "No live channels in your playlist.\nTry Movies or Series, or refresh the playlist in Settings."
+        selected == LIVE_GROUP_FAVORITES ->
+            "No favorite channels yet.\nLong-press a channel to add one."
+        else -> "No channels in this group."
+    }
 
     DisposableEffect(vm) {
         onDispose {
@@ -115,6 +126,8 @@ fun LiveScreen(
                     GroupTabs(groups, selected, vm::selectGroup)
                     ChannelList(
                         channels = channels,
+                        loading = !loaded,
+                        emptyText = emptyText,
                         focusedId = focused?.id,
                         onFocus = vm::onFocus,
                         onSelect = { channel ->
@@ -262,14 +275,28 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ChannelList(
     channels: List<ChannelEntity>,
+    loading: Boolean,
+    emptyText: String,
     focusedId: Long?,
     onFocus: (Long) -> Unit,
     onSelect: (ChannelEntity) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
     if (channels.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Loading playlist…", color = TextMuted)
+        Box(
+            Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
+            } else {
+                Text(
+                    text = emptyText,
+                    color = TextMuted,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
         return
     }
