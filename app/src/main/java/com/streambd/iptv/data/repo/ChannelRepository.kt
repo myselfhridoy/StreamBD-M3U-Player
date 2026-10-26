@@ -1,18 +1,25 @@
 package com.streambd.iptv.data.repo
 
+import androidx.room.withTransaction
+import com.streambd.iptv.data.db.AppDatabase
 import com.streambd.iptv.data.db.ChannelDao
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupDao
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.M3uParser
+import com.streambd.iptv.data.m3u.ParsedChannel
+import com.streambd.iptv.data.util.stableId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class ChannelRepository @Inject constructor(
+    private val db: AppDatabase,
     private val channels: ChannelDao,
     private val groups: GroupDao,
 ) {
@@ -43,36 +50,89 @@ class ChannelRepository @Inject constructor(
 
     suspend fun hasContent(): Boolean = channels.count() > 0
 
+    /** EPG ইমপোর্টে ফিল্টার হিসেবে ব্যবহারের জন্য। */
+    suspend fun tvgIds(): Set<String> = channels.tvgIds().toHashSet()
+
     suspend fun setFavorite(channelId: Long, fav: Boolean) = channels.setFavorite(channelId, fav)
     suspend fun setLocked(channelId: Long, locked: Boolean) = channels.setLocked(channelId, locked)
 
     suspend fun clearAll() {
-        channels.clear()
-        groups.clear()
+        db.withTransaction {
+            channels.clear()
+            groups.clear()
+        }
     }
 
-    /** Parse + persist the playlist. Replaces everything (simple, predictable). */
-    suspend fun import(playlist: String) {
-        val parsed = M3uParser.parse(playlist)
-        if (parsed.isEmpty()) return
+    /**
+     * Playlist পার্স করে ডেটাবেসে বসায়। পুরনো ডেটা বদলে যায়, তবে একই চ্যানেলের
+     * favorite/lock বজায় থাকে (id স্থিতিশীল)। সব এক transaction-এ, তাই UI-তে
+     * মাঝখানে খালি লিস্ট ঝিলিক দেয় না।
+     *
+     * @return ইমপোর্ট হওয়া চ্যানেল সংখ্যা। ০ মানে পার্স করে কিছু পাওয়া যায়নি
+     *         (ডেটাবেস অপরিবর্তিত থাকে)।
+     */
+    suspend fun import(playlist: String): Int {
+        val rows = withContext(Dispatchers.Default) {
+            val parsed = M3uParser.parse(playlist)
+            if (parsed.isEmpty()) null else buildRows(parsed)
+        } ?: return 0
 
-        // group id = stable hash of (kind + lowercase name) so favorites survive re-import
-        fun groupIdFor(kind: ChannelKind, name: String): Long =
-            (kind.name + "|" + name.lowercase()).hashCode().toLong() and 0x7FFFFFFF
+        db.withTransaction {
+            val favorites = channels.favoriteIds().toHashSet()
+            val locked = channels.lockedIds().toHashSet()
 
-        val groupRows = LinkedHashMap<Long, GroupEntity>()
-        val perKindCounter = HashMap<ChannelKind, Int>()
-
-        val channelRows = parsed.map { p ->
-            val gid = groupIdFor(p.kind, p.groupTitle)
-            groupRows.getOrPut(gid) {
-                GroupEntity(id = gid, name = p.groupTitle, order = groupRows.size, kind = p.kind.name)
+            channels.clear()
+            groups.clear()
+            groups.upsert(rows.groups)
+            rows.channels.chunked(2_000).forEach { chunk ->
+                channels.upsert(
+                    chunk.map { it.copy(isFavorite = it.id in favorites, isLocked = it.id in locked) },
+                )
             }
-            val n = (perKindCounter[p.kind] ?: 0) + 1
-            perKindCounter[p.kind] = n
-            ChannelEntity(
-                id = 0L, // placeholder, replaced below with a stable id
-                number = n,
+        }
+        return rows.channels.size
+    }
+
+    private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
+
+    /**
+     * id স্কিম:
+     *  - group id = hash(kind + group নাম)
+     *  - channel id = hash(kind + group + নাম + কত নম্বর duplicate)
+     * URL ইচ্ছে করেই বাদ, কারণ token বদলালেও favorite টিকে থাকা দরকার।
+     */
+    private fun buildRows(parsed: List<ParsedChannel>): ImportRows {
+        val groupRows = LinkedHashMap<Long, GroupEntity>()
+        val numbers = HashMap<ChannelKind, Int>()
+        val occurrences = HashMap<String, Int>()
+        val usedIds = HashSet<Long>(parsed.size * 2)
+        val channelRows = ArrayList<ChannelEntity>(parsed.size)
+
+        for (p in parsed) {
+            val groupKey = "${p.kind.name}|${p.groupTitle.lowercase()}"
+            val gid = stableId("G|$groupKey")
+            if (gid !in groupRows) {
+                groupRows[gid] = GroupEntity(
+                    id = gid,
+                    name = p.groupTitle,
+                    order = groupRows.size,
+                    kind = p.kind.name,
+                )
+            }
+
+            val number = (numbers[p.kind] ?: 0) + 1
+            numbers[p.kind] = number
+
+            val key = "$groupKey|${p.name.lowercase()}"
+            val occurrence = (occurrences[key] ?: 0) + 1
+            occurrences[key] = occurrence
+
+            var id = stableId("C|$key|$occurrence")
+            while (!usedIds.add(id)) id = if (id == Long.MAX_VALUE) 1L else id + 1
+
+            channelRows += ChannelEntity(
+                id = id,
+                number = number,
                 name = p.name,
                 logoUrl = p.logoUrl,
                 streamUrl = p.streamUrl,
@@ -80,15 +140,7 @@ class ChannelRepository @Inject constructor(
                 tvgId = p.tvgId,
                 kind = p.kind.name,
             )
-        }.mapIndexed { i, c ->
-            // stable id derived from kind+group+name+url; dedupes identical entries
-            val key = "${c.kind}|${c.groupId}|${c.name.lowercase()}|${c.streamUrl}"
-            c.copy(id = (key.hashCode().toLong() and 0x7FFFFFFF) * 1000L + i)
         }
-
-        channels.clear()
-        groups.clear()
-        groups.upsert(groupRows.values.toList())
-        channels.upsert(channelRows)
+        return ImportRows(groupRows.values.toList(), channelRows)
     }
 }
