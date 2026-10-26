@@ -16,6 +16,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         buildConfigField("String", "ACTIVATION_API", "\"https://api.streambd.example\"")
+        // Backend তৈরি হলে true করো। false থাকলে অ্যাপ সরাসরি playlist URL ফর্ম দেখায়।
+        buildConfigField("boolean", "ACTIVATION_ENABLED", "false")
     }
 
     buildTypes {
@@ -79,7 +81,7 @@ dependencies {
     // Net
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Media3 (wired in step 3)
+    // Media3
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
