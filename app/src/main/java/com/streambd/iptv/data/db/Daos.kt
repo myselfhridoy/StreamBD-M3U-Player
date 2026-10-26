@@ -11,16 +11,16 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE kind = :kind AND groupId = :gid ORDER BY number")
     fun observeByKindAndGroup(kind: String, gid: Long): Flow<List<ChannelEntity>>
 
-        @Query(
-                """
-                SELECT * FROM channels
-                WHERE kind = :kind
-                    AND name LIKE '%' || :q || '%' COLLATE NOCASE
-                ORDER BY number
-                LIMIT :limit
-                """,
-        )
-        fun searchByKind(kind: String, q: String, limit: Int = 300): Flow<List<ChannelEntity>>
+    @Query(
+        """
+        SELECT * FROM channels
+        WHERE kind = :kind
+            AND name LIKE '%' || :q || '%' COLLATE NOCASE
+        ORDER BY number
+        LIMIT :limit
+        """,
+    )
+    fun searchByKind(kind: String, q: String, limit: Int = 300): Flow<List<ChannelEntity>>
 
     @Query(
         """
@@ -40,6 +40,17 @@ interface ChannelDao {
 
     @Query("UPDATE channels SET isLocked = :locked WHERE id = :id")
     suspend fun setLocked(id: Long, locked: Boolean)
+
+    /** Re-import-এর আগে favorite/lock সংরক্ষণের জন্য। */
+    @Query("SELECT id FROM channels WHERE isFavorite = 1")
+    suspend fun favoriteIds(): List<Long>
+
+    @Query("SELECT id FROM channels WHERE isLocked = 1")
+    suspend fun lockedIds(): List<Long>
+
+    /** EPG ইমপোর্টে শুধু দরকারি চ্যানেল রাখার জন্য। */
+    @Query("SELECT DISTINCT tvgId FROM channels WHERE tvgId IS NOT NULL AND tvgId != ''")
+    suspend fun tvgIds(): List<String>
 
     @Query("DELETE FROM channels") suspend fun clear()
 
