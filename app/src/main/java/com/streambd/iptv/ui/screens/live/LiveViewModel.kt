@@ -37,11 +37,17 @@ class LiveViewModel @Inject constructor(
     private val selectedGroupId = MutableStateFlow<Long?>(null)
     private val focusedChannelId = MutableStateFlow<Long?>(null)
 
+    /** Room থেকে প্রথম তালিকা আসার আগে false। "Loading" ও "খালি" আলাদা করতে লাগে। */
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     val groups: StateFlow<List<GroupEntity>> =
         repo.liveGroups().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val allChannels: StateFlow<List<ChannelEntity>> =
-        repo.liveChannels().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        repo.liveChannels()
+            .onEach { _loaded.value = true }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val channels: StateFlow<List<ChannelEntity>> =
         combine(allChannels, selectedGroupId) { all, groupId ->
