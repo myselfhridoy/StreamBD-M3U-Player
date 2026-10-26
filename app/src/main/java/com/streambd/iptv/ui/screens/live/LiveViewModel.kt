@@ -1,9 +1,7 @@
 package com.streambd.iptv.ui.screens.live
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.streambd.iptv.R
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.epg.EpgRepository
@@ -17,7 +15,6 @@ import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.player.PlayerUiState
 import com.streambd.iptv.player.TrackChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -35,7 +32,6 @@ class LiveViewModel @Inject constructor(
     private val lockController: LockController,
     private val settingsStore: SettingsStore,
     private val epg: EpgRepository,
-    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     private val selectedGroupId = MutableStateFlow<Long?>(null)
@@ -72,9 +68,6 @@ class LiveViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            if (!repo.hasContent()) seedFromRaw()
-        }
-        viewModelScope.launch {
             jumpController.commits.collect { raw ->
                 val number = raw.toIntOrNull() ?: return@collect
                 val target = repo.liveChannels().first().firstOrNull { it.number == number }
@@ -97,13 +90,6 @@ class LiveViewModel @Inject constructor(
                 }
             }
         }
-    }
-
-    private suspend fun seedFromRaw() {
-        runCatching {
-            appContext.resources.openRawResource(R.raw.sample)
-                .bufferedReader().use { it.readText() }
-        }.onSuccess { repo.import(it) }
     }
 
     fun selectGroup(id: Long?) { selectedGroupId.value = id }
