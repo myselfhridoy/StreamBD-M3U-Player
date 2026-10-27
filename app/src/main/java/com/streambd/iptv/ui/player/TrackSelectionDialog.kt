@@ -102,7 +102,6 @@ fun TrackSelectionDialog(
     val listState = rememberLazyListState()
     val startFocus = remember { FocusRequester() }
 
-    // TV: খোলার সময় নির্বাচিত সারিতে ফোকাস
     LaunchedEffect(Unit) {
         listState.scrollToItem(selectedIndex)
         runCatching { startFocus.requestFocus() }
@@ -110,35 +109,38 @@ fun TrackSelectionDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        // Allow the dialog to size itself freely but we will constrain it
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing) // Prevents overlap with system bars
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Dynamically calculate max list height based on actual screen space minus headers/footers
-            val dynamicMaxListHeight = (maxHeight - 150.dp).coerceIn(100.dp, 320.dp)
+            val dynamicMaxListHeight = (maxHeight - 150.dp).coerceIn(100.dp, 350.dp)
 
             Column(
                 Modifier
-                    .width(340.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Panel),
+                    .width(480.dp) // ZalTV এর মতো চওড়া করা হয়েছে
+                    .background(Panel) 
+                    // একদম শার্প (সোজা) কর্নারের জন্য RoundedCornerShape বাদ দেওয়া হয়েছে
+                    // যদি একটু শেপ দিতে চান তাহলে RoundedCornerShape(4.dp) দিতে পারেন
             ) {
                 Text(
-                    "Select tracks", color = TextPrimary, fontSize = 16.sp,
-                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
+                    "Select tracks", 
+                    color = TextPrimary, 
+                    fontSize = 18.sp, // ফন্ট একটু বড়
+                    modifier = Modifier.padding(start = 24.dp, top = 20.dp, bottom = 8.dp),
                 )
+                
                 Row(Modifier.fillMaxWidth()) {
                     DialogTab("VIDEO", tab == 0, Modifier.weight(1f)) { tab = 0 }
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
+                
                 LazyColumn(
-                    Modifier.heightIn(max = dynamicMaxListHeight).padding(horizontal = 8.dp, vertical = 4.dp),
+                    Modifier.heightIn(max = dynamicMaxListHeight).padding(vertical = 8.dp),
                     state = listState,
                 ) {
                     itemsIndexed(options) { index, opt ->
@@ -150,15 +152,14 @@ fun TrackSelectionDialog(
                             if (tab == 0) videoChoice = opt.choice else audioChoice = opt.choice
                         }
                     }
-                    // Small spacer at the bottom so the last item isn't flush against the edge when scrolled
-                    item { Spacer(Modifier.height(4.dp)) }
                 }
+                
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     DialogTextButton("CANCEL", TextMuted, onDismiss)
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(16.dp))
                     DialogTextButton("CONFIRM", Accent) { onConfirm(videoChoice, audioChoice) }
                 }
             }
