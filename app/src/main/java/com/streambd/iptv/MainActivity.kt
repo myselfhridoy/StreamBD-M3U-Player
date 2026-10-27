@@ -1,5 +1,6 @@
 package com.streambd.iptv
 
+import android.media.AudioManager
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -20,6 +21,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // ভলিউম বাটন সবসময় মিডিয়া ভলিউম বদলাবে (সিস্টেম নিজেই ভলিউম UI দেখায়)
+        volumeControlStream = AudioManager.STREAM_MUSIC
         enableEdgeToEdge()
         setContent {
             StreamBdTheme { AppNav() }
@@ -33,8 +36,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> { playerManager.adjustVolume(+1); true }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> { playerManager.adjustVolume(-1); true }
             in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 if (!jumpController.isEnabled) return super.onKeyDown(keyCode, event)
                 jumpController.onDigit('0' + (keyCode - KeyEvent.KEYCODE_0))
