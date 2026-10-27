@@ -75,8 +75,11 @@ class ActivationViewModel @Inject constructor(
         _error.value = null
         viewModelScope.launch {
             try {
-                sync.syncPlaylist(playlist)
-                _success.value = repo.activateLocally(playlist, epg)
+                // এখানে নতুন লজিক বসানো হয়েছে
+                val synced = sync.syncPlaylist(playlist)
+                val finalEpgUrl = sync.chooseEpg(epg, synced.epgUrls, preferDiscovered = epg.isBlank())
+                
+                _success.value = repo.activateLocally(playlist, finalEpgUrl)
             } catch (e: SyncException) {
                 _error.value = e.message
             } catch (e: CancellationException) {
