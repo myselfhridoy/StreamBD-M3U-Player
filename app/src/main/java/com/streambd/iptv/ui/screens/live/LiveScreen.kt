@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -208,26 +209,36 @@ private fun LivePanel(
     onPlay: (ChannelEntity) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
+    // ১০০% সলিড কালার শুধুমাত্র টপ মেনুর জন্য
+    val solidBlack = Color(0xFF101010)
+
     Box(Modifier.fillMaxSize()) {
-        // ১. বাম দিকের চ্যানেল লিস্টের সলিড ব্যাকগ্রাউন্ড (স্ক্রিনের একদম বাম থেকে শুরু)
+        // ১. বাম দিকের চ্যানেল লিস্টের জন্য হালকা গ্রেডিয়েন্ট (ভিডিও দেখা যাবে)
         Box(
             Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(0.5f)
-                .background(Color.Black.copy(alpha = 0.85f))
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.85f),
+                            Color.Black.copy(alpha = 0.4f)
+                        )
+                    )
+                )
         )
 
         Column(Modifier.fillMaxSize()) {
-            // ২. টপ বার (গ্রুপ ট্যাব) এর সলিড ব্যাকগ্রাউন্ড (পুরো স্ক্রিন জুড়ে)
+            // ২. টপ বার (গ্রুপ ট্যাব) - ১০০% সলিড ব্যাকগ্রাউন্ড
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.85f)) 
+                    .background(solidBlack) 
             ) {
                 GroupTabsBar(groups, selected, onSelectGroup)
             }
 
-            // ৩. চ্যানেল লিস্ট (ব্যাকগ্রাউন্ড ইতিমধ্যেই দেওয়া আছে, তাই এখানে ট্রান্সপারেন্ট)
+            // ৩. চ্যানেল লিস্ট
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Box(
                     Modifier
@@ -257,10 +268,9 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
         modifier = Modifier
             .fillMaxWidth()
             .consumeTaps()
-            // Start প্যাডিং বাদ দেওয়া হয়েছে যাতে একদম বামে থাকে, তবে টপ প্যাডিং রাখা হয়েছে সেফ এরিয়ার জন্য
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-            .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         item { GroupTab("All", selectedId == null) { onSelect(null) } }
         item { GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) { onSelect(LIVE_GROUP_FAVORITES) } }
@@ -294,7 +304,6 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
             maxLines = 1,
         )
         Spacer(Modifier.height(4.dp))
-        // সিলেক্টেড ট্যাবের নিচে সুন্দর আন্ডারলাইন
         Box(
             Modifier
                 .height(2.dp)
@@ -376,7 +385,6 @@ private fun ChannelRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            // প্যাডিং ১২ ডিপি করা হয়েছে যাতে "All" ট্যাবের সাথে একদম পারফেক্টলি লাইন ম্যাচ করে
             .padding(horizontal = 12.dp, vertical = 2.dp) 
             .clip(RoundedCornerShape(6.dp))
             .background(backgroundColor)
@@ -392,7 +400,6 @@ private fun ChannelRow(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // নাম্বার
         Text(
             text = "%02d".format(channel.number),
             color = TextMuted,
@@ -400,7 +407,6 @@ private fun ChannelRow(
             modifier = Modifier.width(28.dp),
         )
         
-        // লোগো
         AsyncImage(
             model = channel.logoUrl,
             contentDescription = null,
@@ -410,7 +416,6 @@ private fun ChannelRow(
         
         Spacer(Modifier.width(12.dp))
         
-        // নাম
         Text(
             text = channel.name,
             color = if (playing) Accent else TextPrimary,
