@@ -59,16 +59,16 @@ fun ActivationScreen(
             .imePadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 32.dp, vertical = 16.dp), // বাইরের প্যাডিং কমানো হয়েছে
+            .padding(horizontal = 24.dp, vertical = 24.dp), // ওপর-নিচের প্যাডিং ব্যালেন্স করা হয়েছে
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center // স্ক্রিনের মাঝখানে রাখার জন্য
+        verticalArrangement = Arrangement.Center
     ) {
         
         // লোগো সেকশন
-        Text("STREAMBD", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-        Text("IPTV", color = TextPrimary, fontSize = 16.sp)
+        Text("STREAMBD", color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text("IPTV", color = TextPrimary, fontSize = 15.sp)
         
-        Spacer(Modifier.height(32.dp)) // ৩২ থেকে কমিয়ে ২৪ করা হলো
+        Spacer(Modifier.height(20.dp)) // ৩২ থেকে কমিয়ে ২০ করা হলো, যাতে গ্যাপ কমে
 
         if (serverMode) {
             ServerActivationContent(
@@ -82,7 +82,7 @@ fun ActivationScreen(
                 onOpenDev = { showDevDialog = true },
             )
         } else {
-            Box(Modifier.widthIn(max = 600.dp)) {
+            Box(Modifier.widthIn(max = 550.dp)) {
                 Column {
                     UrlField(
                         label = "Playlist M3U URL",
@@ -93,7 +93,7 @@ fun ActivationScreen(
                         onValue = { playlistUrl = it },
                     )
                     
-                    Spacer(Modifier.height(16.dp)) // ইনপুট বক্সের মাঝের গ্যাপ কমানো হয়েছে
+                    Spacer(Modifier.height(14.dp)) // ইনপুট বক্সের মাঝের গ্যাপ
                     
                     UrlField(
                         label = "EPG URL (optional)",
@@ -105,7 +105,7 @@ fun ActivationScreen(
 
                     ErrorText(error)
 
-                    Spacer(Modifier.height(24.dp)) // বাটনের ওপরের গ্যাপ কমানো হয়েছে
+                    Spacer(Modifier.height(24.dp)) // বাটনের ওপরের গ্যাপ
                     
                     ActionButton(
                         label = "Save & Continue",
@@ -157,7 +157,7 @@ private fun ServerActivationContent(
     onActivate: () -> Unit,
     onOpenDev: () -> Unit,
 ) {
-    Box(Modifier.widthIn(max = 600.dp)) {
+    Box(Modifier.widthIn(max = 550.dp)) {
         Column {
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel)
@@ -165,7 +165,7 @@ private fun ServerActivationContent(
                         if (devEnabled) Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
                         else Modifier,
                     )
-                    .padding(16.dp),
+                    .padding(14.dp),
             ) {
                 Text(
                     "Enter the activation code you received with your subscription.",
@@ -180,9 +180,13 @@ private fun ServerActivationContent(
 
             Spacer(Modifier.height(16.dp))
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
+                Modifier.fillMaxWidth()
+                    .height(52.dp) // ফিক্সড হাইট দেওয়া হলো
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Surface1)
                     .border(2.dp, Accent, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
                 if (code.isEmpty()) Text("Activation code", color = TextMuted.copy(alpha = 0.5f), fontSize = 15.sp)
                 BasicTextField(
@@ -209,7 +213,7 @@ private fun ServerActivationContent(
 @Composable
 private fun ErrorText(error: String?) {
     error?.let {
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         Text(it, color = Danger, fontSize = 13.sp)
     }
 }
@@ -225,7 +229,7 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = Modifier.fillMaxWidth().height(50.dp), // ৫০ ডিপি হাইট
         shape = RoundedCornerShape(8.dp)
     ) {
         if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
@@ -287,10 +291,13 @@ private fun UrlField(
     Column(Modifier.fillMaxWidth()) {
         Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
         Box(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
+            Modifier.fillMaxWidth()
+                .height(52.dp) // ইনপুট বক্সের উচ্চতা ফিক্স করা হলো (52dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Surface1)
                 .border(1.dp, Divider, RoundedCornerShape(8.dp))
-                // ইনপুট বক্সের উচ্চতা এবং প্যাডিং স্ট্যান্ডার্ড করা হয়েছে
-                .padding(horizontal = 16.dp, vertical = 14.dp), 
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart
         ) {
             if (value.isEmpty()) {
                 Text(placeholder, color = TextMuted.copy(alpha = 0.4f), fontSize = 15.sp)
