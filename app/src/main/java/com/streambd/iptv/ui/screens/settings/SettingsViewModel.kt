@@ -78,7 +78,12 @@ class SettingsViewModel @Inject constructor(
             }
             _refresh.value = RefreshState.Running
             _refresh.value = try {
-                val result = sync.syncAll(active.playlistUrl, active.epgUrl)
+                val result = sync.syncAll(
+                    playlistUrl = active.playlistUrl,
+                    epgUrl = active.epgUrl,
+                    preferDiscovered = activation.isLocal(active),
+                )
+                if (result.epgUrl != active.epgUrl) activation.updateEpgUrl(result.epgUrl)
                 RefreshState.Done(result.channels, result.programs, result.epgError)
             } catch (e: SyncException) {
                 RefreshState.Failed(e.message ?: "Refresh failed")
