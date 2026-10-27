@@ -59,7 +59,8 @@ fun ActivationScreen(
             .imePadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 24.dp), // ওপর-নিচের প্যাডিং ব্যালেন্স করা হয়েছে
+            // নিচের দিকে extra ৬৪ ডিপি প্যাডিং যোগ করা হলো
+            .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 64.dp), 
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -68,7 +69,7 @@ fun ActivationScreen(
         Text("STREAMBD", color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Text("IPTV", color = TextPrimary, fontSize = 15.sp)
         
-        Spacer(Modifier.height(20.dp)) // ৩২ থেকে কমিয়ে ২০ করা হলো, যাতে গ্যাপ কমে
+        Spacer(Modifier.height(24.dp))
 
         if (serverMode) {
             ServerActivationContent(
@@ -93,7 +94,7 @@ fun ActivationScreen(
                         onValue = { playlistUrl = it },
                     )
                     
-                    Spacer(Modifier.height(14.dp)) // ইনপুট বক্সের মাঝের গ্যাপ
+                    Spacer(Modifier.height(16.dp))
                     
                     UrlField(
                         label = "EPG URL (optional)",
@@ -105,7 +106,7 @@ fun ActivationScreen(
 
                     ErrorText(error)
 
-                    Spacer(Modifier.height(24.dp)) // বাটনের ওপরের গ্যাপ
+                    Spacer(Modifier.height(28.dp)) // বাটনের ওপরের গ্যাপ
                     
                     ActionButton(
                         label = "Save & Continue",
@@ -116,6 +117,9 @@ fun ActivationScreen(
                 }
             }
         }
+        
+        // একদম নিচে বড় স্পেসার দেওয়া হলো যাতে বাটন লেগে না থাকে
+        Spacer(Modifier.height(80.dp)) 
     }
 
     if (serverMode && BuildConfig.DEBUG && showDevDialog) {
@@ -181,7 +185,7 @@ private fun ServerActivationContent(
             Spacer(Modifier.height(16.dp))
             Box(
                 Modifier.fillMaxWidth()
-                    .height(52.dp) // ফিক্সড হাইট দেওয়া হলো
+                    .height(52.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Surface1)
                     .border(2.dp, Accent, RoundedCornerShape(8.dp))
@@ -202,7 +206,7 @@ private fun ServerActivationContent(
 
             ErrorText(error)
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(28.dp))
             ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
         }
     }
@@ -229,7 +233,7 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(50.dp), // ৫০ ডিপি হাইট
+        modifier = Modifier.fillMaxWidth().height(50.dp),
         shape = RoundedCornerShape(8.dp)
     ) {
         if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
@@ -292,7 +296,7 @@ private fun UrlField(
         Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
         Box(
             Modifier.fillMaxWidth()
-                .height(52.dp) // ইনপুট বক্সের উচ্চতা ফিক্স করা হলো (52dp)
+                .height(52.dp) 
                 .clip(RoundedCornerShape(8.dp))
                 .background(Surface1)
                 .border(1.dp, Divider, RoundedCornerShape(8.dp))
