@@ -193,6 +193,7 @@ fun LiveScreen(
     }
 }
 
+/** ট্যাপ খেয়ে ফেলে, যাতে প্যানেলের ফাঁকা জায়গায় ট্যাপে তালিকা বন্ধ না হয়। */
 private fun Modifier.consumeTaps(): Modifier = pointerInput(Unit) { detectTapGestures { } }
 
 /* ------------------------------- panel -------------------------------- */
@@ -213,7 +214,7 @@ private fun LivePanel(
     val solidBlack = Color(0xFF101010)
 
     Box(Modifier.fillMaxSize()) {
-        // ১. বাম দিকের চ্যানেল লিস্টের জন্য হালকা গ্রেডিয়েন্ট (ভিডিও দেখা যাবে)
+        // ১. বাম দিকের চ্যানেল লিস্টের জন্য হালকা গ্রেডিয়েন্ট (ভিডিও দেখা যাবে)
         Box(
             Modifier
                 .fillMaxHeight()
@@ -222,18 +223,18 @@ private fun LivePanel(
                     Brush.horizontalGradient(
                         colors = listOf(
                             Color.Black.copy(alpha = 0.85f),
-                            Color.Black.copy(alpha = 0.4f)
-                        )
-                    )
-                )
+                            Color.Black.copy(alpha = 0.4f),
+                        ),
+                    ),
+                ),
         )
 
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().displayCutoutPadding()) {
             // ২. টপ বার (গ্রুপ ট্যাব) - ১০০% সলিড ব্যাকগ্রাউন্ড
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(solidBlack) 
+                    .background(solidBlack),
             ) {
                 GroupTabsBar(groups, selected, onSelectGroup)
             }
@@ -284,17 +285,17 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
 private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val color = when {
-        selected -> Accent 
+        selected -> Accent
         focused -> TextPrimary
         else -> TextMuted
     }
-    
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp)
+            .padding(vertical = 4.dp),
     ) {
         Text(
             text = label,
@@ -308,7 +309,7 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
             Modifier
                 .height(2.dp)
                 .width(if (selected) 24.dp else 0.dp)
-                .background(if (selected) Accent else Color.Transparent)
+                .background(if (selected) Accent else Color.Transparent),
         )
     }
 }
@@ -341,18 +342,23 @@ private fun ChannelList(
         channels.indexOfFirst { it.id == playingId }.coerceAtLeast(0)
     }
     val startFocus = remember(groupKey) { FocusRequester() }
+    var focusedOnce by remember { mutableStateOf(false) }
 
+    // আগে স্ক্রল, তারপর ফোকাস (নইলে অনেক নিচের সারি তখনও কম্পোজ হয়নি বলে ফোকাস ব্যর্থ হয়)।
+    // ফোকাস শুধু তালিকা খোলার সময় একবার নেয়, গ্রুপ ট্যাবে ঘোরার সময় ট্যাব থেকে কাড়ে না।
     LaunchedEffect(groupKey) {
         listState.scrollToItem((startIndex - 2).coerceAtLeast(0))
-    }
-    LaunchedEffect(Unit) {
-        runCatching { startFocus.requestFocus() }
+        if (!focusedOnce) {
+            focusedOnce = true
+            withFrameNanos { }
+            runCatching { startFocus.requestFocus() }
+        }
     }
 
     LazyColumn(
         Modifier.fillMaxSize(),
         state = listState,
-        contentPadding = PaddingValues(bottom = 16.dp)
+        contentPadding = PaddingValues(bottom = 16.dp),
     ) {
         items(channels.size, key = { channels[it].id }) { index ->
             val channel = channels[index]
@@ -378,14 +384,14 @@ private fun ChannelRow(
 ) {
     val haptics = LocalHapticFeedback.current
     var focused by remember { mutableStateOf(false) }
-    
+
     val backgroundColor = if (focused) Color.White.copy(alpha = 0.15f) else Color.Transparent
     val borderColor = if (focused) Accent else Color.Transparent
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 2.dp) 
+            .padding(horizontal = 12.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(backgroundColor)
             .border(1.dp, borderColor, RoundedCornerShape(6.dp))
@@ -406,16 +412,16 @@ private fun ChannelRow(
             fontSize = 13.sp,
             modifier = Modifier.width(28.dp),
         )
-        
+
         AsyncImage(
             model = channel.logoUrl,
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier.size(32.dp).clip(RoundedCornerShape(4.dp)),
         )
-        
+
         Spacer(Modifier.width(12.dp))
-        
+
         Text(
             text = channel.name,
             color = if (playing) Accent else TextPrimary,
@@ -424,7 +430,7 @@ private fun ChannelRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        
+
         if (channel.isLocked) {
             Spacer(Modifier.width(6.dp))
             Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Accent, modifier = Modifier.size(14.dp))
