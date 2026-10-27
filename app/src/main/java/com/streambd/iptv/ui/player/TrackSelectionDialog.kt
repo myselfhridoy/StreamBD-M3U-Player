@@ -126,7 +126,7 @@ fun TrackSelectionDialog(
                 Modifier
                     .width(340.dp)
                     .heightIn(min = 280.dp, max = 340.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(2.dp))
                     .background(Panel)
                     .pointerInput(Unit) { detectTapGestures { } },
             ) {
