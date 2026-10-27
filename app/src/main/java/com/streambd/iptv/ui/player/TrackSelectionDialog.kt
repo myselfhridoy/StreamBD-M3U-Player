@@ -8,14 +8,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.Format
 import androidx.media3.common.Tracks
 import com.streambd.iptv.player.TrackChoice
@@ -37,8 +38,7 @@ private fun keyOf(group: Tracks.Group, index: Int): String {
 
 private fun sameChoice(first: TrackChoice, second: TrackChoice): Boolean {
     if (first is TrackChoice.Specific && second is TrackChoice.Specific) {
-        return first.index == second.index &&
-            first.group.mediaTrackGroup == second.group.mediaTrackGroup
+        return first.index == second.index && first.group.mediaTrackGroup == second.group.mediaTrackGroup
     }
     return first == second
 }
@@ -59,13 +59,14 @@ fun TrackSelectionDialog(
     onDismiss: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(0) } // 0 = VIDEO, 1 = AUDIO
-
+    
     fun initialChoice(key: String?, groups: List<Tracks.Group>): TrackChoice {
         if (key == "") return TrackChoice.None
         if (key == null) return TrackChoice.Auto
-        for (group in groups) for (index in 0 until group.length) {
-            if (keyOf(group, index) == key) return TrackChoice.Specific(group, index)
-        }
+        for (group in groups)
+            for (index in 0 until group.length) {
+                if (keyOf(group, index) == key) return TrackChoice.Specific(group, index)
+            }
         return TrackChoice.Auto
     }
 
@@ -98,56 +99,68 @@ fun TrackSelectionDialog(
 
     val current = if (tab == 0) videoChoice else audioChoice
     val selectedIndex = options.indexOfFirst { sameChoice(current, it.choice) }.coerceAtLeast(0)
-
     val listState = rememberLazyListState()
     val startFocus = remember { FocusRequester() }
-    // ল্যান্ডস্কেপ ফোনের কম উচ্চতায় ডায়ালগ যাতে কাটা না পড়ে
-    val maxListHeight = (LocalConfiguration.current.screenHeightDp - 190).coerceIn(120, 320).dp
 
-    // TV: খোলার সময় নির্বাচিত সারিতে ফোকাস (ট্যাব বদলালে ফোকাস কাড়ি না)
+    // TV: খোলার সময় নির্বাচিত সারিতে ফোকাস
     LaunchedEffect(Unit) {
         listState.scrollToItem(selectedIndex)
         runCatching { startFocus.requestFocus() }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
+    Dialog(
+        onDismissRequest = onDismiss,
+        // Allow the dialog to size itself freely but we will constrain it
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        BoxWithConstraints(
             Modifier
-                .width(340.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Panel),
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing) // Prevents overlap with system bars
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                "Select tracks",
-                color = TextPrimary,
-                fontSize = 16.sp,
-                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
-            )
-            Row(Modifier.fillMaxWidth()) {
-                DialogTab("VIDEO", tab == 0, Modifier.weight(1f)) { tab = 0 }
-                DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
-            }
-            LazyColumn(
-                Modifier.heightIn(max = maxListHeight).padding(horizontal = 8.dp, vertical = 4.dp),
-                state = listState,
+            // Dynamically calculate max list height based on actual screen space minus headers/footers
+            val dynamicMaxListHeight = (maxHeight - 150.dp).coerceIn(100.dp, 320.dp)
+
+            Column(
+                Modifier
+                    .width(340.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Panel),
             ) {
-                itemsIndexed(options) { index, opt ->
-                    RadioRow(
-                        label = opt.label,
-                        selected = sameChoice(current, opt.choice),
-                        modifier = if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier,
-                    ) {
-                        if (tab == 0) videoChoice = opt.choice else audioChoice = opt.choice
-                    }
+                Text(
+                    "Select tracks", color = TextPrimary, fontSize = 16.sp,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
+                )
+                Row(Modifier.fillMaxWidth()) {
+                    DialogTab("VIDEO", tab == 0, Modifier.weight(1f)) { tab = 0 }
+                    DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                DialogTextButton("CANCEL", TextMuted, onDismiss)
-                Spacer(Modifier.width(8.dp))
-                DialogTextButton("CONFIRM", Accent) { onConfirm(videoChoice, audioChoice) }
+                LazyColumn(
+                    Modifier.heightIn(max = dynamicMaxListHeight).padding(horizontal = 8.dp, vertical = 4.dp),
+                    state = listState,
+                ) {
+                    itemsIndexed(options) { index, opt ->
+                        RadioRow(
+                            label = opt.label,
+                            selected = sameChoice(current, opt.choice),
+                            modifier = if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier,
+                        ) {
+                            if (tab == 0) videoChoice = opt.choice else audioChoice = opt.choice
+                        }
+                    }
+                    // Small spacer at the bottom so the last item isn't flush against the edge when scrolled
+                    item { Spacer(Modifier.height(4.dp)) }
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    DialogTextButton("CANCEL", TextMuted, onDismiss)
+                    Spacer(Modifier.width(8.dp))
+                    DialogTextButton("CONFIRM", Accent) { onConfirm(videoChoice, audioChoice) }
+                }
             }
         }
     }
