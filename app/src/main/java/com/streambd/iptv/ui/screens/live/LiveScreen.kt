@@ -213,27 +213,37 @@ private fun LivePanel(
     onPlay: (ChannelEntity) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().displayCutoutPadding()) {
-        GroupTabsBar(groups, selected, onSelectGroup)
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(
-                Modifier
-                    .weight(0.5f)
-                    .fillMaxHeight()
-                    .background(PanelScrim)
-                    .consumeTaps(),
-            ) {
-                ChannelList(
-                    channels = channels,
-                    playingId = playingId,
-                    loading = loading,
-                    emptyText = emptyText,
-                    groupKey = selected,
-                    onPlay = onPlay,
-                    onLongPress = onLongPress,
-                )
+    Box(Modifier.fillMaxSize()) {
+        // ১. স্ক্রিনের একদম বাম দিক থেকে ব্যাকগ্রাউন্ড শুরু হবে (নচ থাকলেও সরে যাবে না)
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(0.5f)
+                .background(PanelScrim)
+        )
+
+        // ২. কন্টেন্ট (ট্যাব এবং লিস্ট) সেফ এরিয়ার ভেতরে থাকবে
+        Column(Modifier.fillMaxSize().displayCutoutPadding()) {
+            GroupTabsBar(groups, selected, onSelectGroup)
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                Box(
+                    Modifier
+                        .weight(0.5f)
+                        .fillMaxHeight()
+                        .consumeTaps(),
+                ) {
+                    ChannelList(
+                        channels = channels,
+                        playingId = playingId,
+                        loading = loading,
+                        emptyText = emptyText,
+                        groupKey = selected,
+                        onPlay = onPlay,
+                        onLongPress = onLongPress,
+                    )
+                }
+                Spacer(Modifier.weight(0.5f))
             }
-            Spacer(Modifier.weight(0.5f))
         }
     }
 }
@@ -269,7 +279,7 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp), // Alignment fixed
     )
 }
 
@@ -352,7 +362,7 @@ private fun ChannelRow(
                     onLongClick()
                 },
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp), // Alignment fixed (8+12 = 20dp)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
