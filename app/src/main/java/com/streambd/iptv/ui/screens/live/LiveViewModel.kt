@@ -6,6 +6,7 @@ import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.epg.NowNext
+import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.player.AspectMode
@@ -35,7 +36,6 @@ class LiveViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val selectedGroupId = MutableStateFlow<Long?>(null)
-    private val focusedChannelId = MutableStateFlow<Long?>(null)
 
     /** Room থেকে প্রথম তালিকা আসার আগে false। "Loading" ও "খালি" আলাদা করতে লাগে। */
     private val _loaded = MutableStateFlow(false)
@@ -49,6 +49,7 @@ class LiveViewModel @Inject constructor(
             .onEach { _loaded.value = true }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** গ্রুপ ফিল্টার করা তালিকা। Left/Right zap এই তালিকার ভেতরে ঘোরে। */
     val channels: StateFlow<List<ChannelEntity>> =
         combine(allChannels, selectedGroupId) { all, groupId ->
             when (groupId) {
@@ -58,11 +59,6 @@ class LiveViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val focusedChannel: StateFlow<ChannelEntity?> =
-        combine(channels, focusedChannelId) { list, id ->
-            list.firstOrNull { it.id == id } ?: list.firstOrNull()
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
     val selectedGroup: StateFlow<Long?> = selectedGroupId.asStateFlow()
 
     val playerState: StateFlow<PlayerUiState> = playerManager.state
@@ -70,6 +66,11 @@ class LiveViewModel @Inject constructor(
     val sessionUnlocked: StateFlow<Boolean> = lockController.unlocked
     private val _nowNext = MutableStateFlow<NowNext?>(null)
     val nowNext: StateFlow<NowNext?> = _nowNext.asStateFlow()
+
+    /** PIN-এর অপেক্ষায় থাকা লক করা চ্যানেল। */
+    private val _pendingUnlock = MutableStateFlow<ChannelEntity?>(null)
+    val pendingUnlock: StateFlow<ChannelEntity?> = _pendingUnlock.asStateFlow()
+
     val player get() = playerManager
 
     init {
@@ -79,7 +80,7 @@ class LiveViewModel @Inject constructor(
                 val target = repo.liveChannels().first().firstOrNull { it.number == number }
                     ?: return@collect
                 selectedGroupId.value = null
-                focusChannel(target.id)
+                requestPlay(target)
             }
         }
         viewModelScope.launch {
@@ -98,38 +99,64 @@ class LiveViewModel @Inject constructor(
         }
     }
 
-    fun selectGroup(id: Long?) { selectedGroupId.value = id }
-    fun onFocus(id: Long) = focusChannel(id)
-
-    fun focusChannel(id: Long) {
-        focusedChannelId.value = id
-        val target = allChannels.value.firstOrNull { it.id == id }
-        if (target?.isLocked == true && !lockController.unlocked.value) {
+    /** স্ক্রিনে ঢোকার সময়: আগের লাইভ চ্যানেল লাইভ প্রান্ত থেকে চলবে, VOD হলে বন্ধ। */
+    fun onEnter() {
+        val current = playerManager.state.value.current ?: return
+        if (current.kind != ChannelKind.LIVE.name) {
             playerManager.stopAndClear()
+        } else {
+            playerManager.player.run {
+                seekToDefaultPosition()
+                play()
+            }
         }
     }
+
+    fun selectGroup(id: Long?) { selectedGroupId.value = id }
+
+    /** তালিকায় ক্লিক, নম্বর জাম্প বা zap: লক থাকলে PIN, নইলে সরাসরি প্লে। */
+    fun requestPlay(channel: ChannelEntity) {
+        if (channel.isLocked && !lockController.unlocked.value) {
+            _pendingUnlock.value = channel
+        } else {
+            playerManager.play(channel)
+        }
+    }
+
+    suspend fun playById(id: Long) {
+        val target = repo.liveChannels().first().firstOrNull { it.id == id } ?: return
+        requestPlay(target)
+    }
+
+    /** +1 পরের, -1 আগের চ্যানেল (বর্তমান তালিকার ভেতরে ঘুরে আসে)। */
+    fun step(delta: Int) {
+        val list = channels.value.ifEmpty { allChannels.value }
+        if (list.isEmpty()) return
+        val currentId = playerManager.state.value.current?.id
+        val index = list.indexOfFirst { it.id == currentId }
+        val target = when {
+            index >= 0 -> list[Math.floorMod(index + delta, list.size)]
+            delta > 0 -> list.first()
+            else -> list.last()
+        }
+        requestPlay(target)
+    }
+
+    fun confirmUnlock() {
+        val target = _pendingUnlock.value ?: return
+        _pendingUnlock.value = null
+        lockController.unlock()
+        playerManager.play(target)
+    }
+
+    fun dismissUnlock() { _pendingUnlock.value = null }
 
     fun setJumpEnabled(enabled: Boolean) = jumpController.setEnabled(enabled)
-
-    fun playPreview(channel: ChannelEntity) {
-        if (channel.isLocked && !lockController.unlocked.value) {
-            playerManager.stopAndClear()
-            return
-        }
-        playerManager.play(channel)
-    }
-
-    fun unlockAndPlay(channel: ChannelEntity) {
-        lockController.unlock()
-        playerManager.play(channel)
-        playerManager.setFullscreen(true)
-    }
 
     suspend fun verifyPin(pin: String): Boolean = settingsStore.verifyPin(pin)
     fun relock() = lockController.relock()
 
-    fun openFullscreen() = playerManager.setFullscreen(true)
-    fun closeFullscreen() = playerManager.setFullscreen(false)
+    fun retry() = playerManager.retry()
     fun togglePlayPause() = playerManager.togglePlayPause()
     fun setAspectMode(mode: AspectMode) {
         playerManager.setAspectMode(mode)
