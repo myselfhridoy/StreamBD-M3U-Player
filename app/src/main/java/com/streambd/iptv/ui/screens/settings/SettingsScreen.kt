@@ -61,6 +61,7 @@ fun SettingsScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val activationState by vm.activationState.collectAsStateWithLifecycle()
+    val refresh by vm.refreshState.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -73,6 +74,7 @@ fun SettingsScreen(
         Column(
             Modifier
                 .fillMaxSize()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
@@ -123,6 +125,11 @@ fun SettingsScreen(
                 },
             )
 
+            val refreshing = refresh is RefreshState.Running
+            ActionRow(
+                label = if (refreshing) "Refreshing playlist…" else "Refresh Playlist",
+                onClick = { if (!refreshing) vm.refreshPlaylist() },
+            )
             ActionRow("Change PIN Code", onClick = { dlg = Sd.PinCurrent })
             ActionRow("Reset Application", danger = true, onClick = { dlg = Sd.PinForReset })
             ActionRow("Clear Disk Cache", onClick = { dlg = Sd.ClearCache })
@@ -145,6 +152,35 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(48.dp))
         }
+    }
+
+    // Refresh-এর ফলাফল
+    when (val r = refresh) {
+        is RefreshState.Done -> ConfirmDialog(
+            title = "Playlist updated",
+            body = buildString {
+                append("${r.channels} channels loaded.")
+                when {
+                    r.epgError != null -> append("\n\nTV guide: ${r.epgError}")
+                    r.programs > 0 -> append("\n${r.programs} guide entries loaded.")
+                }
+            },
+            confirmLabel = "OK",
+            confirmIsDangerous = false,
+            onCancel = vm::consumeRefresh,
+            onConfirm = vm::consumeRefresh,
+        )
+
+        is RefreshState.Failed -> ConfirmDialog(
+            title = "Couldn't refresh",
+            body = r.message,
+            confirmLabel = "OK",
+            confirmIsDangerous = false,
+            onCancel = vm::consumeRefresh,
+            onConfirm = vm::consumeRefresh,
+        )
+
+        RefreshState.Idle, RefreshState.Running -> Unit
     }
 
     when (dlg) {
@@ -236,6 +272,7 @@ private fun SettingsTopBar(title: String, onBack: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .background(TopBar)
+            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
