@@ -1,19 +1,25 @@
 package com.streambd.iptv.player
 
 import android.content.Context
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
-import com.streambd.iptv.data.settings.TrackMode
 import com.streambd.iptv.data.settings.SettingsStore
+import com.streambd.iptv.data.settings.TrackMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.net.URLDecoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,42 +41,87 @@ import javax.inject.Singleton
  * Single shared ExoPlayer for preview + fullscreen. Compose screens only
  * observe [state] and call the small command surface below.
  */
+@OptIn(UnstableApi::class)
 @Singleton
 class PlayerManager @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val settings: SettingsStore,
 ) {
+    private companion object {
+        const val DEFAULT_BUFFER_MS = 2_500
+        const val MAX_RETRIES = 3
+        const val USER_AGENT = "StreamBD/1.0"
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /**
+     * চ্যানেলের URL-এর `|Header=Value` থেকে আসা header। প্লেয়ার একসময়ে এক চ্যানেল চালায়,
+     * তাই একটা জায়গাই যথেষ্ট; প্রতিটা request (playlist ও segment) এখান থেকে header পায়।
+     */
+    @Volatile
+    private var requestHeaders: Map<String, String> = emptyMap()
+
+    // setUserAgent ইচ্ছে করেই নেই: Media3 ওটা সবসময় header-এর ওপরে বসায়,
+    // ফলে চ্যানেলের নিজস্ব User-Agent কাজ করত না। UA নিচের resolver-এ বসে।
     private val httpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent("StreamBD/1.0")
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(15_000)
         .setAllowCrossProtocolRedirects(true)
 
+    private val dataSourceFactory = ResolvingDataSource.Factory(
+        httpFactory,
+        ResolvingDataSource.Resolver { dataSpec ->
+            val headers = requestHeaders
+            val hasUserAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
+            dataSpec.withAdditionalHeaders(
+                if (hasUserAgent) headers else headers + ("User-Agent" to USER_AGENT),
+            )
+        },
+    )
+
+    private val _state = MutableStateFlow(PlayerUiState())
+    val state: StateFlow<PlayerUiState> = _state.asStateFlow()
+
+    private var retriesLeft = MAX_RETRIES
+    private var retryJob: Job? = null
+    private var restoredForMediaId: String? = null
+    private var currentItem: MediaItem? = null
+    private var hlsHintApplied = false
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            _state.update { it.copy(isPlaying = isPlaying, isBuffering = false) }
+            _state.update { it.copy(isPlaying = isPlaying) }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             _state.update {
                 it.copy(
-                    isBuffering = playbackState == Player.STATE_BUFFERING,
+                    isBuffering = playbackState == Player.STATE_BUFFERING || retryJob?.isActive == true,
                     duration = player.duration.coerceAtLeast(0L),
                 )
             }
-            if (playbackState == Player.STATE_READY) retriesLeft = 3
+            if (playbackState == Player.STATE_READY) {
+                retriesLeft = MAX_RETRIES
+                retryJob?.cancel()
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            if (retriesLeft > 0) {
-                retriesLeft--
-                player.prepare()
-            } else {
-                _state.update {
-                    it.copy(error = "Playback failed", isBuffering = false)
-                }
+            handleError(error)
+        }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            _state.update {
+                it.copy(
+                    videoWidth = videoSize.width,
+                    videoHeight = videoSize.height,
+                    videoAspect = if (videoSize.height > 0) {
+                        videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                    } else {
+                        0f
+                    },
+                )
             }
         }
 
@@ -88,29 +140,35 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    private fun createPlayer(bufferMs: Int = 2_500): ExoPlayer {
+    private var bufferMs = DEFAULT_BUFFER_MS
+
+    var player: ExoPlayer = createPlayer(bufferMs)
+        private set
+
+    private fun createPlayer(bufferMs: Int): ExoPlayer {
         val minMs = bufferMs.coerceAtLeast(1_000)
         val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
+        // DefaultLoadControl শর্ত: bufferForPlayback(AfterRebuffer) <= minBuffer, তাই min() লাগে
+        val forPlaybackMs = minOf(1_000, minMs)
+        val afterRebufferMs = minOf(2_000, minMs)
         return ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(minMs, maxMs, 1_000, 2_000)
+                    .setBufferDurationsMs(minMs, maxMs, forPlaybackMs, afterRebufferMs)
                     .build(),
             )
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .also { it.addListener(playerListener) }
     }
-
-    var player: ExoPlayer = createPlayer()
-        private set
-
-    private val _state = MutableStateFlow(PlayerUiState())
-    val state: StateFlow<PlayerUiState> = _state.asStateFlow()
-
-    private var retriesLeft = 3
-    private var volumeHideJob: Job? = null
-    private var restoredForMediaId: String? = null
 
     init {
         scope.launch {
@@ -126,39 +184,52 @@ class PlayerManager @Inject constructor(
         }
 
         scope.launch {
-            var lastBufferMs = -1
             settings.flow.collect { s ->
                 _state.update { it.copy(aspectMode = s.aspectMode) }
-                if (s.bufferTimeMs != lastBufferMs) {
-                    lastBufferMs = s.bufferTimeMs
-                    val currentMediaItem = player.currentMediaItem
-                    val currentPosition = player.currentPosition
-                    val playWhenReady = player.playWhenReady
-                    val isPlaying = player.isPlaying
-                    val volume = player.volume
-
-                    player.removeListener(playerListener)
-                    player.release()
-                    player = createPlayer(s.bufferTimeMs)
-                    restoredForMediaId = null
-                    player.volume = volume
-                    player.playWhenReady = playWhenReady
-                    if (currentMediaItem != null) {
-                        player.setMediaItem(currentMediaItem, currentPosition)
-                        player.prepare()
-                        if (isPlaying) player.play()
-                    }
-                    player.addListener(playerListener)
+                // শুধু মান সত্যিই বদলালে রিক্রিয়েট (আগে স্টার্টআপেই একবার হতো)
+                if (s.bufferTimeMs != bufferMs) {
+                    bufferMs = s.bufferTimeMs
+                    rebuildPlayer()
                 }
             }
+        }
+    }
+
+    private fun rebuildPlayer() {
+        val item = player.currentMediaItem
+        val live = player.isCurrentMediaItemLive
+        val position = player.currentPosition
+        val playWhenReady = player.playWhenReady
+        val volume = player.volume
+
+        player.removeListener(playerListener)
+        player.release()
+        player = createPlayer(bufferMs)
+        restoredForMediaId = null
+        player.volume = volume
+        player.playWhenReady = playWhenReady
+        if (item != null) {
+            // লাইভে পুরনো position window-এর বাইরে চলে যেতে পারে, তাই ডিফল্ট (লাইভ প্রান্ত)
+            player.setMediaItem(item, if (live) C.TIME_UNSET else position)
+            player.prepare()
         }
     }
 
     /* ------------------------------ commands ------------------------------ */
 
     fun play(channel: ChannelEntity) {
-        if (_state.value.current?.id == channel.id) return
-        retriesLeft = 3
+        val same = _state.value.current?.id == channel.id
+        // একই চ্যানেল ঠিকঠাক চললে কিছু করার নেই। error/idle হলে আবার চালু হবে।
+        if (same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
+
+        retryJob?.cancel()
+        retriesLeft = MAX_RETRIES
+        hlsHintApplied = false
+        restoredForMediaId = null
+
+        val (url, headers) = splitHeaders(channel.streamUrl)
+        requestHeaders = headers
+
         _state.update {
             it.copy(
                 current = channel,
@@ -166,18 +237,30 @@ class PlayerManager @Inject constructor(
                 error = null,
                 position = 0L,
                 duration = 0L,
+                videoWidth = 0,
+                videoHeight = 0,
+                videoAspect = 0f,
             )
         }
         val item = MediaItem.Builder()
-            .setUri(channel.streamUrl)
+            .setUri(url)
             .setMediaId(channel.id.toString())
             .build()
+        currentItem = item
         player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
     }
 
+    /** শেষ চ্যানেল আবার চালানো (error-এর পর)। */
+    fun retry() {
+        _state.value.current?.let(::play)
+    }
+
     fun stopAndClear() {
+        retryJob?.cancel()
+        requestHeaders = emptyMap()
+        currentItem = null
         player.stop()
         player.clearMediaItems()
         _state.update {
@@ -188,12 +271,19 @@ class PlayerManager @Inject constructor(
                 position = 0L,
                 duration = 0L,
                 error = null,
+                videoWidth = 0,
+                videoHeight = 0,
+                videoAspect = 0f,
             )
         }
     }
 
     fun togglePlayPause() {
-        if (player.isPlaying) player.pause() else player.play()
+        when {
+            player.playbackState == Player.STATE_IDLE -> retry()
+            player.isPlaying -> player.pause()
+            else -> player.play()
+        }
     }
 
     fun pause() {
@@ -204,16 +294,80 @@ class PlayerManager @Inject constructor(
     fun setAspectMode(mode: AspectMode) { _state.update { it.copy(aspectMode = mode) } }
     fun clearError() { _state.update { it.copy(error = null) } }
 
-    fun adjustVolume(delta: Int) {
-        val newVol = (_state.value.volumeLevel + delta * 0.05f).coerceIn(0f, 1f)
-        player.volume = newVol
-        _state.update { it.copy(volumeLevel = newVol, volumeOverlayVisible = true) }
-        volumeHideJob?.cancel()
-        volumeHideJob = scope.launch {
-            delay(1500L)
-            _state.update { it.copy(volumeOverlayVisible = false) }
+    /* ------------------------------- errors ------------------------------- */
+
+    private fun handleError(error: PlaybackException) {
+        retryJob?.cancel()
+
+        // লাইভ window পেরিয়ে গেলে লাইভ প্রান্তে ফিরে গেলেই চলে
+        if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            player.seekToDefaultPosition()
+            player.prepare()
+            return
+        }
+
+        // URL-এ .m3u8 নেই অথচ আসলে HLS: একবার HLS ধরে চেষ্টা
+        val item = currentItem
+        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED &&
+            !hlsHintApplied && item != null
+        ) {
+            hlsHintApplied = true
+            val hinted = item.buildUpon().setMimeType(MimeTypes.APPLICATION_M3U8).build()
+            currentItem = hinted
+            player.setMediaItem(hinted)
+            player.prepare()
+            return
+        }
+
+        val cause = error.cause
+        val clientError = cause is HttpDataSource.InvalidResponseCodeException &&
+            cause.responseCode in 400..499
+        if (!clientError && retriesLeft > 0) {
+            val attempt = MAX_RETRIES - retriesLeft // 0, 1, 2
+            retriesLeft--
+            _state.update { it.copy(isBuffering = true) }
+            retryJob = scope.launch {
+                delay(1_000L shl attempt) // 1s, 2s, 4s
+                player.prepare()
+            }
+        } else {
+            _state.update { it.copy(error = describe(error), isBuffering = false) }
         }
     }
+
+    private fun describe(error: PlaybackException): String {
+        val cause = error.cause
+        return when {
+            cause is HttpDataSource.InvalidResponseCodeException ->
+                "Stream not available (HTTP ${cause.responseCode})"
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                "Can't reach the stream. Check your connection."
+            else -> "Playback failed"
+        }
+    }
+
+    /**
+     * "https://host/live.m3u8|User-Agent=X&Referer=Y" থেকে (পরিষ্কার URL, header map)।
+     * মানগুলো URL-encoded (M3uParser এভাবেই লেখে)।
+     */
+    private fun splitHeaders(raw: String): Pair<String, Map<String, String>> {
+        val bar = raw.indexOf('|')
+        if (bar < 0) return raw to emptyMap()
+
+        val headers = LinkedHashMap<String, String>()
+        for (pair in raw.substring(bar + 1).split('&')) {
+            val eq = pair.indexOf('=')
+            if (eq <= 0) continue
+            val key = pair.substring(0, eq).trim()
+            val rawValue = pair.substring(eq + 1)
+            val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrDefault(rawValue)
+            if (key.isNotEmpty()) headers[key] = value.trim()
+        }
+        return raw.substring(0, bar) to headers
+    }
+
+    /* ------------------------------ tracks ------------------------------ */
 
     fun applyTrackChoice(type: Int, choice: TrackChoice) {
         val b = player.trackSelectionParameters.buildUpon()
