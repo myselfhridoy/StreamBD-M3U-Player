@@ -1,6 +1,5 @@
 package com.streambd.iptv.ui.player
 
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -39,7 +38,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -47,9 +45,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.epg.NowNext
@@ -88,22 +83,13 @@ fun FullscreenPlayer(
     listContent: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val hasList = listContent != null
-    val activity = LocalContext.current as? ComponentActivity
     val view = LocalView.current
     val focusManager = LocalFocusManager.current
 
-    // ফুলস্ক্রিন: সিস্টেম বার লুকানো, স্ক্রিন জাগানো
-    DisposableEffect(activity) {
-        val window = activity?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        controller?.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller?.hide(WindowInsetsCompat.Type.systemBars())
+    // স্ক্রিন জাগিয়ে রাখা (সিস্টেম বার পুরো অ্যাপেই MainActivity লুকিয়ে রাখে)
+    DisposableEffect(view) {
         view.keepScreenOn = true
-        onDispose {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-            view.keepScreenOn = false
-        }
+        onDispose { view.keepScreenOn = false }
     }
 
     val rootFocus = remember { FocusRequester() }
