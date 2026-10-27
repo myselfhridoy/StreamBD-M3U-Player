@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -53,76 +52,65 @@ fun ActivationScreen(
     var epgUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
 
-    Box(
+    // Box এর পরিবর্তে Column ব্যবহার করা হলো যাতে কিবোর্ড ওপেন হলে স্ক্রল ঠিকমতো কাজ করে
+    Column(
         Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(Color(0xFF0B0B0B), BgDark)),
-            )
-            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে, কন্টেন্ট ঢেকে যাবে না
-            .navigationBarsPadding(),
-        contentAlignment = Alignment.Center,
+            .background(BgDark) // Solid Background (Smarters Pro স্টাইল)
+            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .widthIn(max = 600.dp) // বামে-ডানে ফাঁকা জায়গা কমাতে চওড়া করা হলো
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("STREAMBD", color = Accent, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-            Text("IPTV", color = TextPrimary, fontSize = 16.sp)
+        Spacer(Modifier.height(16.dp))
+        Text("STREAMBD", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+        Text("IPTV", color = TextPrimary, fontSize = 16.sp)
+        Spacer(Modifier.height(32.dp))
+
+        if (serverMode) {
+            ServerActivationContent(
+                code = code,
+                busy = busy,
+                error = error,
+                devEnabled = BuildConfig.DEBUG,
+                fieldFocus = fieldFocus,
+                onCodeChange = vm::setCode,
+                onActivate = vm::activate,
+                onOpenDev = { showDevDialog = true },
+            )
+        } else {
+            // ফ্লোটিং টেক্সট বাদ দেওয়া হলো এবং প্লেসহোল্ডারে সেট করা হলো
+            UrlField(
+                label = "Playlist M3U URL",
+                placeholder = "Enter your M3U playlist link...",
+                value = playlistUrl,
+                imeAction = ImeAction.Next,
+                modifier = Modifier.focusRequester(fieldFocus),
+                onValue = { playlistUrl = it },
+            )
+            
+            Spacer(Modifier.height(16.dp))
+            
+            UrlField(
+                label = "EPG URL (optional)",
+                placeholder = "Enter EPG link (optional)...",
+                value = epgUrl,
+                imeAction = ImeAction.Done,
+                onValue = { epgUrl = it },
+            )
+
+            ErrorText(error)
+
             Spacer(Modifier.height(24.dp))
-
-            if (serverMode) {
-                ServerActivationContent(
-                    code = code,
-                    busy = busy,
-                    error = error,
-                    devEnabled = BuildConfig.DEBUG,
-                    fieldFocus = fieldFocus,
-                    onCodeChange = vm::setCode,
-                    onActivate = vm::activate,
-                    onOpenDev = { showDevDialog = true },
-                )
-            } else {
-                // কার্ড বাদ দেওয়া হলো এবং সরাসরি ইনপুট ফিল্ডে প্লেসহোল্ডার দেওয়া হলো
-                Text(
-                    "Enter your M3U playlist link below to start watching. An EPG (XMLTV) link is optional.",
-                    color = TextMuted,
-                    fontSize = 13.sp,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                )
-
-                UrlField(
-                    label = "Playlist M3U URL",
-                    placeholder = "https://example.com/playlist.m3u",
-                    value = playlistUrl,
-                    imeAction = ImeAction.Next,
-                    modifier = Modifier.focusRequester(fieldFocus),
-                    onValue = { playlistUrl = it },
-                )
-                Spacer(Modifier.height(12.dp))
-                UrlField(
-                    label = "EPG URL (optional)",
-                    placeholder = "https://example.com/epg.xml",
-                    value = epgUrl,
-                    imeAction = ImeAction.Done,
-                    onValue = { epgUrl = it },
-                )
-
-                ErrorText(error)
-
-                Spacer(Modifier.height(20.dp))
-                ActionButton(
-                    label = "Save & Continue",
-                    enabled = playlistUrl.isNotBlank() && !busy,
-                    busy = busy,
-                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
-                )
-            }
+            ActionButton(
+                label = "Save & Continue",
+                enabled = playlistUrl.isNotBlank() && !busy,
+                busy = busy,
+                onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
+            )
         }
+        Spacer(Modifier.height(32.dp))
     }
 
     if (serverMode && BuildConfig.DEBUG && showDevDialog) {
@@ -187,9 +175,9 @@ private fun ServerActivationContent(
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
             .border(2.dp, Accent, RoundedCornerShape(8.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        if (code.isEmpty()) Text("Activation code", color = TextMuted, fontSize = 15.sp)
+        if (code.isEmpty()) Text("Activation code", color = TextMuted.copy(alpha = 0.5f), fontSize = 15.sp)
         BasicTextField(
             value = code,
             onValueChange = onCodeChange,
@@ -203,7 +191,7 @@ private fun ServerActivationContent(
 
     ErrorText(error)
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(24.dp))
     ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
 }
 
@@ -212,7 +200,7 @@ private fun ServerActivationContent(
 @Composable
 private fun ErrorText(error: String?) {
     error?.let {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
         Text(it, color = Danger, fontSize = 13.sp)
     }
 }
@@ -228,9 +216,10 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = Modifier.fillMaxWidth().height(50.dp), // বাটন একটু বড় করা হলো Smarters Pro এর মত
+        shape = RoundedCornerShape(8.dp)
     ) {
-        if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+        if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
         else Text(label, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
     }
 }
@@ -255,14 +244,14 @@ private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Uni
             Spacer(Modifier.height(16.dp))
             UrlField(
                 label = "Playlist M3U URL",
-                placeholder = "https://example.com/playlist.m3u",
+                placeholder = "Enter M3U Playlist URL...",
                 value = playlistUrl,
                 onValue = { playlistUrl = it },
             )
             Spacer(Modifier.height(12.dp))
             UrlField(
                 label = "EPG URL (optional)",
-                placeholder = "https://example.com/epg.xml",
+                placeholder = "Enter EPG URL (Optional)...",
                 value = epgUrl,
                 imeAction = ImeAction.Done,
                 onValue = { epgUrl = it },
@@ -287,20 +276,21 @@ private fun UrlField(
     onValue: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
-        Text(label, color = TextMuted, fontSize = 12.sp)
-        Spacer(Modifier.height(4.dp))
+        Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
         Box(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Surface1)
-                .border(1.dp, Divider, RoundedCornerShape(6.dp))
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
+                .border(1.dp, Divider, RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp, vertical = 16.dp), // Smarters Pro এর মত বড় প্যাডিং
         ) {
-            if (value.isEmpty()) Text(placeholder, color = TextMuted.copy(alpha = 0.6f), fontSize = 14.sp)
+            if (value.isEmpty()) {
+                Text(placeholder, color = TextMuted.copy(alpha = 0.4f), fontSize = 15.sp)
+            }
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
                 singleLine = true,
                 cursorBrush = SolidColor(Accent),
-                textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
+                textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = imeAction),
                 modifier = modifier.fillMaxWidth(),
             )
