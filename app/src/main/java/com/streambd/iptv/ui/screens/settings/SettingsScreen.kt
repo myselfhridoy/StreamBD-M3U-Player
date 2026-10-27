@@ -31,7 +31,6 @@ import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.components.PinDialog
-import com.streambd.iptv.ui.components.ScreenTopBar
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -67,12 +66,12 @@ fun SettingsScreen(
     var pendingPin by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().background(BgDark)) {
-        ScreenTopBar("Settings", onBack)
-
+        // TopBar বাদ দেওয়া হয়েছে
         Column(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .statusBarsPadding() // স্ট্যাটাস বারের নিচে যাওয়া আটকাতে
+                .navigationBarsPadding() // নেভিগেশন বারের উপরে থাকতে
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
