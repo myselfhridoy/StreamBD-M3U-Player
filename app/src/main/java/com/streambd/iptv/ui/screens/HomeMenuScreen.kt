@@ -150,14 +150,14 @@ private fun HomeTile(item: HomeItem, modifier: Modifier = Modifier, onClick: () 
             .padding(horizontal = 4.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(item.icon, contentDescription = item.label, tint = tint, modifier = Modifier.size(32.dp))
-        Spacer(Modifier.height(6.dp))
-        Text(
-            item.label,
-            color = tint,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Icon(item.icon, contentDescription = item.label, tint = tint, modifier = Modifier.size(44.dp))
+Spacer(Modifier.height(8.dp))
+Text(
+    item.label,
+    color = tint,
+    fontSize = 14.sp,
+    maxLines = 1,
+    overflow = TextOverflow.Ellipsis,
+)
     }
 }
