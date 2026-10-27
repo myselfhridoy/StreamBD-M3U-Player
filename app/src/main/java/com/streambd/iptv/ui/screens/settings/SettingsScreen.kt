@@ -9,11 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -34,6 +31,7 @@ import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.components.PinDialog
+import com.streambd.iptv.ui.components.ScreenTopBar
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -69,12 +67,12 @@ fun SettingsScreen(
     var pendingPin by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().background(BgDark)) {
-        SettingsTopBar("Settings", onBack)
+        ScreenTopBar("Settings", onBack)
 
         Column(
             Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
@@ -263,31 +261,6 @@ fun SettingsScreen(
         )
 
         Sd.None -> Unit
-    }
-}
-
-@Composable
-private fun SettingsTopBar(title: String, onBack: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(TopBar)
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Filled.ArrowBack,
-            contentDescription = "Back",
-            tint = TextPrimary,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onBack)
-                .padding(8.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(title, color = TextPrimary, fontSize = 20.sp)
     }
 }
 
