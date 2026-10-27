@@ -52,74 +52,73 @@ fun ActivationScreen(
     var epgUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
 
-    Column(
+    // Box ব্যবহার করে কন্টেন্ট সেন্টার করা হয়েছে
+    Box(
         Modifier
             .fillMaxSize()
             .background(BgDark)
-            .imePadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            // নিচের দিকে extra ৬৪ ডিপি প্যাডিং যোগ করা হলো
-            .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 64.dp), 
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন ছোট হবে
+            .navigationBarsPadding(), // নেভিগেশন বার এড়াতে
+        contentAlignment = Alignment.Center
     ) {
-        
-        // লোগো সেকশন
-        Text("STREAMBD", color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-        Text("IPTV", color = TextPrimary, fontSize = 15.sp)
-        
-        Spacer(Modifier.height(24.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 550.dp)
+                .verticalScroll(rememberScrollState()) // কিবোর্ড ওপেন হলে স্ক্রল হবে
+                .padding(horizontal = 24.dp, vertical = 24.dp), // ব্যালেন্সড প্যাডিং
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            
+            // লোগো সেকশন
+            Text("STREAMBD", color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text("IPTV", color = TextPrimary, fontSize = 15.sp)
+            
+            Spacer(Modifier.height(28.dp))
 
-        if (serverMode) {
-            ServerActivationContent(
-                code = code,
-                busy = busy,
-                error = error,
-                devEnabled = BuildConfig.DEBUG,
-                fieldFocus = fieldFocus,
-                onCodeChange = vm::setCode,
-                onActivate = vm::activate,
-                onOpenDev = { showDevDialog = true },
-            )
-        } else {
-            Box(Modifier.widthIn(max = 550.dp)) {
-                Column {
-                    UrlField(
-                        label = "Playlist M3U URL",
-                        placeholder = "Enter your M3U playlist link...",
-                        value = playlistUrl,
-                        imeAction = ImeAction.Next,
-                        modifier = Modifier.focusRequester(fieldFocus),
-                        onValue = { playlistUrl = it },
-                    )
-                    
-                    Spacer(Modifier.height(16.dp))
-                    
-                    UrlField(
-                        label = "EPG URL (optional)",
-                        placeholder = "Enter EPG link (optional)...",
-                        value = epgUrl,
-                        imeAction = ImeAction.Done,
-                        onValue = { epgUrl = it },
-                    )
+            if (serverMode) {
+                ServerActivationContent(
+                    code = code,
+                    busy = busy,
+                    error = error,
+                    devEnabled = BuildConfig.DEBUG,
+                    fieldFocus = fieldFocus,
+                    onCodeChange = vm::setCode,
+                    onActivate = vm::activate,
+                    onOpenDev = { showDevDialog = true },
+                )
+            } else {
+                UrlField(
+                    label = "Playlist M3U URL",
+                    placeholder = "Enter your M3U playlist link...",
+                    value = playlistUrl,
+                    imeAction = ImeAction.Next,
+                    modifier = Modifier.focusRequester(fieldFocus),
+                    onValue = { playlistUrl = it },
+                )
+                
+                Spacer(Modifier.height(16.dp))
+                
+                UrlField(
+                    label = "EPG URL (optional)",
+                    placeholder = "Enter EPG link (optional)...",
+                    value = epgUrl,
+                    imeAction = ImeAction.Done,
+                    onValue = { epgUrl = it },
+                )
 
-                    ErrorText(error)
+                ErrorText(error)
 
-                    Spacer(Modifier.height(28.dp)) // বাটনের ওপরের গ্যাপ
-                    
-                    ActionButton(
-                        label = "Save & Continue",
-                        enabled = playlistUrl.isNotBlank() && !busy,
-                        busy = busy,
-                        onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
-                    )
-                }
+                Spacer(Modifier.height(28.dp)) // বাটনের ওপরের গ্যাপ
+                
+                ActionButton(
+                    label = "Save & Continue",
+                    enabled = playlistUrl.isNotBlank() && !busy,
+                    busy = busy,
+                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
+                )
             }
         }
-        
-        // একদম নিচে বড় স্পেসার দেওয়া হলো যাতে বাটন লেগে না থাকে
-        Spacer(Modifier.height(80.dp)) 
     }
 
     if (serverMode && BuildConfig.DEBUG && showDevDialog) {
