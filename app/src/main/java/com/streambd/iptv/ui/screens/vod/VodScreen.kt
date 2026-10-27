@@ -1,15 +1,14 @@
 package com.streambd.iptv.ui.screens.vod
 
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -17,7 +16,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
@@ -27,17 +25,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C as Media3C
@@ -47,12 +43,13 @@ import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.vod.EpisodeEntry
 import com.streambd.iptv.data.vod.SeriesGroup
-import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.components.ChannelActionsDialog
+import com.streambd.iptv.ui.components.PinDialog
+import com.streambd.iptv.ui.components.ScreenTopBar
+import com.streambd.iptv.ui.components.sideInsets
 import com.streambd.iptv.ui.player.FullscreenPlayer
 import com.streambd.iptv.ui.player.PlayerSettingsDialog
 import com.streambd.iptv.ui.player.TrackSelectionDialog
-import com.streambd.iptv.ui.player.VolumeOverlay
 import com.streambd.iptv.ui.theme.*
 
 @Composable
@@ -86,19 +83,6 @@ fun VodScreen(
         onDispose { vm.player.pause() }
     }
 
-    val activity = LocalContext.current as? ComponentActivity
-    LaunchedEffect(state.isFullscreen) {
-        val window = activity?.window ?: return@LaunchedEffect
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (state.isFullscreen) {
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-        } else {
-            controller.show(WindowInsetsCompat.Type.systemBars())
-        }
-    }
-
     val seriesOpen = isSeries && seriesName != null
     val favoritesFlat = isSeries && selected == VOD_GROUP_FAVORITES
     BackHandler(enabled = seriesOpen && !state.isFullscreen) { vm.closeSeries() }
@@ -107,9 +91,9 @@ fun VodScreen(
         if (!state.isFullscreen) {
             Column(Modifier.fillMaxSize()) {
                 if (seriesOpen) {
-                    TopBar(seriesName.orEmpty(), showBack = true, onBack = vm::closeSeries)
+                    ScreenTopBar(seriesName.orEmpty(), onBack = vm::closeSeries)
                 } else {
-                    TopBar(vm.title, showBack = true, onBack = onBack)
+                    ScreenTopBar(vm.title, onBack = onBack)
                     GroupTabs(groups, selected, vm::selectGroup)
                 }
 
@@ -191,8 +175,6 @@ fun VodScreen(
         }
     }
 
-    if (state.volumeOverlayVisible) VolumeOverlay(level = state.volumeLevel)
-
     if (showTracks) {
         TrackSelectionDialog(
             info = state.tracks,
@@ -236,36 +218,47 @@ fun VodScreen(
     }
 }
 
+/* ------------------------------ helpers ------------------------------ */
+
+/** গ্রিড/তালিকার চারপাশের প্যাডিং: ১৬dp + নচ/নিচের জায়গা। */
 @Composable
-private fun TopBar(title: String, showBack: Boolean, onBack: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().background(TopBar).padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (showBack) {
-            Icon(
-                Icons.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = TextPrimary,
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onBack).padding(8.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(
-            text = title,
-            color = TextPrimary,
-            fontSize = 20.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-    }
+private fun contentPadding(extra: androidx.compose.ui.unit.Dp = 16.dp): PaddingValues {
+    val dir = LocalLayoutDirection.current
+    val s = WindowInsets.safeDrawing
+        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+        .asPaddingValues()
+    return PaddingValues(
+        start = extra + s.calculateLeftPadding(dir),
+        end = extra + s.calculateRightPadding(dir),
+        top = 16.dp,
+        bottom = 16.dp + s.calculateBottomPadding(),
+    )
+}
+
+/**
+ * আসল পোস্টারের অনুপাত (প্রায় ২:৩) হলে ক্রপ, নইলে (চ্যানেল লোগো ইত্যাদি) পুরোটা দেখায়।
+ * আগে সবই ক্রপ হতো বলে লোগো গোল হয়ে কেটে যেত।
+ */
+@Composable
+private fun PosterImage(model: String?, description: String, modifier: Modifier = Modifier) {
+    var crop by remember(model) { mutableStateOf(false) }
+    AsyncImage(
+        model = model,
+        contentDescription = description,
+        contentScale = if (crop) ContentScale.Crop else ContentScale.Fit,
+        onSuccess = { success ->
+            val size = success.painter.intrinsicSize
+            if (size.isSpecified && size.height > 0f) {
+                crop = (size.width / size.height) in 0.55f..0.85f
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
 private fun EmptyState(message: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().sideInsets(), contentAlignment = Alignment.Center) {
         Text(message, color = TextMuted, fontSize = 15.sp)
     }
 }
@@ -274,7 +267,7 @@ private fun EmptyState(message: String) {
 private fun SeriesGrid(groups: List<SeriesGroup>, onPick: (SeriesGroup) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = contentPadding(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize(),
@@ -293,10 +286,9 @@ private fun SeriesCell(group: SeriesGroup, onClick: () -> Unit) {
             .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick).padding(6.dp),
     ) {
-        AsyncImage(
+        PosterImage(
             model = group.poster,
-            contentDescription = group.name,
-            contentScale = ContentScale.Crop,
+            description = group.name,
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(6.dp)).background(Surface1),
         )
@@ -320,7 +312,7 @@ private fun EpisodeList(
         EmptyState("No episodes found.")
         return
     }
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding(extra = 0.dp)) {
         itemsIndexed(episodes, key = { _, episode -> episode.id }) { _, episode ->
             EpisodeRow(
                 episode = episode,
@@ -379,7 +371,7 @@ private fun EpisodeRow(episode: EpisodeEntry, onClick: () -> Unit, onLongPress: 
 @Composable
 private fun GroupTabs(groups: List<GroupEntity>, selectedId: Long?, onSelect: (Long?) -> Unit) {
     LazyRow(
-        Modifier.fillMaxWidth().background(TopBar).padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().background(TopBar).sideInsets().padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         item {
@@ -420,7 +412,7 @@ private fun PosterGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = contentPadding(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.fillMaxWidth(),
@@ -454,10 +446,9 @@ private fun PosterCell(item: ChannelEntity, onClick: () -> Unit, onLongPress: ()
             .padding(6.dp),
     ) {
         Box {
-            AsyncImage(
+            PosterImage(
                 model = item.logoUrl,
-                contentDescription = item.name,
-                contentScale = ContentScale.Crop,
+                description = item.name,
                 modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                     .clip(RoundedCornerShape(6.dp)).background(Surface1),
             )
