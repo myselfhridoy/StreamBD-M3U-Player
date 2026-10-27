@@ -1,28 +1,27 @@
 package com.streambd.iptv.ui.player
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.Tracks
 import com.streambd.iptv.player.TrackChoice
 import com.streambd.iptv.player.TrackInfo
 import com.streambd.iptv.ui.theme.*
+import java.util.Locale
 
 private data class Option(val label: String, val choice: TrackChoice)
 
@@ -44,13 +43,23 @@ private fun sameChoice(first: TrackChoice, second: TrackChoice): Boolean {
     return first == second
 }
 
+private fun audioLabel(format: Format, index: Int): String {
+    format.label?.takeIf { it.isNotBlank() }?.let { return it }
+    format.language?.takeIf { it.isNotBlank() && it != "und" }?.let { code ->
+        val name = Locale.forLanguageTag(code).displayLanguage
+        return name.ifBlank { code }
+    }
+    return "Audio ${index + 1}"
+}
+
 @Composable
 fun TrackSelectionDialog(
     info: TrackInfo,
     onConfirm: (video: TrackChoice, audio: TrackChoice) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var tab by remember { mutableStateOf(0) }              // 0 = VIDEO, 1 = AUDIO
+    var tab by remember { mutableStateOf(0) } // 0 = VIDEO, 1 = AUDIO
+
     fun initialChoice(key: String?, groups: List<Tracks.Group>): TrackChoice {
         if (key == "") return TrackChoice.None
         if (key == null) return TrackChoice.Auto
@@ -79,7 +88,7 @@ fun TrackSelectionDialog(
                         val br = if (fmt.bitrate > 0) "%.2f Mbps".format(fmt.bitrate / 1_000_000.0) else "— Mbps"
                         "${fmt.width} × ${fmt.height}, $br"
                     } else {
-                        fmt.label ?: fmt.language ?: "Unknown"
+                        audioLabel(fmt, i)
                     }
                     add(Option(label, TrackChoice.Specific(g, i)))
                 }
@@ -87,70 +96,59 @@ fun TrackSelectionDialog(
         }
     }
 
+    val current = if (tab == 0) videoChoice else audioChoice
+    val selectedIndex = options.indexOfFirst { sameChoice(current, it.choice) }.coerceAtLeast(0)
+
+    val listState = rememberLazyListState()
+    val startFocus = remember { FocusRequester() }
+    // ল্যান্ডস্কেপ ফোনের কম উচ্চতায় ডায়ালগ যাতে কাটা না পড়ে
+    val maxListHeight = (LocalConfiguration.current.screenHeightDp - 190).coerceIn(120, 320).dp
+
+    // TV: খোলার সময় নির্বাচিত সারিতে ফোকাস (ট্যাব বদলালে ফোকাস কাড়ি না)
+    LaunchedEffect(Unit) {
+        listState.scrollToItem(selectedIndex)
+        runCatching { startFocus.requestFocus() }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Panel)
-                .padding(20.dp),
+                .width(340.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Panel),
         ) {
+            Text(
+                "Select tracks",
+                color = TextPrimary,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
+            )
             Row(Modifier.fillMaxWidth()) {
-                TabHeader("VIDEO", tab == 0, Modifier.weight(1f)) { tab = 0 }
-                TabHeader("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
+                DialogTab("VIDEO", tab == 0, Modifier.weight(1f)) { tab = 0 }
+                DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
             }
-            Spacer(Modifier.height(8.dp))
-            Text("Select tracks", color = TextMuted, fontSize = 12.sp)
-            Spacer(Modifier.height(8.dp))
-            LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                items(options) { opt ->
-                    val selected = when (tab) {
-                        0 -> sameChoice(videoChoice, opt.choice)
-                        else -> sameChoice(audioChoice, opt.choice)
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable {
-                                if (tab == 0) videoChoice = opt.choice else audioChoice = opt.choice
-                            }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            LazyColumn(
+                Modifier.heightIn(max = maxListHeight).padding(horizontal = 8.dp, vertical = 4.dp),
+                state = listState,
+            ) {
+                itemsIndexed(options) { index, opt ->
+                    RadioRow(
+                        label = opt.label,
+                        selected = sameChoice(current, opt.choice),
+                        modifier = if (index == selectedIndex) Modifier.focusRequester(startFocus) else Modifier,
                     ) {
-                        RadioButton(
-                            selected = selected,
-                            onClick = {
-                                if (tab == 0) videoChoice = opt.choice else audioChoice = opt.choice
-                            },
-                            colors = RadioButtonDefaults.colors(selectedColor = Accent, unselectedColor = TextMuted),
-                        )
-                        Text(opt.label, color = TextPrimary, fontSize = 15.sp)
+                        if (tab == 0) videoChoice = opt.choice else audioChoice = opt.choice
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text("CANCEL", color = TextMuted) }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                DialogTextButton("CANCEL", TextMuted, onDismiss)
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = { onConfirm(videoChoice, audioChoice) }) {
-                    Text("CONFIRM", color = Accent)
-                }
+                DialogTextButton("CONFIRM", Accent) { onConfirm(videoChoice, audioChoice) }
             }
         }
     }
-}
-
-@Composable
-private fun TabHeader(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val color = if (selected) Accent else TextMuted
-    Text(
-        text = label,
-        color = color,
-        fontSize = 13.sp,
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-    )
 }
