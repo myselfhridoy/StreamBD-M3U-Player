@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -118,19 +116,17 @@ fun TrackSelectionDialog(
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            val dynamicMaxListHeight = (maxHeight - 150.dp).coerceIn(100.dp, 350.dp)
-
             Column(
                 Modifier
-                    .width(480.dp) // ZalTV এর মতো চওড়া করা হয়েছে
+                    .width(480.dp)
+                    // maxHeight নিশ্চিত করবে ডায়ালগ স্ক্রিনের বাইরে যাবে না
+                    .heightIn(max = maxHeight) 
                     .background(Panel) 
-                    // একদম শার্প (সোজা) কর্নারের জন্য RoundedCornerShape বাদ দেওয়া হয়েছে
-                    // যদি একটু শেপ দিতে চান তাহলে RoundedCornerShape(4.dp) দিতে পারেন
             ) {
                 Text(
                     "Select tracks", 
                     color = TextPrimary, 
-                    fontSize = 18.sp, // ফন্ট একটু বড়
+                    fontSize = 18.sp, 
                     modifier = Modifier.padding(start = 24.dp, top = 20.dp, bottom = 8.dp),
                 )
                 
@@ -139,8 +135,12 @@ fun TrackSelectionDialog(
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
                 
+                // weight(1f) দেওয়ার কারণে লিস্টটি বাকি জায়গাটুকু নিবে এবং স্ক্রল হবে, 
+                // নিচের CANCEL/CONFIRM বাটন কখনো কাটা পড়বে না
                 LazyColumn(
-                    Modifier.heightIn(max = dynamicMaxListHeight).padding(vertical = 8.dp),
+                    Modifier
+                        .weight(1f)
+                        .padding(vertical = 8.dp),
                     state = listState,
                 ) {
                     itemsIndexed(options) { index, opt ->
