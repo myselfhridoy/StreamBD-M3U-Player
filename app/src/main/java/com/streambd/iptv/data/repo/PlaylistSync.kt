@@ -2,6 +2,7 @@ package com.streambd.iptv.data.repo
 
 import android.content.Context
 import com.streambd.iptv.data.epg.EpgRepository
+import com.streambd.iptv.data.m3u.M3uParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,11 +20,16 @@ import kotlin.coroutines.cancellation.CancellationException
 /** ইউজারকে সরাসরি দেখানোর মতো বার্তাসহ ব্যর্থতা। */
 class SyncException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/** ইমপোর্ট হওয়া চ্যানেল সংখ্যা এবং প্লেলিস্টের header থেকে পাওয়া EPG লিংক। */
+data class SyncedPlaylist(val channels: Int, val epgUrls: List<String>)
+
 data class SyncResult(
     val channels: Int,
     val programs: Int,
     /** EPG ব্যর্থ হলে বার্তা। প্লেলিস্ট সফল হলেও EPG ব্যর্থ হতে পারে। */
     val epgError: String?,
+    /** শেষ পর্যন্ত যে EPG লিংক ব্যবহার হয়েছে (নতুন লাইন দিয়ে আলাদা)। খালি হতে পারে। */
+    val epgUrl: String = "",
 )
 
 /**
@@ -45,8 +51,8 @@ class PlaylistSync @Inject constructor(
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
 
-    /** প্লেলিস্ট নামিয়ে যাচাই করে ইমপোর্ট করে। সফল হলে চ্যানেল সংখ্যা। */
-    suspend fun syncPlaylist(url: String): Int {
+    /** প্লেলিস্ট নামিয়ে যাচাই করে ইমপোর্ট করে। */
+    suspend fun syncPlaylist(url: String): SyncedPlaylist {
         val body = try {
             download(url)
         } catch (e: CancellationException) {
@@ -62,6 +68,7 @@ class PlaylistSync @Inject constructor(
             throw SyncException("This link returned a web page, not an M3U playlist.")
         }
 
+        val epgUrls = M3uParser.epgUrls(body)
         val count = try {
             channels.import(body)
         } catch (e: CancellationException) {
@@ -72,11 +79,25 @@ class PlaylistSync @Inject constructor(
         if (count == 0) {
             throw SyncException("No channels found. Check that the link is an M3U playlist.")
         }
-        return count
+        return SyncedPlaylist(count, epgUrls)
     }
 
-    /** EPG নামিয়ে ইমপোর্ট করে। সফল হলে প্রোগ্রাম সংখ্যা। */
-    suspend fun syncEpg(url: String): Int {
+    /**
+     * কোন EPG লিংক ব্যবহার হবে।
+     * [preferDiscovered] সত্য হলে (লোকাল প্লেলিস্টে) প্লেলিস্টের নিজের লিংক সবসময় জেতে;
+     * নইলে (সার্ভার অ্যাক্টিভেশন) সংরক্ষিত লিংকই জেতে, শুধু খালি থাকলে আবিষ্কৃতটা।
+     */
+    fun chooseEpg(stored: String, discovered: List<String>, preferDiscovered: Boolean): String {
+        val found = discovered.joinToString("\n")
+        return when {
+            found.isBlank() -> stored
+            preferDiscovered || stored.isBlank() -> found
+            else -> stored
+        }
+    }
+
+    /** EPG নামিয়ে ইমপোর্ট করে। [urls] এক বা একাধিক লিংক (নতুন লাইন/ফাঁকা দিয়ে আলাদা)। */
+    suspend fun syncEpg(urls: String): Int {
         prefs.edit().putLong(KEY_EPG_TRY, System.currentTimeMillis()).apply()
 
         val ids = channels.tvgIds()
@@ -86,31 +107,38 @@ class PlaylistSync @Inject constructor(
             )
         }
 
-        val count = try {
-            epg.importFromUrl(url, ids)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw SyncException(friendly(e), e)
+        val list = urls.split(Regex("\\s+")).filter { it.isNotBlank() }
+        var total = 0
+        var firstError: SyncException? = null
+        for (url in list) {
+            try {
+                total += epg.importFromUrl(url, ids)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (firstError == null) firstError = SyncException(friendly(e), e)
+            }
         }
-        if (count == 0) {
-            throw SyncException(
+
+        if (total == 0) {
+            throw firstError ?: SyncException(
                 "The guide was downloaded, but no programmes matched your channels. " +
                     "Check that the playlist's tvg-id values match the guide.",
             )
         }
         prefs.edit().putLong(KEY_EPG_OK, System.currentTimeMillis()).apply()
-        return count
+        return total
     }
 
     /** Settings-এর "Refresh": প্লেলিস্ট ব্যর্থ হলে exception, EPG ব্যর্থ হলে ফলাফলে বার্তা। */
-    suspend fun syncAll(playlistUrl: String, epgUrl: String): SyncResult {
-        val channelCount = syncPlaylist(playlistUrl)
-        if (epgUrl.isBlank()) return SyncResult(channelCount, 0, null)
+    suspend fun syncAll(playlistUrl: String, epgUrl: String, preferDiscovered: Boolean): SyncResult {
+        val synced = syncPlaylist(playlistUrl)
+        val effective = chooseEpg(epgUrl, synced.epgUrls, preferDiscovered)
+        if (effective.isBlank()) return SyncResult(synced.channels, 0, null, "")
         return try {
-            SyncResult(channelCount, syncEpg(epgUrl), null)
+            SyncResult(synced.channels, syncEpg(effective), null, effective)
         } catch (e: SyncException) {
-            SyncResult(channelCount, 0, e.message)
+            SyncResult(synced.channels, 0, e.message, effective)
         }
     }
 
