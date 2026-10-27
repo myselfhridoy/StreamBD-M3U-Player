@@ -6,6 +6,9 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.streambd.iptv.player.ChannelJumpController
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.ui.nav.AppNav
@@ -24,9 +27,23 @@ class MainActivity : ComponentActivity() {
         // ভলিউম বাটন সবসময় মিডিয়া ভলিউম বদলাবে (সিস্টেম নিজেই ভলিউম UI দেখায়)
         volumeControlStream = AudioManager.STREAM_MUSIC
         enableEdgeToEdge()
+        hideSystemBars()
         setContent {
             StreamBdTheme { AppNav() }
         }
+    }
+
+    // ডায়ালগ/কিবোর্ড বন্ধ হয়ে ফোকাস ফিরলে বার আবার লুকানো
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
+    }
+
+    private fun hideSystemBars() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
     override fun onStop() {
