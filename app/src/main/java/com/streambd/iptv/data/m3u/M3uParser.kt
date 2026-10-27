@@ -19,17 +19,38 @@ data class ParsedChannel(
  *
  * Header থাকলে streamUrl-এর শেষে Kodi-স্টাইলে যোগ হয়:
  *   https://host/live.m3u8|User-Agent=...&Referer=...   (মান URL-encoded)
- * PlayerManager এটা আলাদা করে request header বানাবে (ধাপ ৪)।
  */
 object M3uParser {
 
     private val attrRegex = Regex("""([\w.:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+    private val epgAttrRegex = Regex(
+        "(?:url-tvg|x-tvg-url|tvg-url)\\s*=\\s*\"([^\"]*)\"",
+        RegexOption.IGNORE_CASE,
+    )
 
-    private val movieRegex = Regex("""\b(movies?|vod|films?)\b""", RegexOption.IGNORE_CASE)
-    private val seriesRegex = Regex("""\b(series|shows?)\b""", RegexOption.IGNORE_CASE)
+    private val seriesGroupRegex = Regex("""\b(series|shows?)\b""", RegexOption.IGNORE_CASE)
+    private val seriesNameRegex = Regex(
+        """\bS\d{1,2}\s*[. _-]?\s*E\d{1,3}\b|\b\d{1,2}x\d{1,3}\b|\bseason\s*\d+""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val vodExtensions = setOf(
+        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "divx",
+    )
 
     fun parse(text: String): List<ParsedChannel> =
         parse(text.removePrefix("\uFEFF").lineSequence())
+
+    /** প্রথম লাইনের `url-tvg="a.xml.gz,b.xml"` থেকে EPG লিংকের তালিকা। না থাকলে খালি। */
+    fun epgUrls(text: String): List<String> {
+        val header = text.take(4096).lineSequence()
+            .firstOrNull { it.trimStart('\uFEFF', ' ').startsWith("#EXTM3U", ignoreCase = true) }
+            ?: return emptyList()
+        val raw = epgAttrRegex.find(header)?.groupValues?.get(1) ?: return emptyList()
+        return raw.split(',', ';', ' ')
+            .map(String::trim)
+            .filter { it.startsWith("http", ignoreCase = true) }
+            .distinct()
+    }
 
     fun parse(lines: Sequence<String>): List<ParsedChannel> {
         val out = ArrayList<ParsedChannel>()
@@ -54,7 +75,7 @@ object M3uParser {
                     pending?.let { applyHttpJson(it, line) }
                 }
 
-                line.startsWith("#") -> Unit // অন্য directive: আপাতত উপেক্ষা
+                line.startsWith("#") -> Unit
 
                 else -> {
                     val p = pending
@@ -62,13 +83,14 @@ object M3uParser {
                     if (p == null || !line.contains("://")) continue
 
                     val group = p.groupTitle ?: p.extGroup ?: "Ungrouped"
+                    val name = p.name.ifBlank { "Channel" }
                     out += ParsedChannel(
-                        name = p.name.ifBlank { "Channel" },
+                        name = name,
                         logoUrl = p.logo,
                         groupTitle = group,
                         tvgId = p.tvgId,
                         streamUrl = withHeaders(line, p.headers),
-                        kind = classify(group, line),
+                        kind = classify(p.tvgType, group, name, line),
                     )
                 }
             }
@@ -94,6 +116,7 @@ object M3uParser {
             logo = attrs["tvg-logo"]?.takeIf { it.isNotBlank() },
             groupTitle = attrs["group-title"]?.takeIf { it.isNotBlank() },
             tvgId = attrs["tvg-id"]?.takeIf { it.isNotBlank() },
+            tvgType = (attrs["tvg-type"] ?: attrs["type"])?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -146,15 +169,34 @@ object M3uParser {
 
     /* ------------------------------ ক্লাসিফাই ------------------------------ */
 
-    private fun classify(group: String, url: String): ChannelKind {
-        val u = url.lowercase()
-        return when {
-            movieRegex.containsMatchIn(group) -> ChannelKind.MOVIE
-            seriesRegex.containsMatchIn(group) -> ChannelKind.SERIES
-            u.contains("/movie/") || u.contains("/vod/") -> ChannelKind.MOVIE
-            u.contains("/series/") -> ChannelKind.SERIES
-            else -> ChannelKind.LIVE
+    /**
+     * অন্য IPTV অ্যাপের মতো: গ্রুপের নাম একা যথেষ্ট নয়।
+     * ১) tvg-type  ২) Xtream URL পাথ  ৩) ভিডিও ফাইল এক্সটেনশন  ৪) বাকি সব Live।
+     */
+    private fun classify(tvgType: String?, group: String, name: String, url: String): ChannelKind {
+        when (tvgType?.lowercase()) {
+            "movie", "movies", "vod", "film" -> return ChannelKind.MOVIE
+            "series", "serie", "tvshow", "show", "shows" -> return ChannelKind.SERIES
+            "live", "tv" -> return ChannelKind.LIVE
         }
+
+        val path = url.substringBefore('|').substringBefore('?').substringBefore('#').lowercase()
+        when {
+            "/series/" in path -> return ChannelKind.SERIES
+            "/movie/" in path -> return ChannelKind.MOVIE
+            "/live/" in path -> return ChannelKind.LIVE
+        }
+
+        val lastSegment = path.substringAfterLast('/')
+        val extension = if ('.' in lastSegment) lastSegment.substringAfterLast('.') else ""
+        if (extension in vodExtensions) {
+            return if (seriesNameRegex.containsMatchIn(name) || seriesGroupRegex.containsMatchIn(group)) {
+                ChannelKind.SERIES
+            } else {
+                ChannelKind.MOVIE
+            }
+        }
+        return ChannelKind.LIVE
     }
 
     private class Pending(
@@ -162,6 +204,7 @@ object M3uParser {
         val logo: String?,
         val groupTitle: String?,
         val tvgId: String?,
+        val tvgType: String?,
     ) {
         var extGroup: String? = null
         val headers = LinkedHashMap<String, String>()
