@@ -112,27 +112,24 @@ fun TrackSelectionDialog(
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(WindowInsets.safeDrawing) // নেভিগেশন বার থেকে দূরে রাখবে
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            // ZalTV এর মত লম্বাটে করতে মিনিমাম হাইট 300dp নেওয়া হয়েছে
-            // তবে স্ক্রিন ছোট হলে সেটি স্ক্রিনের মাপে Fit হয়ে যাবে
-            val targetHeight = 300.dp
-            val availableHeight = maxHeight - 170.dp
-            val finalListHeight = targetHeight.coerceAtMost(availableHeight).coerceAtLeast(100.dp)
-
+            // স্ক্রিনের সর্বোচ্চ উচ্চতার চেয়ে যেন বড় না হয়
+            val maxAvailableHeight = maxHeight - 32.dp
+            
             Column(
                 Modifier
-                    .width(480.dp)
-                    .heightIn(max = maxHeight)
+                    .width(340.dp) // ZalTV এর মত সরু করা হয়েছে (আগে ৪৮০ ছিল)
+                    .heightIn(min = 320.dp, max = maxAvailableHeight) // মিনিমাম ৩২০ ডিপি লম্বা হবে
                     .background(Panel) 
             ) {
                 Text(
                     "Select tracks", 
                     color = TextPrimary, 
                     fontSize = 18.sp, 
-                    modifier = Modifier.padding(start = 24.dp, top = 20.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
                 )
                 
                 Row(Modifier.fillMaxWidth()) {
@@ -140,9 +137,10 @@ fun TrackSelectionDialog(
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
                 
+                // weight(1f) মিনিমাম ৩২০ ডিপির বাকি জায়গাটুকু পুরোপুরি নিবে, ফলে লিস্ট লম্বা হবে
                 LazyColumn(
                     Modifier
-                        .height(finalListHeight) // নির্দিষ্ট হাইট দেওয়া হলো
+                        .weight(1f) 
                         .padding(vertical = 8.dp),
                     state = listState,
                 ) {
