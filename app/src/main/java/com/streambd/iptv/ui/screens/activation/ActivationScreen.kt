@@ -49,26 +49,26 @@ fun ActivationScreen(
     val serverMode = BuildConfig.ACTIVATION_ENABLED
     var showDevDialog by remember { mutableStateOf(false) }
     var playlistUrl by rememberSaveable { mutableStateOf("") }
-    var epgUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
 
-    // BoxWithConstraints স্ক্রিনের সঠিক মাপ বোঝে, যাতে উপরে-নিচে কিছু কাটা না পড়ে
-    BoxWithConstraints(
+    // EPG URL স্টেট বাদ দেওয়া হয়েছে
+
+    Box(
         Modifier
             .fillMaxSize()
             .background(BgDark)
-            .imePadding() // কিবোর্ড ওপেন হলে জায়গা তৈরি করে
-            .navigationBarsPadding() // নিচের নেভিগেশন বার থেকে বাঁচায়
-            .statusBarsPadding() // উপরের স্ট্যাটাস বার থেকে বাঁচায়
+            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে
+            .navigationBarsPadding()
+            .statusBarsPadding(),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             Modifier
-                .heightIn(min = this.maxHeight) // স্ক্রিনের উচ্চতা পর্যন্ত জায়গা নেয়
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState()) // প্রয়োজনে স্ক্রল করে
-                .padding(horizontal = 32.dp, vertical = 24.dp),
+                .widthIn(max = 550.dp)
+                .verticalScroll(rememberScrollState()) // ছোট স্ক্রিনে স্ক্রল হবে
+                .padding(horizontal = 24.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center // স্ক্রিনের মাঝখানে রাখে
         ) {
             
             // লোগো সেকশন
@@ -89,50 +89,36 @@ fun ActivationScreen(
                     onOpenDev = { showDevDialog = true },
                 )
             } else {
-                Box(Modifier.widthIn(max = 550.dp).fillMaxWidth()) {
-                    Column {
-                        UrlField(
-                            label = "Playlist M3U URL",
-                            placeholder = "Enter your M3U playlist link...",
-                            value = playlistUrl,
-                            imeAction = ImeAction.Next,
-                            modifier = Modifier.focusRequester(fieldFocus),
-                            onValue = { playlistUrl = it },
-                        )
-                        
-                        Spacer(Modifier.height(16.dp))
-                        
-                        UrlField(
-                            label = "EPG URL (optional)",
-                            placeholder = "Enter EPG link (optional)...",
-                            value = epgUrl,
-                            imeAction = ImeAction.Done,
-                            onValue = { epgUrl = it },
-                        )
+                // শুধুমাত্র Playlist URL ফিল্ড
+                UrlField(
+                    label = "Playlist M3U URL",
+                    placeholder = "Enter your M3U playlist link...",
+                    value = playlistUrl,
+                    imeAction = ImeAction.Done,
+                    modifier = Modifier.focusRequester(fieldFocus),
+                    onValue = { playlistUrl = it },
+                )
 
-                        ErrorText(error)
+                ErrorText(error)
 
-                        Spacer(Modifier.height(32.dp)) // বাটনের ওপরে পারফেক্ট গ্যাপ
-                        
-                        ActionButton(
-                            label = "Save & Continue",
-                            enabled = playlistUrl.isNotBlank() && !busy,
-                            busy = busy,
-                            onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
-                        )
-                    }
-                }
+                Spacer(Modifier.height(32.dp))
+                
+                ActionButton(
+                    label = "Save & Continue",
+                    enabled = playlistUrl.isNotBlank() && !busy,
+                    busy = busy,
+                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, "") }, // EPG URL খালি পাঠানো হচ্ছে
+                )
             }
-            Spacer(Modifier.height(16.dp)) // নিচে হালকা ব্যালেন্স রাখার জন্য
         }
     }
 
     if (serverMode && BuildConfig.DEBUG && showDevDialog) {
         DevUrlDialog(
             onDismiss = { showDevDialog = false },
-            onApply = { playlist, epg ->
+            onApply = { playlist, _ ->
                 showDevDialog = false
-                vm.activateWithPlaylistUrl(playlist, epg)
+                vm.activateWithPlaylistUrl(playlist, "")
             },
         )
     }
@@ -249,7 +235,6 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
 @Composable
 private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Unit) {
     var playlistUrl by remember { mutableStateOf("") }
-    var epgUrl by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -268,21 +253,14 @@ private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Uni
                 label = "Playlist M3U URL",
                 placeholder = "Enter M3U Playlist URL...",
                 value = playlistUrl,
-                onValue = { playlistUrl = it },
-            )
-            Spacer(Modifier.height(12.dp))
-            UrlField(
-                label = "EPG URL (optional)",
-                placeholder = "Enter EPG URL (Optional)...",
-                value = epgUrl,
                 imeAction = ImeAction.Done,
-                onValue = { epgUrl = it },
+                onValue = { playlistUrl = it },
             )
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 DialogAction("CANCEL", TextMuted, onDismiss)
                 Spacer(Modifier.width(8.dp))
-                DialogAction("APPLY", Accent) { onApply(playlistUrl, epgUrl) }
+                DialogAction("APPLY", Accent) { onApply(playlistUrl, "") }
             }
         }
     }
