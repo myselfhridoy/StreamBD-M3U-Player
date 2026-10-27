@@ -213,37 +213,37 @@ private fun LivePanel(
     onPlay: (ChannelEntity) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
-        // ১. স্ক্রিনের একদম বাম দিক থেকে ব্যাকগ্রাউন্ড শুরু হবে (নচ থাকলেও সরে যাবে না)
+    Column(Modifier.fillMaxSize()) {
+        // ১. টপ বার (ব্যাকগ্রাউন্ড ফুল স্ক্রিন জুড়ে থাকবে, কিন্তু কন্টেন্ট নচ প্যাডিং পাবে)
         Box(
             Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.5f)
-                .background(PanelScrim)
-        )
-
-        // ২. কন্টেন্ট (ট্যাব এবং লিস্ট) সেফ এরিয়ার ভেতরে থাকবে
-        Column(Modifier.fillMaxSize().displayCutoutPadding()) {
+                .fillMaxWidth()
+                .background(PanelScrim) 
+        ) {
             GroupTabsBar(groups, selected, onSelectGroup)
-            Row(Modifier.weight(1f).fillMaxWidth()) {
-                Box(
-                    Modifier
-                        .weight(0.5f)
-                        .fillMaxHeight()
-                        .consumeTaps(),
-                ) {
-                    ChannelList(
-                        channels = channels,
-                        playingId = playingId,
-                        loading = loading,
-                        emptyText = emptyText,
-                        groupKey = selected,
-                        onPlay = onPlay,
-                        onLongPress = onLongPress,
-                    )
-                }
-                Spacer(Modifier.weight(0.5f))
+        }
+
+        // ২. নিচের অংশ
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            // বাম দিকের চ্যানেল লিস্ট (ব্যাকগ্রাউন্ড নিখুঁতভাবে বাম কোণা থেকে শুরু হবে)
+            Box(
+                Modifier
+                    .weight(0.5f)
+                    .fillMaxHeight()
+                    .background(PanelScrim)
+            ) {
+                ChannelList(
+                    channels = channels,
+                    playingId = playingId,
+                    loading = loading,
+                    emptyText = emptyText,
+                    groupKey = selected,
+                    onPlay = onPlay,
+                    onLongPress = onLongPress,
+                )
             }
+            // ডান দিকের ভিডিও এরিয়া
+            Spacer(Modifier.weight(0.5f))
         }
     }
 }
@@ -253,9 +253,10 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .background(PanelScrim)
             .consumeTaps()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            // displayCutoutPadding() পুরো কলামে না দিয়ে শুধু Row-এর ভেতরে দেওয়া হলো, যাতে লেফট অ্যালাইনমেন্ট ঠিক থাকে
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Top))
+            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item { GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) { onSelect(LIVE_GROUP_FAVORITES) } }
@@ -279,7 +280,7 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp), // Alignment fixed
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
 
@@ -307,8 +308,6 @@ private fun ChannelList(
     }
 
     val listState = rememberLazyListState()
-    // শুরুর সারি: চলমান চ্যানেল (গ্রুপে থাকলে), নইলে প্রথমটা। গ্রুপ বদলালেই কেবল নতুন করে ঠিক হয়,
-    // ফোকাস সরলে নয়, ফলে আগের মতো স্ক্রল ঝাঁকুনি হয় না।
     val startIndex = remember(groupKey) {
         channels.indexOfFirst { it.id == playingId }.coerceAtLeast(0)
     }
@@ -317,12 +316,17 @@ private fun ChannelList(
     LaunchedEffect(groupKey) {
         listState.scrollToItem((startIndex - 2).coerceAtLeast(0))
     }
-    // TV: তালিকা খোলার সময় একবারই ফোকাস (ট্যাবে ঘোরার সময় ফোকাস কাড়ি না)
     LaunchedEffect(Unit) {
         runCatching { startFocus.requestFocus() }
     }
 
-    LazyColumn(Modifier.fillMaxSize(), state = listState) {
+    LazyColumn(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start)), // বাম দিকের নচ প্যাডিং
+        state = listState,
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
         items(channels.size, key = { channels[it].id }) { index ->
             val channel = channels[index]
             ChannelRow(
@@ -351,7 +355,7 @@ private fun ChannelRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .padding(horizontal = 16.dp, vertical = 2.dp) // GroupTab এর সাথে এলাইন করার জন্য ১৬ ডিপি
             .clip(shape)
             .border(2.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.isFocused }
@@ -362,14 +366,14 @@ private fun ChannelRow(
                     onLongClick()
                 },
             )
-            .padding(horizontal = 12.dp, vertical = 6.dp), // Alignment fixed (8+12 = 20dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp), // ভেতরের প্যাডিং (মোট ১৬+১২ = ২৮ ডিপি)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "%02d".format(channel.number),
             color = TextMuted,
             fontSize = 14.sp,
-            modifier = Modifier.width(34.dp),
+            modifier = Modifier.width(32.dp),
         )
         AsyncImage(
             model = channel.logoUrl,
