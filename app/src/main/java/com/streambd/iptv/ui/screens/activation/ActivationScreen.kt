@@ -51,9 +51,9 @@ fun ActivationScreen(
     var showDevDialog by remember { mutableStateOf(false) }
     var playlistUrl by rememberSaveable { mutableStateOf("") }
     var epgUrl by rememberSaveable { mutableStateOf("") }
+    
+    // fieldFocus আর ব্যবহার হচ্ছে না, তাই কিবোর্ড অটো ওপেন হবে না
     val fieldFocus = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
     Box(
         Modifier
@@ -61,20 +61,21 @@ fun ActivationScreen(
             .background(
                 Brush.verticalGradient(listOf(Color(0xFF0B0B0B), BgDark)),
             )
-            .windowInsetsPadding(WindowInsets.safeDrawing), // কিবোর্ড ও সিস্টেম বার থেকে বাঁচতে
+            .windowInsetsPadding(WindowInsets.safeDrawing), // সিস্টেম বার ও নচ থেকে বাঁচতে
         contentAlignment = Alignment.Center,
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .widthIn(max = 420.dp)
+                .widthIn(max = 400.dp) // প্রস্থ একটু কমিয়ে আনা হলো
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp), // প্যাডিং কমানো হলো
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("STREAMBD", color = Accent, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-            Text("IPTV", color = TextPrimary, fontSize = 18.sp)
-            Spacer(Modifier.height(40.dp))
+            // ফন্ট সাইজ ও স্পেসিং কমপ্যাক্ট করা হয়েছে
+            Text("STREAMBD", color = Accent, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            Text("IPTV", color = TextPrimary, fontSize = 16.sp)
+            Spacer(Modifier.height(24.dp)) // ৪০ থেকে কমিয়ে ২৪ করা হলো
 
             if (serverMode) {
                 ServerActivationContent(
@@ -148,32 +149,32 @@ private fun ServerActivationContent(
                 if (devEnabled) Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
                 else Modifier,
             )
-            .padding(16.dp),
+            .padding(14.dp), // প্যাডিং কমানো
     ) {
         Text(
             "Enter the activation code you received with your subscription.",
             color = TextPrimary,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
         )
         if (devEnabled) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text("Debug: long-press this card for advanced setup.", color = TextMuted, fontSize = 11.sp)
         }
     }
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(16.dp)) // স্পেসিং কমানো
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
             .border(2.dp, Accent, RoundedCornerShape(8.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        if (code.isEmpty()) Text("Activation code", color = TextMuted, fontSize = 16.sp)
+        if (code.isEmpty()) Text("Activation code", color = TextMuted, fontSize = 15.sp)
         BasicTextField(
             value = code,
             onValueChange = onCodeChange,
             singleLine = true,
             cursorBrush = SolidColor(Accent),
-            textStyle = TextStyle(color = TextPrimary, fontSize = 16.sp),
+            textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
         )
@@ -181,7 +182,7 @@ private fun ServerActivationContent(
 
     ErrorText(error)
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(16.dp))
     ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
 }
 
@@ -198,17 +199,17 @@ private fun PlaylistSetupContent(
     onEpgChange: (String) -> Unit,
     onSave: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel).padding(16.dp)) {
-        Text("Add your playlist", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel).padding(14.dp)) {
+        Text("Add your playlist", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
         Text(
             "Enter the M3U playlist link you want to watch. An EPG (XMLTV) link is optional.",
             color = TextMuted,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
         )
     }
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(16.dp))
     UrlField(
         label = "Playlist M3U URL",
         value = playlistUrl,
@@ -216,7 +217,7 @@ private fun PlaylistSetupContent(
         modifier = Modifier.focusRequester(fieldFocus),
         onValue = onPlaylistChange,
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(10.dp))
     UrlField(
         label = "EPG URL (optional)",
         value = epgUrl,
@@ -226,7 +227,7 @@ private fun PlaylistSetupContent(
 
     ErrorText(error)
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(16.dp))
     ActionButton("Save & Continue", enabled = playlistUrl.isNotBlank() && !busy, busy = busy, onClick = onSave)
 }
 
@@ -235,8 +236,8 @@ private fun PlaylistSetupContent(
 @Composable
 private fun ErrorText(error: String?) {
     error?.let {
-        Spacer(Modifier.height(10.dp))
-        Text(it, color = Danger, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(it, color = Danger, fontSize = 12.sp)
     }
 }
 
@@ -251,10 +252,10 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = Modifier.fillMaxWidth().height(44.dp), // বাটনের উচ্চতা কিছুটা কমানো হলো
     ) {
-        if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp)
-        else Text(label, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+        else Text(label, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
     }
 }
 
@@ -265,21 +266,21 @@ private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Uni
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().widthIn(max = 460.dp).clip(RoundedCornerShape(8.dp))
-                .background(Panel).padding(20.dp),
+            Modifier.fillMaxWidth().widthIn(max = 400.dp).clip(RoundedCornerShape(8.dp))
+                .background(Panel).padding(16.dp), // প্যাডিং কমানো
         ) {
-            Text("Advanced setup", color = TextPrimary, fontSize = 18.sp)
-            Spacer(Modifier.height(6.dp))
+            Text("Advanced setup", color = TextPrimary, fontSize = 16.sp)
+            Spacer(Modifier.height(4.dp))
             Text(
                 "Skip server activation and load a playlist directly. Debug builds only.",
                 color = TextMuted,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             UrlField("Playlist M3U URL", playlistUrl) { playlistUrl = it }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             UrlField("EPG URL (optional)", epgUrl, imeAction = ImeAction.Done) { epgUrl = it }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 DialogAction("CANCEL", TextMuted, onDismiss)
                 Spacer(Modifier.width(8.dp))
