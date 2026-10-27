@@ -56,9 +56,12 @@ fun ActivationScreen(
     LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
     Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF0B0B0B), BgDark)),
-        ),
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF0B0B0B), BgDark)),
+            )
+            .windowInsetsPadding(WindowInsets.safeDrawing), // কিবোর্ড ও সিস্টেম বার থেকে বাঁচতে
         contentAlignment = Alignment.Center,
     ) {
         Column(
