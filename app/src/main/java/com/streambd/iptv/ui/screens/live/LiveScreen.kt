@@ -1,16 +1,15 @@
 package com.streambd.iptv.ui.screens.live
 
-import androidx.activity.ComponentActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,6 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,52 +27,49 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupEntity
-import com.streambd.iptv.player.PlayerUiState
+import com.streambd.iptv.ui.components.ChannelActionsDialog
+import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.player.FullscreenPlayer
 import com.streambd.iptv.ui.player.PlayerSettingsDialog
-import com.streambd.iptv.ui.player.PlayerSurface
 import com.streambd.iptv.ui.player.TrackSelectionDialog
-import com.streambd.iptv.ui.player.VolumeOverlay
-import com.streambd.iptv.ui.components.PinDialog
-import com.streambd.iptv.ui.components.ChannelActionsDialog
 import com.streambd.iptv.ui.theme.*
-import kotlinx.coroutines.delay
+
+private val PanelScrim = Color.Black.copy(alpha = 0.72f)
 
 @Composable
 fun LiveScreen(
     preselectChannelId: Long = -1L,
+    onBack: () -> Unit = {},
     vm: LiveViewModel = hiltViewModel(),
 ) {
-    val groups   by vm.groups.collectAsStateWithLifecycle()
+    val groups by vm.groups.collectAsStateWithLifecycle()
     val selected by vm.selectedGroup.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
     val allChannels by vm.allChannels.collectAsStateWithLifecycle()
-    val loaded   by vm.loaded.collectAsStateWithLifecycle()
-    val focused  by vm.focusedChannel.collectAsStateWithLifecycle()
-    val state    by vm.playerState.collectAsStateWithLifecycle()
+    val loaded by vm.loaded.collectAsStateWithLifecycle()
+    val state by vm.playerState.collectAsStateWithLifecycle()
     val jumpBuffer by vm.jumpDisplay.collectAsStateWithLifecycle()
-    val unlocked by vm.sessionUnlocked.collectAsStateWithLifecycle()
     val nowNext by vm.nowNext.collectAsStateWithLifecycle()
+    val pendingUnlock by vm.pendingUnlock.collectAsStateWithLifecycle()
 
+    // Search থেকে নির্দিষ্ট চ্যানেল নিয়ে এলে তালিকা বন্ধ, নইলে খোলা অবস্থায় শুরু
+    var listOpen by rememberSaveable { mutableStateOf(preselectChannelId <= 0L) }
     var showTracks by remember { mutableStateOf(false) }
-    var showPlayerSettings by remember { mutableStateOf(false) }
-    var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
+    var showAspect by remember { mutableStateOf(false) }
     var actionsChannelId by remember { mutableStateOf<Long?>(null) }
 
     val emptyText = when {
@@ -83,86 +80,65 @@ fun LiveScreen(
         else -> "No channels in this group."
     }
 
+    LaunchedEffect(Unit) { vm.onEnter() }
+    LaunchedEffect(preselectChannelId) {
+        if (preselectChannelId > 0L) vm.playById(preselectChannelId)
+    }
+
     DisposableEffect(vm) {
+        vm.setJumpEnabled(true)
         onDispose {
             vm.setJumpEnabled(false)
             vm.player.pause()
-        }
-    }
-    LaunchedEffect(state.isFullscreen) {
-        vm.setJumpEnabled(!state.isFullscreen)
-    }
-
-    LaunchedEffect(preselectChannelId) {
-        if (preselectChannelId > 0L) {
-            vm.selectGroup(null)
-            vm.focusChannel(preselectChannelId)
+            vm.player.setFullscreen(false)
         }
     }
 
-    LaunchedEffect(focused?.id, unlocked) {
-        val ch = focused ?: return@LaunchedEffect
-        delay(400L)
-        vm.playPreview(ch)
+    // নতুন চ্যানেল চালু হলে (তালিকা থেকে, নম্বর টিপে, zap) তালিকা বন্ধ
+    var lastPlayingId by remember { mutableStateOf(state.current?.id) }
+    LaunchedEffect(state.current?.id) {
+        val id = state.current?.id
+        if (id != null && id != lastPlayingId) listOpen = false
+        lastPlayingId = id
     }
 
-    val activity = LocalContext.current as? ComponentActivity
-    LaunchedEffect(state.isFullscreen) {
-        val window = activity?.window ?: return@LaunchedEffect
-        val ctrl = WindowCompat.getInsetsController(window, window.decorView)
-        if (state.isFullscreen) {
-            ctrl.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            ctrl.hide(WindowInsetsCompat.Type.systemBars())
-        } else {
-            ctrl.show(WindowInsetsCompat.Type.systemBars())
-        }
-    }
+    val current = allChannels.firstOrNull { it.id == state.current?.id } ?: state.current
+    val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
 
-    Box(Modifier.fillMaxSize().background(BgDark)) {
-        if (!state.isFullscreen) {
-            Row(Modifier.fillMaxSize()) {
-                Column(Modifier.weight(0.45f).fillMaxHeight()) {
-                    GroupTabs(groups, selected, vm::selectGroup)
-                    ChannelList(
-                        channels = channels,
-                        loading = !loaded,
-                        emptyText = emptyText,
-                        focusedId = focused?.id,
-                        onFocus = vm::onFocus,
-                        onSelect = { channel ->
-                            if (channel.isLocked && !unlocked) pendingUnlock = channel
-                            else vm.openFullscreen()
-                        },
-                        onLongPress = { id -> actionsChannelId = id },
-                    )
-                }
-                PreviewPane(state, focused, unlocked, vm, Modifier.weight(0.55f).fillMaxHeight())
-            }
-        }
-
-        if (state.isFullscreen) {
-            val current = allChannels.firstOrNull { it.id == state.current?.id } ?: state.current
-            val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
-            FullscreenPlayer(
-                player = vm.player.player,
-                state = state,
-                isFavorite = current?.isFavorite == true,
-                isLocked = current?.isLocked == true,
-                kindLabel = "LIVE",
-                groupName = groupName,
-                nowNext = nowNext,
-                showNumber = true,
-                onExit = vm::closeFullscreen,
-                onTogglePlay = vm::togglePlayPause,
-                onToggleFavorite = {
-                    current?.let(vm::toggleFavorite)
-                },
-                onToggleLock = { current?.let(vm::toggleLock) },
-                onOpenTracks = { showTracks = true },
-                onOpenSettings = { showPlayerSettings = true },
-            )
-        }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        FullscreenPlayer(
+            player = vm.player.player,
+            state = state,
+            isFavorite = current?.isFavorite == true,
+            isLocked = current?.isLocked == true,
+            kindLabel = "LIVE",
+            groupName = groupName,
+            nowNext = nowNext,
+            showNumber = true,
+            onExit = onBack,
+            onTogglePlay = vm::togglePlayPause,
+            onToggleFavorite = { current?.let(vm::toggleFavorite) },
+            onToggleLock = { current?.let(vm::toggleLock) },
+            onOpenTracks = { showTracks = true },
+            onOpenSettings = { showAspect = true },
+            onStep = vm::step,
+            onRetry = vm::retry,
+            listOpen = listOpen,
+            onListOpenChange = { listOpen = it },
+            listContent = {
+                LivePanel(
+                    groups = groups,
+                    selected = selected,
+                    onSelectGroup = vm::selectGroup,
+                    channels = channels,
+                    playingId = state.current?.id,
+                    loading = !loaded,
+                    emptyText = emptyText,
+                    onPlay = vm::requestPlay,
+                    onLongPress = { id -> actionsChannelId = id },
+                )
+            },
+        )
 
         if (jumpBuffer.isNotEmpty()) {
             Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopEnd) {
@@ -170,15 +146,14 @@ fun LiveScreen(
                     text = jumpBuffer,
                     color = Accent,
                     fontSize = 32.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
                         .background(Panel.copy(alpha = 0.92f))
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
         }
     }
-
-    if (state.volumeOverlayVisible) VolumeOverlay(level = state.volumeLevel)
 
     if (showTracks) {
         TrackSelectionDialog(
@@ -192,23 +167,20 @@ fun LiveScreen(
         )
     }
 
-    if (showPlayerSettings) {
+    if (showAspect) {
         PlayerSettingsDialog(
             currentAspect = state.aspectMode,
             onAspectChange = vm::setAspectMode,
-            onDismiss = { showPlayerSettings = false },
+            onDismiss = { showAspect = false },
         )
     }
 
-    pendingUnlock?.let { target ->
+    if (pendingUnlock != null) {
         PinDialog(
             title = "Enter PIN",
             verify = vm::verifyPin,
-            onSuccess = {
-                pendingUnlock = null
-                vm.unlockAndPlay(target)
-            },
-            onDismiss = { pendingUnlock = null },
+            onSuccess = vm::confirmUnlock,
+            onDismiss = vm::dismissUnlock,
         )
     }
 
@@ -223,26 +195,60 @@ fun LiveScreen(
     }
 }
 
-/* ------------------------------ group tabs ------------------------------ */
+/** ট্যাপ খেয়ে ফেলে, যাতে প্যানেলের ফাঁকা জায়গায় ট্যাপে তালিকা বন্ধ না হয়। */
+private fun Modifier.consumeTaps(): Modifier = pointerInput(Unit) { detectTapGestures { } }
+
+/* ------------------------------- panel -------------------------------- */
+
+/** উপরে পুরো প্রস্থের গ্রুপ ট্যাব, নিচে বাম অর্ধেকে চ্যানেল তালিকা, ডান অর্ধেকে ভিডিও। */
+@Composable
+private fun LivePanel(
+    groups: List<GroupEntity>,
+    selected: Long?,
+    onSelectGroup: (Long?) -> Unit,
+    channels: List<ChannelEntity>,
+    playingId: Long?,
+    loading: Boolean,
+    emptyText: String,
+    onPlay: (ChannelEntity) -> Unit,
+    onLongPress: (Long) -> Unit,
+) {
+    Column(Modifier.fillMaxSize().displayCutoutPadding()) {
+        GroupTabsBar(groups, selected, onSelectGroup)
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Box(
+                Modifier
+                    .weight(0.5f)
+                    .fillMaxHeight()
+                    .background(PanelScrim)
+                    .consumeTaps(),
+            ) {
+                ChannelList(
+                    channels = channels,
+                    playingId = playingId,
+                    loading = loading,
+                    emptyText = emptyText,
+                    groupKey = selected,
+                    onPlay = onPlay,
+                    onLongPress = onLongPress,
+                )
+            }
+            Spacer(Modifier.weight(0.5f))
+        }
+    }
+}
 
 @Composable
-private fun GroupTabs(
-    groups: List<GroupEntity>,
-    selectedId: Long?,
-    onSelect: (Long?) -> Unit,
-) {
+private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect: (Long?) -> Unit) {
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .background(TopBar)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .background(PanelScrim)
+            .consumeTaps()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        item {
-            GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) {
-                onSelect(LIVE_GROUP_FAVORITES)
-            }
-        }
+        item { GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) { onSelect(LIVE_GROUP_FAVORITES) } }
         item { GroupTab("All", selectedId == null) { onSelect(null) } }
         items(groups, key = { it.id }) { g ->
             GroupTab(g.name, selectedId == g.id) { onSelect(g.id) }
@@ -253,17 +259,14 @@ private fun GroupTabs(
 @Composable
 private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val color = when {
-        selected -> Accent
-        focused  -> TextPrimary
-        else     -> TextMuted
-    }
     Text(
         text = label,
-        color = color,
-        fontSize = 15.sp,
+        color = if (selected) Accent else if (focused) TextPrimary else TextMuted,
+        fontSize = 14.sp,
+        maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
+            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -275,49 +278,49 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ChannelList(
     channels: List<ChannelEntity>,
+    playingId: Long?,
     loading: Boolean,
     emptyText: String,
-    focusedId: Long?,
-    onFocus: (Long) -> Unit,
-    onSelect: (ChannelEntity) -> Unit,
+    groupKey: Long?,
+    onPlay: (ChannelEntity) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
     if (channels.isEmpty()) {
-        Box(
-            Modifier.fillMaxSize().padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             if (loading) {
                 CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
             } else {
-                Text(
-                    text = emptyText,
-                    color = TextMuted,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                )
+                Text(emptyText, color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
             }
         }
         return
     }
 
     val listState = rememberLazyListState()
-    val focusIndex = channels.indexOfFirst { it.id == focusedId }.let { if (it >= 0) it else 0 }
-    val rowRequester = remember(focusedId, channels.first().id) { FocusRequester() }
-    LaunchedEffect(focusIndex, channels.first().id) {
-        listState.scrollToItem(focusIndex)
-        runCatching { rowRequester.requestFocus() }
+    // শুরুর সারি: চলমান চ্যানেল (গ্রুপে থাকলে), নইলে প্রথমটা। গ্রুপ বদলালেই কেবল নতুন করে ঠিক হয়,
+    // ফোকাস সরলে নয়, ফলে আগের মতো স্ক্রল ঝাঁকুনি হয় না।
+    val startIndex = remember(groupKey) {
+        channels.indexOfFirst { it.id == playingId }.coerceAtLeast(0)
+    }
+    val startFocus = remember(groupKey) { FocusRequester() }
+
+    LaunchedEffect(groupKey) {
+        listState.scrollToItem((startIndex - 2).coerceAtLeast(0))
+    }
+    // TV: তালিকা খোলার সময় একবারই ফোকাস (ট্যাবে ঘোরার সময় ফোকাস কাড়ি না)
+    LaunchedEffect(Unit) {
+        runCatching { startFocus.requestFocus() }
     }
 
     LazyColumn(Modifier.fillMaxSize(), state = listState) {
-        itemsIndexed(channels, key = { _, c -> c.id }) { index, ch ->
+        items(channels.size, key = { channels[it].id }) { index ->
+            val channel = channels[index]
             ChannelRow(
-                channel = ch,
-                focused = ch.id == focusedId,
-                onFocus = { onFocus(ch.id) },
-                onSelect = { onSelect(ch) },
-                onLongPress = { onLongPress(ch.id) },
-                modifier = if (index == focusIndex) Modifier.focusRequester(rowRequester) else Modifier,
+                channel = channel,
+                playing = channel.id == playingId,
+                onClick = { onPlay(channel) },
+                onLongClick = { onLongPress(channel.id) },
+                modifier = if (index == startIndex) Modifier.focusRequester(startFocus) else Modifier,
             )
         }
     }
@@ -327,105 +330,59 @@ private fun ChannelList(
 @Composable
 private fun ChannelRow(
     channel: ChannelEntity,
-    focused: Boolean,
-    onFocus: () -> Unit,
-    onSelect: () -> Unit,
-    onLongPress: () -> Unit,
+    playing: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
-    val borderColor = if (focused) Accent else Color.Transparent
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (focused) Panel else Color.Transparent)
-            .border(2.dp, borderColor, RoundedCornerShape(8.dp))
-            .onFocusChanged { if (it.isFocused) onFocus() }
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(shape)
+            .border(2.dp, if (focused) Accent else Color.Transparent, shape)
+            .onFocusChanged { focused = it.isFocused }
             .combinedClickable(
-                onClick = {
-                    onFocus()
-                    onSelect()
-                },
+                onClick = onClick,
                 onLongClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onFocus()
-                    onLongPress()
+                    onLongClick()
                 },
             )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "%02d".format(channel.number),
             color = TextMuted,
-            fontSize = 16.sp,
-            modifier = Modifier.width(36.dp),
+            fontSize = 14.sp,
+            modifier = Modifier.width(34.dp),
         )
         AsyncImage(
             model = channel.logoUrl,
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = channel.name,
+            color = if (playing) Accent else TextPrimary,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
         if (channel.isLocked) {
             Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.Filled.Lock,
-                contentDescription = "Locked",
-                tint = Accent,
-                modifier = Modifier.size(14.dp),
-            )
+            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Accent, modifier = Modifier.size(14.dp))
         }
         if (channel.isFavorite) {
             Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.Filled.Favorite,
-                contentDescription = "Favorite",
-                tint = Accent,
-                modifier = Modifier.size(14.dp),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = channel.name,
-            color = TextPrimary,
-            fontSize = 16.sp,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/* ------------------------------ preview -------------------------------- */
-
-@Composable
-private fun PreviewPane(
-    state: PlayerUiState,
-    focused: ChannelEntity?,
-    unlocked: Boolean,
-    vm: LiveViewModel,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-        val lockedHere = focused?.isLocked == true && !unlocked
-        if (lockedHere) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.Lock, contentDescription = null, tint = Accent, modifier = Modifier.size(48.dp))
-                Spacer(Modifier.height(12.dp))
-                Text("Locked channel", color = TextMuted, fontSize = 14.sp)
-                Spacer(Modifier.height(4.dp))
-                Text("Enter PIN to watch", color = TextMuted, fontSize = 12.sp)
-            }
-        } else if (state.current == null) {
-            Text("Select a channel", color = TextMuted)
-        } else {
-            PlayerSurface(
-                player = vm.player.player,
-                aspectMode = state.aspectMode,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = Accent, modifier = Modifier.size(14.dp))
         }
     }
 }
