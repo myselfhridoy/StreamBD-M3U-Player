@@ -52,69 +52,68 @@ fun ActivationScreen(
     var epgUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
 
-    // Box + Center Alignment ব্যবহার করা হয়েছে যাতে স্ক্রল ছাড়াই ফর্ম স্ক্রিনের মাঝখানে ফিট হয়ে থাকে
-    Box(
+    Column(
         Modifier
             .fillMaxSize()
             .background(BgDark)
-            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে
-            .navigationBarsPadding(),
-        contentAlignment = Alignment.Center
+            .imePadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 32.dp, vertical = 16.dp), // বাইরের প্যাডিং কমানো হয়েছে
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center // স্ক্রিনের মাঝখানে রাখার জন্য
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .widthIn(max = 600.dp) // বড় স্ক্রিনে চওড়া দেখাবে
-                .verticalScroll(rememberScrollState()) // কিবোর্ড ওপেন হলে প্রয়োজনে স্ক্রল হবে
-                .padding(horizontal = 32.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // লোগো সেকশন (মার্জিন কমিয়ে স্ক্রিনের সাথে ফিট করা হয়েছে)
-            Text("STREAMBD", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-            Text("IPTV", color = TextPrimary, fontSize = 16.sp)
-            
-            Spacer(Modifier.height(32.dp)) // উপরে-নিচে গ্যাপ অ্যাডজাস্ট করা হয়েছে
+        
+        // লোগো সেকশন
+        Text("STREAMBD", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+        Text("IPTV", color = TextPrimary, fontSize = 16.sp)
+        
+        Spacer(Modifier.height(32.dp)) // ৩২ থেকে কমিয়ে ২৪ করা হলো
 
-            if (serverMode) {
-                ServerActivationContent(
-                    code = code,
-                    busy = busy,
-                    error = error,
-                    devEnabled = BuildConfig.DEBUG,
-                    fieldFocus = fieldFocus,
-                    onCodeChange = vm::setCode,
-                    onActivate = vm::activate,
-                    onOpenDev = { showDevDialog = true },
-                )
-            } else {
-                UrlField(
-                    label = "Playlist M3U URL",
-                    placeholder = "Enter your M3U playlist link...",
-                    value = playlistUrl,
-                    imeAction = ImeAction.Next,
-                    modifier = Modifier.focusRequester(fieldFocus),
-                    onValue = { playlistUrl = it },
-                )
-                
-                Spacer(Modifier.height(20.dp)) // ইনপুট বক্সের মাঝের গ্যাপ
-                
-                UrlField(
-                    label = "EPG URL (optional)",
-                    placeholder = "Enter EPG link (optional)...",
-                    value = epgUrl,
-                    imeAction = ImeAction.Done,
-                    onValue = { epgUrl = it },
-                )
+        if (serverMode) {
+            ServerActivationContent(
+                code = code,
+                busy = busy,
+                error = error,
+                devEnabled = BuildConfig.DEBUG,
+                fieldFocus = fieldFocus,
+                onCodeChange = vm::setCode,
+                onActivate = vm::activate,
+                onOpenDev = { showDevDialog = true },
+            )
+        } else {
+            Box(Modifier.widthIn(max = 600.dp)) {
+                Column {
+                    UrlField(
+                        label = "Playlist M3U URL",
+                        placeholder = "Enter your M3U playlist link...",
+                        value = playlistUrl,
+                        imeAction = ImeAction.Next,
+                        modifier = Modifier.focusRequester(fieldFocus),
+                        onValue = { playlistUrl = it },
+                    )
+                    
+                    Spacer(Modifier.height(16.dp)) // ইনপুট বক্সের মাঝের গ্যাপ কমানো হয়েছে
+                    
+                    UrlField(
+                        label = "EPG URL (optional)",
+                        placeholder = "Enter EPG link (optional)...",
+                        value = epgUrl,
+                        imeAction = ImeAction.Done,
+                        onValue = { epgUrl = it },
+                    )
 
-                ErrorText(error)
+                    ErrorText(error)
 
-                Spacer(Modifier.height(32.dp)) // বাটনের আগে গ্যাপ
-                ActionButton(
-                    label = "Save & Continue",
-                    enabled = playlistUrl.isNotBlank() && !busy,
-                    busy = busy,
-                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
-                )
+                    Spacer(Modifier.height(24.dp)) // বাটনের ওপরের গ্যাপ কমানো হয়েছে
+                    
+                    ActionButton(
+                        label = "Save & Continue",
+                        enabled = playlistUrl.isNotBlank() && !busy,
+                        busy = busy,
+                        onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
+                    )
+                }
             }
         }
     }
@@ -158,47 +157,51 @@ private fun ServerActivationContent(
     onActivate: () -> Unit,
     onOpenDev: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel)
-            .then(
-                if (devEnabled) Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
-                else Modifier,
-            )
-            .padding(16.dp),
-    ) {
-        Text(
-            "Enter the activation code you received with your subscription.",
-            color = TextPrimary,
-            fontSize = 14.sp,
-        )
-        if (devEnabled) {
-            Spacer(Modifier.height(4.dp))
-            Text("Debug: long-press this card for advanced setup.", color = TextMuted, fontSize = 11.sp)
+    Box(Modifier.widthIn(max = 600.dp)) {
+        Column {
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel)
+                    .then(
+                        if (devEnabled) Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
+                        else Modifier,
+                    )
+                    .padding(16.dp),
+            ) {
+                Text(
+                    "Enter the activation code you received with your subscription.",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                )
+                if (devEnabled) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Debug: long-press this card for advanced setup.", color = TextMuted, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
+                    .border(2.dp, Accent, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                if (code.isEmpty()) Text("Activation code", color = TextMuted.copy(alpha = 0.5f), fontSize = 15.sp)
+                BasicTextField(
+                    value = code,
+                    onValueChange = onCodeChange,
+                    singleLine = true,
+                    cursorBrush = SolidColor(Accent),
+                    textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
+                )
+            }
+
+            ErrorText(error)
+
+            Spacer(Modifier.height(24.dp))
+            ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
         }
     }
-
-    Spacer(Modifier.height(20.dp))
-    Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
-            .border(2.dp, Accent, RoundedCornerShape(8.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        if (code.isEmpty()) Text("Activation code", color = TextMuted.copy(alpha = 0.5f), fontSize = 15.sp)
-        BasicTextField(
-            value = code,
-            onValueChange = onCodeChange,
-            singleLine = true,
-            cursorBrush = SolidColor(Accent),
-            textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
-        )
-    }
-
-    ErrorText(error)
-
-    Spacer(Modifier.height(24.dp))
-    ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
 }
 
 /* ------------------------------ shared bits ------------------------------ */
@@ -282,10 +285,11 @@ private fun UrlField(
     onValue: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
-        Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
                 .border(1.dp, Divider, RoundedCornerShape(8.dp))
+                // ইনপুট বক্সের উচ্চতা এবং প্যাডিং স্ট্যান্ডার্ড করা হয়েছে
                 .padding(horizontal = 16.dp, vertical = 14.dp), 
         ) {
             if (value.isEmpty()) {
