@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -109,21 +111,20 @@ fun TrackSelectionDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        BoxWithConstraints(
+        Box(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing) // নেভিগেশন বার থেকে দূরে রাখবে
+                // সিস্টেম নেভিগেশন বার ও নচ থেকে বাঁচতে windowInsetsPadding
+                .windowInsetsPadding(WindowInsets.safeDrawing) 
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            // স্ক্রিনের সর্বোচ্চ উচ্চতার চেয়ে যেন বড় না হয়
-            val maxAvailableHeight = maxHeight - 32.dp
-            
             Column(
                 Modifier
-                    .width(340.dp) // ZalTV এর মত সরু করা হয়েছে (আগে ৪৮০ ছিল)
-                    .heightIn(min = 320.dp, max = maxAvailableHeight) // মিনিমাম ৩২০ ডিপি লম্বা হবে
-                    .background(Panel) 
+                    .width(340.dp) // ZalTV এর মত সরু
+                    .heightIn(min = 280.dp, max = 340.dp) // লম্বাটে এবং ৪-৫টি অপশন দেখানোর জন্য
+                    .background(Panel)
+                    .clip(RoundedCornerShape(6.dp)) // সামান্য রাউন্ডেড কর্নার
             ) {
                 Text(
                     "Select tracks", 
@@ -137,10 +138,11 @@ fun TrackSelectionDialog(
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
                 
-                // weight(1f) মিনিমাম ৩২০ ডিপির বাকি জায়গাটুকু পুরোপুরি নিবে, ফলে লিস্ট লম্বা হবে
+                // weight(1f) নিশ্চিত করবে যে লিস্টটি বাকি জায়গাটুকু পুরোপুরি নিবে
+                // এবং নিচের বাটনগুলো কখনো কাটা পড়বে না
                 LazyColumn(
                     Modifier
-                        .weight(1f) 
+                        .weight(1f)
                         .padding(vertical = 8.dp),
                     state = listState,
                 ) {
