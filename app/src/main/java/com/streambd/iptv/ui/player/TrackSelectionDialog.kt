@@ -58,7 +58,7 @@ fun TrackSelectionDialog(
     onConfirm: (video: TrackChoice, audio: TrackChoice) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var tab by remember { mutableStateOf(0) } // 0 = VIDEO, 1 = AUDIO
+    var tab by remember { mutableStateOf(0) }
     
     fun initialChoice(key: String?, groups: List<Tracks.Group>): TrackChoice {
         if (key == "") return TrackChoice.None
@@ -114,23 +114,23 @@ fun TrackSelectionDialog(
         Box(
             Modifier
                 .fillMaxSize()
-                // সিস্টেম নেভিগেশন বার ও নচ থেকে বাঁচতে windowInsetsPadding
                 .windowInsetsPadding(WindowInsets.safeDrawing) 
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 Modifier
-                    .width(340.dp) // ZalTV এর মত সরু
-                    .heightIn(min = 280.dp, max = 340.dp) // লম্বাটে এবং ৪-৫টি অপশন দেখানোর জন্য
+                    .width(340.dp) 
+                    .heightIn(min = 280.dp, max = 340.dp) 
                     .background(Panel)
-                    .clip(RoundedCornerShape(6.dp)) // সামান্য রাউন্ডেড কর্নার
+                    .clip(RoundedCornerShape(6.dp)) 
             ) {
+                // Title padding reduced
                 Text(
                     "Select tracks", 
                     color = TextPrimary, 
                     fontSize = 18.sp, 
-                    modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
                 )
                 
                 Row(Modifier.fillMaxWidth()) {
@@ -138,12 +138,11 @@ fun TrackSelectionDialog(
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
                 
-                // weight(1f) নিশ্চিত করবে যে লিস্টটি বাকি জায়গাটুকু পুরোপুরি নিবে
-                // এবং নিচের বাটনগুলো কখনো কাটা পড়বে না
+                // LazyColumn padding reduced
                 LazyColumn(
                     Modifier
                         .weight(1f)
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 4.dp),
                     state = listState,
                 ) {
                     itemsIndexed(options) { index, opt ->
@@ -157,12 +156,13 @@ fun TrackSelectionDialog(
                     }
                 }
                 
+                // Bottom button row padding reduced
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     DialogTextButton("CANCEL", TextMuted, onDismiss)
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(8.dp)) // Gap between buttons reduced
                     DialogTextButton("CONFIRM", Accent) { onConfirm(videoChoice, audioChoice) }
                 }
             }
