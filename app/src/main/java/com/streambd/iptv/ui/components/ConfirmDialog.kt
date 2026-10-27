@@ -1,16 +1,17 @@
 package com.streambd.iptv.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.streambd.iptv.ui.theme.*
 
 @Composable
@@ -23,25 +24,42 @@ fun ConfirmDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onCancel) {
-        Column(
-            Modifier
-                .width(360.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Panel)
-                .padding(20.dp),
+    val initialFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { initialFocus.requestFocus() } }
+
+    AppDialog(onDismiss = onCancel, width = 380.dp) {
+        Text(
+            title,
+            color = TextPrimary,
+            fontSize = 18.sp,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp),
+        )
+        Text(
+            body,
+            color = TextMuted,
+            fontSize = 14.sp,
+            modifier = Modifier
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .heightIn(max = 140.dp)
+                .verticalScroll(rememberScrollState()),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.End,
         ) {
-            Text(title, color = TextPrimary, fontSize = 18.sp)
-            Spacer(Modifier.height(10.dp))
-            Text(body, color = TextMuted, fontSize = 14.sp)
-            Spacer(Modifier.height(18.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onCancel) { Text(cancelLabel, color = TextMuted) }
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onConfirm) {
-                    Text(confirmLabel, color = if (confirmIsDangerous) Danger else Accent)
-                }
-            }
+            AppDialogButton(
+                label = cancelLabel,
+                color = TextMuted,
+                modifier = if (confirmIsDangerous) Modifier.focusRequester(initialFocus) else Modifier,
+                onClick = onCancel,
+            )
+            Spacer(Modifier.width(8.dp))
+            AppDialogButton(
+                label = confirmLabel,
+                color = if (confirmIsDangerous) Danger else Accent,
+                modifier = if (!confirmIsDangerous) Modifier.focusRequester(initialFocus) else Modifier,
+                onClick = onConfirm,
+            )
         }
     }
 }
