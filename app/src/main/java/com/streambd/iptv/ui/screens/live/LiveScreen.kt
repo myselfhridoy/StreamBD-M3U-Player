@@ -26,7 +26,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -210,27 +209,25 @@ private fun LivePanel(
     onLongPress: (Long) -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        // ZalTV স্টাইল গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড (বাম দিক গাঢ়, ডান দিকে ফেড)
+        // ১. বাম দিকের চ্যানেল লিস্টের সলিড ব্যাকগ্রাউন্ড (স্ক্রিনের একদম বাম থেকে শুরু)
         Box(
             Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(0.5f)
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.85f),
-                            Color.Black.copy(alpha = 0.4f)
-                        )
-                    )
-                )
+                .background(Color.Black.copy(alpha = 0.85f))
         )
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Top))
-        ) {
-            GroupTabsBar(groups, selected, onSelectGroup)
+        Column(Modifier.fillMaxSize()) {
+            // ২. টপ বার (গ্রুপ ট্যাব) এর সলিড ব্যাকগ্রাউন্ড (পুরো স্ক্রিন জুড়ে)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.85f)) 
+            ) {
+                GroupTabsBar(groups, selected, onSelectGroup)
+            }
+
+            // ৩. চ্যানেল লিস্ট (ব্যাকগ্রাউন্ড ইতিমধ্যেই দেওয়া আছে, তাই এখানে ট্রান্সপারেন্ট)
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Box(
                     Modifier
@@ -260,8 +257,10 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
         modifier = Modifier
             .fillMaxWidth()
             .consumeTaps()
-            .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+            // Start প্যাডিং বাদ দেওয়া হয়েছে যাতে একদম বামে থাকে, তবে টপ প্যাডিং রাখা হয়েছে সেফ এরিয়ার জন্য
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+            .padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item { GroupTab("All", selectedId == null) { onSelect(null) } }
         item { GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) { onSelect(LIVE_GROUP_FAVORITES) } }
@@ -275,7 +274,7 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
 private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val color = when {
-        selected -> Accent // ZalTV-এর সায়ান কালারের মতো
+        selected -> Accent 
         focused -> TextPrimary
         else -> TextMuted
     }
@@ -290,7 +289,7 @@ private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(
             text = label,
             color = color,
-            fontSize = 14.sp,
+            fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
         )
@@ -371,14 +370,14 @@ private fun ChannelRow(
     val haptics = LocalHapticFeedback.current
     var focused by remember { mutableStateOf(false) }
     
-    // ZalTV স্টাইল বর্ডার ও ব্যাকগ্রাউন্ড
-    val backgroundColor = if (focused) Color.White.copy(alpha = 0.1f) else Color.Transparent
+    val backgroundColor = if (focused) Color.White.copy(alpha = 0.15f) else Color.Transparent
     val borderColor = if (focused) Accent else Color.Transparent
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 2.dp)
+            // প্যাডিং ১২ ডিপি করা হয়েছে যাতে "All" ট্যাবের সাথে একদম পারফেক্টলি লাইন ম্যাচ করে
+            .padding(horizontal = 12.dp, vertical = 2.dp) 
             .clip(RoundedCornerShape(6.dp))
             .background(backgroundColor)
             .border(1.dp, borderColor, RoundedCornerShape(6.dp))
@@ -390,7 +389,7 @@ private fun ChannelRow(
                     onLongClick()
                 },
             )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // নাম্বার
@@ -401,7 +400,7 @@ private fun ChannelRow(
             modifier = Modifier.width(28.dp),
         )
         
-        // লোগো (সাইজ ZalTV এর মতো ছোট করা হয়েছে)
+        // লোগো
         AsyncImage(
             model = channel.logoUrl,
             contentDescription = null,
