@@ -116,11 +116,16 @@ fun TrackSelectionDialog(
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
+            // ZalTV এর মত লম্বাটে করতে মিনিমাম হাইট 300dp নেওয়া হয়েছে
+            // তবে স্ক্রিন ছোট হলে সেটি স্ক্রিনের মাপে Fit হয়ে যাবে
+            val targetHeight = 300.dp
+            val availableHeight = maxHeight - 170.dp
+            val finalListHeight = targetHeight.coerceAtMost(availableHeight).coerceAtLeast(100.dp)
+
             Column(
                 Modifier
                     .width(480.dp)
-                    // maxHeight নিশ্চিত করবে ডায়ালগ স্ক্রিনের বাইরে যাবে না
-                    .heightIn(max = maxHeight) 
+                    .heightIn(max = maxHeight)
                     .background(Panel) 
             ) {
                 Text(
@@ -135,11 +140,9 @@ fun TrackSelectionDialog(
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
                 
-                // weight(1f) দেওয়ার কারণে লিস্টটি বাকি জায়গাটুকু নিবে এবং স্ক্রল হবে, 
-                // নিচের CANCEL/CONFIRM বাটন কখনো কাটা পড়বে না
                 LazyColumn(
                     Modifier
-                        .weight(1f)
+                        .height(finalListHeight) // নির্দিষ্ট হাইট দেওয়া হলো
                         .padding(vertical = 8.dp),
                     state = listState,
                 ) {
