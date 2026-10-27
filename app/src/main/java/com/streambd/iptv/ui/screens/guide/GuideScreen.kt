@@ -20,6 +20,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -56,6 +58,7 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     val hourOffset by vm.hourOffsetFlow.collectAsStateWithLifecycle()
     var showGroupDialog by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var picked by remember { mutableStateOf<Pair<ChannelEntity, ProgramEntity>?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -63,6 +66,7 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
             now = System.currentTimeMillis()
         }
     }
+    LaunchedEffect(selected) { picked = null }
 
     val shiftMs = settings.epgTimeShiftMins * 60_000L
     val windowStart = remember(now, hourOffset) {
@@ -72,11 +76,17 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     val windowEnd = windowStart + SLOT_COUNT * SLOT_MS
     val horizontalScroll = rememberScrollState()
 
-    Column(Modifier.fillMaxSize().background(BgDark)) {
+    val headerChannel = picked?.first ?: channels.firstOrNull()
+    val headerProgram = picked?.second ?: headerChannel?.tvgId
+        ?.let { programs[it] }.orEmpty()
+        .firstOrNull { now >= it.start + shiftMs && now < it.end + shiftMs }
+
+    Column(Modifier.fillMaxSize().background(BgDark).displayCutoutPadding()) {
         TopBar(now, onBack)
         InfoHeader(
-            programs = channels.firstOrNull()?.tvgId?.let { programs[it] }.orEmpty(),
-            now = now,
+            channel = headerChannel,
+            program = headerProgram,
+            noGuideData = programs.isEmpty(),
             windowStart = windowStart,
             windowEnd = windowEnd,
             shiftMs = shiftMs,
@@ -97,7 +107,7 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
             }
         }
 
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().navigationBarsPadding()) {
             items(channels, key = { it.id }) { channel ->
                 Row(Modifier.fillMaxWidth().height(ROW_HEIGHT)) {
                     ChannelCell(channel)
@@ -107,6 +117,7 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
                             windowStart = windowStart,
                             shiftMs = shiftMs,
                             now = now,
+                            onPick = { program -> picked = channel to program },
                         )
                     }
                 }
@@ -135,7 +146,11 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
 private fun TopBar(now: Long, onBack: () -> Unit) {
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     Row(
-        Modifier.fillMaxWidth().background(TopBar).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier
+            .fillMaxWidth()
+            .background(TopBar)
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -154,14 +169,14 @@ private fun TopBar(now: Long, onBack: () -> Unit) {
 
 @Composable
 private fun InfoHeader(
-    programs: List<ProgramEntity>,
-    now: Long,
+    channel: ChannelEntity?,
+    program: ProgramEntity?,
+    noGuideData: Boolean,
     windowStart: Long,
     windowEnd: Long,
     shiftMs: Long,
 ) {
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
-    val current = programs.firstOrNull { now >= it.start + shiftMs && now < it.end + shiftMs }
     Row(
         Modifier.fillMaxWidth().background(Panel).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -171,22 +186,48 @@ private fun InfoHeader(
                 .border(1.dp, Divider, RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text("?", color = TextMuted, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (channel?.logoUrl != null) {
+                AsyncImage(
+                    model = channel.logoUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(4.dp),
+                )
+            } else {
+                Text("?", color = TextMuted, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            }
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                current?.title ?: "No information available",
+                program?.title ?: "No information available",
                 color = TextPrimary,
                 fontSize = 16.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                "${timeFormat.format(Date(windowStart))} – ${timeFormat.format(Date(windowEnd))}",
-                color = TextMuted,
-                fontSize = 12.sp,
-            )
+            val range = if (program != null) {
+                "${timeFormat.format(Date(program.start + shiftMs))} – ${timeFormat.format(Date(program.end + shiftMs))}"
+            } else {
+                "${timeFormat.format(Date(windowStart))} – ${timeFormat.format(Date(windowEnd))}"
+            }
+            Text(range, color = TextMuted, fontSize = 12.sp)
+            when {
+                program != null && program.desc.isNotBlank() -> Text(
+                    program.desc,
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                program == null && noGuideData -> Text(
+                    "No guide data loaded. Check the playlist's tvg-id values, then refresh the playlist in Settings.",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -220,8 +261,13 @@ private fun ControlsRow(
 
 @Composable
 private fun PillButton(onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(Surface1).clickable(onClick = onClick)
+        Modifier.clip(shape).background(Surface1)
+            .border(2.dp, if (focused) Accent else Color.Transparent, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -230,11 +276,15 @@ private fun PillButton(onClick: () -> Unit, content: @Composable RowScope.() -> 
 
 @Composable
 private fun IconChip(icon: ImageVector, description: String, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
     Icon(
         imageVector = icon,
         contentDescription = description,
         tint = TextPrimary,
-        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Surface1)
+        modifier = Modifier.size(36.dp).clip(shape).background(Surface1)
+            .border(2.dp, if (focused) Accent else Color.Transparent, shape)
+            .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick).padding(6.dp),
     )
 }
@@ -274,7 +324,13 @@ private fun ChannelCell(channel: ChannelEntity) {
 }
 
 @Composable
-private fun ProgramStrip(programs: List<ProgramEntity>, windowStart: Long, shiftMs: Long, now: Long) {
+private fun ProgramStrip(
+    programs: List<ProgramEntity>,
+    windowStart: Long,
+    shiftMs: Long,
+    now: Long,
+    onPick: (ProgramEntity) -> Unit,
+) {
     val density = LocalDensity.current
     val slotWidthPx = with(density) { SLOT_WIDTH.toPx() }
     val totalWidthPx = slotWidthPx * SLOT_COUNT
@@ -290,18 +346,16 @@ private fun ProgramStrip(programs: List<ProgramEntity>, windowStart: Long, shift
             val clippedWidth = clippedRight - clippedLeft
             if (clippedWidth <= 1f) return@forEach
 
-            val isCurrent = now >= adjustedStart && now < adjustedEnd
-            Box(
-                Modifier.offset(x = with(density) { clippedLeft.toDp() })
-                    .width(with(density) { clippedWidth.toDp() }).fillMaxHeight()
-                    .padding(vertical = 6.dp, horizontal = 2.dp).clip(RoundedCornerShape(4.dp))
-                    .background(if (isCurrent) Accent.copy(alpha = 0.18f) else Surface1)
-                    .border(1.dp, if (isCurrent) Accent else Divider, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(program.title, color = TextPrimary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
+            ProgramCell(
+                program = program,
+                isCurrent = now >= adjustedStart && now < adjustedEnd,
+                modifier = Modifier
+                    .offset(x = with(density) { clippedLeft.toDp() })
+                    .width(with(density) { clippedWidth.toDp() })
+                    .fillMaxHeight()
+                    .padding(vertical = 6.dp, horizontal = 2.dp),
+                onPick = { onPick(program) },
+            )
         }
 
         val nowPosition = ((now - windowStart).toFloat() / SLOT_MS) * slotWidthPx
@@ -315,6 +369,36 @@ private fun ProgramStrip(programs: List<ProgramEntity>, windowStart: Long, shift
                     .size(8.dp).clip(RoundedCornerShape(4.dp)).background(Accent),
             )
         }
+    }
+}
+
+@Composable
+private fun ProgramCell(
+    program: ProgramEntity,
+    isCurrent: Boolean,
+    modifier: Modifier,
+    onPick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(4.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .background(if (isCurrent) Accent.copy(alpha = 0.18f) else Surface1)
+            .border(
+                if (focused) 2.dp else 1.dp,
+                if (focused || isCurrent) Accent else Divider,
+                shape,
+            )
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onPick()
+            }
+            .clickable(onClick = onPick)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(program.title, color = TextPrimary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
