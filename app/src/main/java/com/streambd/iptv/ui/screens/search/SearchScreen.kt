@@ -35,8 +35,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
-import com.streambd.iptv.ui.components.ScreenTopBar
-import com.streambd.iptv.ui.components.sideInsets
 import com.streambd.iptv.ui.theme.*
 
 @Composable
@@ -60,11 +58,12 @@ fun SearchScreen(
             .imePadding()
             .navigationBarsPadding(),
     ) {
-        ScreenTopBar("Search", onBack)
-
-        Column(Modifier.weight(1f).fillMaxWidth().sideInsets()) {
+        // TopBar বাদ দেওয়া হয়েছে, সরাসরি কন্টেন্ট শুরু
+        Column(Modifier.weight(1f).fillMaxWidth()) {
             Box(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)
+                Modifier.fillMaxWidth()
+                    .statusBarsPadding() // স্ট্যাটাস বারের নিচে যাওয়া আটকাতে
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
                     .clip(RoundedCornerShape(8.dp)).background(Surface1)
                     .border(2.dp, Accent, RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 12.dp),
