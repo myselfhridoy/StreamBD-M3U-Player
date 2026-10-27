@@ -52,29 +52,30 @@ fun ActivationScreen(
     var epgUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
 
-    // Box ব্যবহার করে কন্টেন্ট সেন্টার করা হয়েছে
-    Box(
+    // BoxWithConstraints স্ক্রিনের সঠিক মাপ বোঝে, যাতে উপরে-নিচে কিছু কাটা না পড়ে
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(BgDark)
-            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন ছোট হবে
-            .navigationBarsPadding(), // নেভিগেশন বার এড়াতে
-        contentAlignment = Alignment.Center
+            .imePadding() // কিবোর্ড ওপেন হলে জায়গা তৈরি করে
+            .navigationBarsPadding() // নিচের নেভিগেশন বার থেকে বাঁচায়
+            .statusBarsPadding() // উপরের স্ট্যাটাস বার থেকে বাঁচায়
     ) {
         Column(
             Modifier
+                .heightIn(min = this.maxHeight) // স্ক্রিনের উচ্চতা পর্যন্ত জায়গা নেয়
                 .fillMaxWidth()
-                .widthIn(max = 550.dp)
-                .verticalScroll(rememberScrollState()) // কিবোর্ড ওপেন হলে স্ক্রল হবে
-                .padding(horizontal = 24.dp, vertical = 24.dp), // ব্যালেন্সড প্যাডিং
+                .verticalScroll(rememberScrollState()) // প্রয়োজনে স্ক্রল করে
+                .padding(horizontal = 32.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center // স্ক্রিনের মাঝখানে রাখে
         ) {
             
             // লোগো সেকশন
             Text("STREAMBD", color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Text("IPTV", color = TextPrimary, fontSize = 15.sp)
             
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(32.dp))
 
             if (serverMode) {
                 ServerActivationContent(
@@ -88,36 +89,41 @@ fun ActivationScreen(
                     onOpenDev = { showDevDialog = true },
                 )
             } else {
-                UrlField(
-                    label = "Playlist M3U URL",
-                    placeholder = "Enter your M3U playlist link...",
-                    value = playlistUrl,
-                    imeAction = ImeAction.Next,
-                    modifier = Modifier.focusRequester(fieldFocus),
-                    onValue = { playlistUrl = it },
-                )
-                
-                Spacer(Modifier.height(16.dp))
-                
-                UrlField(
-                    label = "EPG URL (optional)",
-                    placeholder = "Enter EPG link (optional)...",
-                    value = epgUrl,
-                    imeAction = ImeAction.Done,
-                    onValue = { epgUrl = it },
-                )
+                Box(Modifier.widthIn(max = 550.dp).fillMaxWidth()) {
+                    Column {
+                        UrlField(
+                            label = "Playlist M3U URL",
+                            placeholder = "Enter your M3U playlist link...",
+                            value = playlistUrl,
+                            imeAction = ImeAction.Next,
+                            modifier = Modifier.focusRequester(fieldFocus),
+                            onValue = { playlistUrl = it },
+                        )
+                        
+                        Spacer(Modifier.height(16.dp))
+                        
+                        UrlField(
+                            label = "EPG URL (optional)",
+                            placeholder = "Enter EPG link (optional)...",
+                            value = epgUrl,
+                            imeAction = ImeAction.Done,
+                            onValue = { epgUrl = it },
+                        )
 
-                ErrorText(error)
+                        ErrorText(error)
 
-                Spacer(Modifier.height(28.dp)) // বাটনের ওপরের গ্যাপ
-                
-                ActionButton(
-                    label = "Save & Continue",
-                    enabled = playlistUrl.isNotBlank() && !busy,
-                    busy = busy,
-                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
-                )
+                        Spacer(Modifier.height(32.dp)) // বাটনের ওপরে পারফেক্ট গ্যাপ
+                        
+                        ActionButton(
+                            label = "Save & Continue",
+                            enabled = playlistUrl.isNotBlank() && !busy,
+                            busy = busy,
+                            onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
+                        )
+                    }
+                }
             }
+            Spacer(Modifier.height(16.dp)) // নিচে হালকা ব্যালেন্স রাখার জন্য
         }
     }
 
@@ -160,7 +166,7 @@ private fun ServerActivationContent(
     onActivate: () -> Unit,
     onOpenDev: () -> Unit,
 ) {
-    Box(Modifier.widthIn(max = 550.dp)) {
+    Box(Modifier.widthIn(max = 550.dp).fillMaxWidth()) {
         Column {
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel)
