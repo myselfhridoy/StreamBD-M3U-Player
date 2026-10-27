@@ -229,7 +229,7 @@ private fun LivePanel(
                 ),
         )
 
-        Column(Modifier.fillMaxSize().displayCutoutPadding()) {
+        Column(Modifier.fillMaxSize()) {
             // ২. টপ বার (গ্রুপ ট্যাব) - ১০০% সলিড ব্যাকগ্রাউন্ড
             Box(
                 Modifier
