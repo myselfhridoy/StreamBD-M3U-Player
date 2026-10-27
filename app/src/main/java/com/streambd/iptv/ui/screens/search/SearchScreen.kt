@@ -8,9 +8,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -34,6 +35,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.ui.components.ScreenTopBar
+import com.streambd.iptv.ui.components.sideInsets
 import com.streambd.iptv.ui.theme.*
 
 @Composable
@@ -46,61 +49,59 @@ fun SearchScreen(
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val fieldFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
-    Column(Modifier.fillMaxSize().background(BgDark)) {
-        Row(
-            Modifier.fillMaxWidth().background(TopBar).padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = TextPrimary,
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onBack).padding(8.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text("Search", color = TextPrimary, fontSize = 20.sp)
-        }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(BgDark)
+            .imePadding()
+            .navigationBarsPadding(),
+    ) {
+        ScreenTopBar("Search", onBack)
 
-        Box(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)
-                .clip(RoundedCornerShape(8.dp)).background(Surface1)
-                .border(2.dp, Accent, RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Box(Modifier.weight(1f)) {
-                    if (query.isEmpty()) Text("Type channel name here…", color = TextMuted, fontSize = 16.sp)
-                    BasicTextField(
-                        value = query,
-                        onValueChange = vm::setQuery,
-                        singleLine = true,
-                        cursorBrush = SolidColor(Accent),
-                        textStyle = TextStyle(color = TextPrimary, fontSize = 16.sp),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
-                    )
+        Column(Modifier.weight(1f).fillMaxWidth().sideInsets()) {
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(Surface1)
+                    .border(2.dp, Accent, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (query.isEmpty()) Text("Type channel name here…", color = TextMuted, fontSize = 16.sp)
+                        BasicTextField(
+                            value = query,
+                            onValueChange = vm::setQuery,
+                            singleLine = true,
+                            cursorBrush = SolidColor(Accent),
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 16.sp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                            modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
+                        )
+                    }
                 }
             }
-        }
 
-        when {
-            query.isBlank() -> SearchMessage(
-                "Start typing to search all content",
-                Modifier.weight(1f).fillMaxWidth(),
-            )
-            results.isEmpty() -> SearchMessage(
-                "No results match ‘$query’",
-                Modifier.weight(1f).fillMaxWidth(),
-            )
-            else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                items(results, key = { it.id }) { channel ->
-                    SearchResultRow(channel) {
-                        if (channel.kind == "LIVE") onPickLive(channel) else onPlayVod(channel)
+            when {
+                query.isBlank() -> SearchMessage(
+                    "Start typing to search all content",
+                    Modifier.weight(1f).fillMaxWidth(),
+                )
+                results.isEmpty() -> SearchMessage(
+                    "No results match ‘$query’",
+                    Modifier.weight(1f).fillMaxWidth(),
+                )
+                else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                    items(results, key = { it.id }) { channel ->
+                        SearchResultRow(channel) {
+                            if (channel.kind == "LIVE") onPickLive(channel) else onPlayVod(channel)
+                        }
                     }
                 }
             }
