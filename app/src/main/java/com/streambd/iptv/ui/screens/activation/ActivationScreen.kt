@@ -51,8 +51,6 @@ fun ActivationScreen(
     var showDevDialog by remember { mutableStateOf(false) }
     var playlistUrl by rememberSaveable { mutableStateOf("") }
     var epgUrl by rememberSaveable { mutableStateOf("") }
-    
-    // fieldFocus আর ব্যবহার হচ্ছে না, তাই কিবোর্ড অটো ওপেন হবে না
     val fieldFocus = remember { FocusRequester() }
 
     Box(
@@ -61,21 +59,21 @@ fun ActivationScreen(
             .background(
                 Brush.verticalGradient(listOf(Color(0xFF0B0B0B), BgDark)),
             )
-            .windowInsetsPadding(WindowInsets.safeDrawing), // সিস্টেম বার ও নচ থেকে বাঁচতে
+            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে, কন্টেন্ট ঢেকে যাবে না
+            .navigationBarsPadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .widthIn(max = 400.dp) // প্রস্থ একটু কমিয়ে আনা হলো
+                .widthIn(max = 600.dp) // বামে-ডানে ফাঁকা জায়গা কমাতে চওড়া করা হলো
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp), // প্যাডিং কমানো হলো
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // ফন্ট সাইজ ও স্পেসিং কমপ্যাক্ট করা হয়েছে
             Text("STREAMBD", color = Accent, fontSize = 32.sp, fontWeight = FontWeight.Bold)
             Text("IPTV", color = TextPrimary, fontSize = 16.sp)
-            Spacer(Modifier.height(24.dp)) // ৪০ থেকে কমিয়ে ২৪ করা হলো
+            Spacer(Modifier.height(24.dp))
 
             if (serverMode) {
                 ServerActivationContent(
@@ -89,15 +87,39 @@ fun ActivationScreen(
                     onOpenDev = { showDevDialog = true },
                 )
             } else {
-                PlaylistSetupContent(
-                    playlistUrl = playlistUrl,
-                    epgUrl = epgUrl,
+                // কার্ড বাদ দেওয়া হলো এবং সরাসরি ইনপুট ফিল্ডে প্লেসহোল্ডার দেওয়া হলো
+                Text(
+                    "Enter your M3U playlist link below to start watching. An EPG (XMLTV) link is optional.",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                )
+
+                UrlField(
+                    label = "Playlist M3U URL",
+                    placeholder = "https://example.com/playlist.m3u",
+                    value = playlistUrl,
+                    imeAction = ImeAction.Next,
+                    modifier = Modifier.focusRequester(fieldFocus),
+                    onValue = { playlistUrl = it },
+                )
+                Spacer(Modifier.height(12.dp))
+                UrlField(
+                    label = "EPG URL (optional)",
+                    placeholder = "https://example.com/epg.xml",
+                    value = epgUrl,
+                    imeAction = ImeAction.Done,
+                    onValue = { epgUrl = it },
+                )
+
+                ErrorText(error)
+
+                Spacer(Modifier.height(20.dp))
+                ActionButton(
+                    label = "Save & Continue",
+                    enabled = playlistUrl.isNotBlank() && !busy,
                     busy = busy,
-                    error = error,
-                    fieldFocus = fieldFocus,
-                    onPlaylistChange = { playlistUrl = it },
-                    onEpgChange = { epgUrl = it },
-                    onSave = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
+                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
                 )
             }
         }
@@ -120,7 +142,6 @@ fun ActivationScreen(
                 onActivated()
             }
         } else {
-            // লোকাল সেটআপে আলাদা success dialog লাগে না, সরাসরি এগিয়ে যাই
             LaunchedEffect(active) {
                 vm.consumeSuccess()
                 onActivated()
@@ -149,12 +170,12 @@ private fun ServerActivationContent(
                 if (devEnabled) Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
                 else Modifier,
             )
-            .padding(14.dp), // প্যাডিং কমানো
+            .padding(16.dp),
     ) {
         Text(
             "Enter the activation code you received with your subscription.",
             color = TextPrimary,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
         )
         if (devEnabled) {
             Spacer(Modifier.height(4.dp))
@@ -162,7 +183,7 @@ private fun ServerActivationContent(
         }
     }
 
-    Spacer(Modifier.height(16.dp)) // স্পেসিং কমানো
+    Spacer(Modifier.height(16.dp))
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
             .border(2.dp, Accent, RoundedCornerShape(8.dp))
@@ -182,53 +203,8 @@ private fun ServerActivationContent(
 
     ErrorText(error)
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
     ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
-}
-
-/* ------------------------- local playlist mode ------------------------- */
-
-@Composable
-private fun PlaylistSetupContent(
-    playlistUrl: String,
-    epgUrl: String,
-    busy: Boolean,
-    error: String?,
-    fieldFocus: FocusRequester,
-    onPlaylistChange: (String) -> Unit,
-    onEpgChange: (String) -> Unit,
-    onSave: () -> Unit,
-) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel).padding(14.dp)) {
-        Text("Add your playlist", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Enter the M3U playlist link you want to watch. An EPG (XMLTV) link is optional.",
-            color = TextMuted,
-            fontSize = 12.sp,
-        )
-    }
-
-    Spacer(Modifier.height(16.dp))
-    UrlField(
-        label = "Playlist M3U URL",
-        value = playlistUrl,
-        imeAction = ImeAction.Next,
-        modifier = Modifier.focusRequester(fieldFocus),
-        onValue = onPlaylistChange,
-    )
-    Spacer(Modifier.height(10.dp))
-    UrlField(
-        label = "EPG URL (optional)",
-        value = epgUrl,
-        imeAction = ImeAction.Done,
-        onValue = onEpgChange,
-    )
-
-    ErrorText(error)
-
-    Spacer(Modifier.height(16.dp))
-    ActionButton("Save & Continue", enabled = playlistUrl.isNotBlank() && !busy, busy = busy, onClick = onSave)
 }
 
 /* ------------------------------ shared bits ------------------------------ */
@@ -237,7 +213,7 @@ private fun PlaylistSetupContent(
 private fun ErrorText(error: String?) {
     error?.let {
         Spacer(Modifier.height(8.dp))
-        Text(it, color = Danger, fontSize = 12.sp)
+        Text(it, color = Danger, fontSize = 13.sp)
     }
 }
 
@@ -252,10 +228,10 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(44.dp), // বাটনের উচ্চতা কিছুটা কমানো হলো
+        modifier = Modifier.fillMaxWidth().height(48.dp),
     ) {
         if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-        else Text(label, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        else Text(label, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
     }
 }
 
@@ -266,21 +242,32 @@ private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Uni
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().widthIn(max = 400.dp).clip(RoundedCornerShape(8.dp))
-                .background(Panel).padding(16.dp), // প্যাডিং কমানো
+            Modifier.fillMaxWidth().widthIn(max = 460.dp).clip(RoundedCornerShape(8.dp))
+                .background(Panel).padding(20.dp),
         ) {
-            Text("Advanced setup", color = TextPrimary, fontSize = 16.sp)
-            Spacer(Modifier.height(4.dp))
+            Text("Advanced setup", color = TextPrimary, fontSize = 18.sp)
+            Spacer(Modifier.height(6.dp))
             Text(
                 "Skip server activation and load a playlist directly. Debug builds only.",
                 color = TextMuted,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(16.dp))
+            UrlField(
+                label = "Playlist M3U URL",
+                placeholder = "https://example.com/playlist.m3u",
+                value = playlistUrl,
+                onValue = { playlistUrl = it },
             )
             Spacer(Modifier.height(12.dp))
-            UrlField("Playlist M3U URL", playlistUrl) { playlistUrl = it }
-            Spacer(Modifier.height(8.dp))
-            UrlField("EPG URL (optional)", epgUrl, imeAction = ImeAction.Done) { epgUrl = it }
-            Spacer(Modifier.height(16.dp))
+            UrlField(
+                label = "EPG URL (optional)",
+                placeholder = "https://example.com/epg.xml",
+                value = epgUrl,
+                imeAction = ImeAction.Done,
+                onValue = { epgUrl = it },
+            )
+            Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 DialogAction("CANCEL", TextMuted, onDismiss)
                 Spacer(Modifier.width(8.dp))
@@ -293,6 +280,7 @@ private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Uni
 @Composable
 private fun UrlField(
     label: String,
+    placeholder: String,
     value: String,
     imeAction: ImeAction = ImeAction.Next,
     modifier: Modifier = Modifier,
@@ -304,9 +292,9 @@ private fun UrlField(
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Surface1)
                 .border(1.dp, Divider, RoundedCornerShape(6.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
         ) {
-            if (value.isEmpty()) Text("https://…", color = TextMuted, fontSize = 14.sp)
+            if (value.isEmpty()) Text(placeholder, color = TextMuted.copy(alpha = 0.6f), fontSize = 14.sp)
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
