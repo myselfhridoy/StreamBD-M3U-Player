@@ -26,11 +26,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,8 +50,6 @@ import com.streambd.iptv.ui.player.PlayerSettingsDialog
 import com.streambd.iptv.ui.player.TrackSelectionDialog
 import com.streambd.iptv.ui.theme.*
 
-private val PanelScrim = Color.Black.copy(alpha = 0.72f)
-
 @Composable
 fun LiveScreen(
     preselectChannelId: Long = -1L,
@@ -66,7 +66,6 @@ fun LiveScreen(
     val nowNext by vm.nowNext.collectAsStateWithLifecycle()
     val pendingUnlock by vm.pendingUnlock.collectAsStateWithLifecycle()
 
-    // Search থেকে নির্দিষ্ট চ্যানেল নিয়ে এলে তালিকা বন্ধ, নইলে খোলা অবস্থায় শুরু
     var listOpen by rememberSaveable { mutableStateOf(preselectChannelId <= 0L) }
     var showTracks by remember { mutableStateOf(false) }
     var showAspect by remember { mutableStateOf(false) }
@@ -94,7 +93,6 @@ fun LiveScreen(
         }
     }
 
-    // নতুন চ্যানেল চালু হলে (তালিকা থেকে, নম্বর টিপে, zap) তালিকা বন্ধ
     var lastPlayingId by remember { mutableStateOf(state.current?.id) }
     LaunchedEffect(state.current?.id) {
         val id = state.current?.id
@@ -195,12 +193,10 @@ fun LiveScreen(
     }
 }
 
-/** ট্যাপ খেয়ে ফেলে, যাতে প্যানেলের ফাঁকা জায়গায় ট্যাপে তালিকা বন্ধ না হয়। */
 private fun Modifier.consumeTaps(): Modifier = pointerInput(Unit) { detectTapGestures { } }
 
 /* ------------------------------- panel -------------------------------- */
 
-/** উপরে পুরো প্রস্থের গ্রুপ ট্যাব, নিচে বাম অর্ধেকে চ্যানেল তালিকা, ডান অর্ধেকে ভিডিও। */
 @Composable
 private fun LivePanel(
     groups: List<GroupEntity>,
@@ -213,37 +209,47 @@ private fun LivePanel(
     onPlay: (ChannelEntity) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        // ১. টপ বার (ব্যাকগ্রাউন্ড ফুল স্ক্রিন জুড়ে থাকবে, কিন্তু কন্টেন্ট নচ প্যাডিং পাবে)
+    Box(Modifier.fillMaxSize()) {
+        // ZalTV স্টাইল গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড (বাম দিক গাঢ়, ডান দিকে ফেড)
         Box(
             Modifier
-                .fillMaxWidth()
-                .background(PanelScrim) 
+                .fillMaxHeight()
+                .fillMaxWidth(0.5f)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.85f),
+                            Color.Black.copy(alpha = 0.4f)
+                        )
+                    )
+                )
+        )
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Top))
         ) {
             GroupTabsBar(groups, selected, onSelectGroup)
-        }
-
-        // ২. নিচের অংশ
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            // বাম দিকের চ্যানেল লিস্ট (ব্যাকগ্রাউন্ড নিখুঁতভাবে বাম কোণা থেকে শুরু হবে)
-            Box(
-                Modifier
-                    .weight(0.5f)
-                    .fillMaxHeight()
-                    .background(PanelScrim)
-            ) {
-                ChannelList(
-                    channels = channels,
-                    playingId = playingId,
-                    loading = loading,
-                    emptyText = emptyText,
-                    groupKey = selected,
-                    onPlay = onPlay,
-                    onLongPress = onLongPress,
-                )
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                Box(
+                    Modifier
+                        .weight(0.5f)
+                        .fillMaxHeight()
+                        .consumeTaps(),
+                ) {
+                    ChannelList(
+                        channels = channels,
+                        playingId = playingId,
+                        loading = loading,
+                        emptyText = emptyText,
+                        groupKey = selected,
+                        onPlay = onPlay,
+                        onLongPress = onLongPress,
+                    )
+                }
+                Spacer(Modifier.weight(0.5f))
             }
-            // ডান দিকের ভিডিও এরিয়া
-            Spacer(Modifier.weight(0.5f))
         }
     }
 }
@@ -254,13 +260,11 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
         modifier = Modifier
             .fillMaxWidth()
             .consumeTaps()
-            // displayCutoutPadding() পুরো কলামে না দিয়ে শুধু Row-এর ভেতরে দেওয়া হলো, যাতে লেফট অ্যালাইনমেন্ট ঠিক থাকে
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Top))
-            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) { onSelect(LIVE_GROUP_FAVORITES) } }
         item { GroupTab("All", selectedId == null) { onSelect(null) } }
+        item { GroupTab("Favorites", selectedId == LIVE_GROUP_FAVORITES) { onSelect(LIVE_GROUP_FAVORITES) } }
         items(groups, key = { it.id }) { g ->
             GroupTab(g.name, selectedId == g.id) { onSelect(g.id) }
         }
@@ -270,18 +274,35 @@ private fun GroupTabsBar(groups: List<GroupEntity>, selectedId: Long?, onSelect:
 @Composable
 private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Text(
-        text = label,
-        color = if (selected) Accent else if (focused) TextPrimary else TextMuted,
-        fontSize = 14.sp,
-        maxLines = 1,
+    val color = when {
+        selected -> Accent // ZalTV-এর সায়ান কালারের মতো
+        focused -> TextPrimary
+        else -> TextMuted
+    }
+    
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
+            .padding(vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(4.dp))
+        // সিলেক্টেড ট্যাবের নিচে সুন্দর আন্ডারলাইন
+        Box(
+            Modifier
+                .height(2.dp)
+                .width(if (selected) 24.dp else 0.dp)
+                .background(if (selected) Accent else Color.Transparent)
+        )
+    }
 }
 
 /* ----------------------------- channel list ----------------------------- */
@@ -321,11 +342,9 @@ private fun ChannelList(
     }
 
     LazyColumn(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start)), // বাম দিকের নচ প্যাডিং
+        Modifier.fillMaxSize(),
         state = listState,
-        contentPadding = PaddingValues(vertical = 4.dp)
+        contentPadding = PaddingValues(bottom = 16.dp)
     ) {
         items(channels.size, key = { channels[it].id }) { index ->
             val channel = channels[index]
@@ -351,13 +370,18 @@ private fun ChannelRow(
 ) {
     val haptics = LocalHapticFeedback.current
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(6.dp)
+    
+    // ZalTV স্টাইল বর্ডার ও ব্যাকগ্রাউন্ড
+    val backgroundColor = if (focused) Color.White.copy(alpha = 0.1f) else Color.Transparent
+    val borderColor = if (focused) Accent else Color.Transparent
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp) // GroupTab এর সাথে এলাইন করার জন্য ১৬ ডিপি
-            .clip(shape)
-            .border(2.dp, if (focused) Accent else Color.Transparent, shape)
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(backgroundColor)
+            .border(1.dp, borderColor, RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .combinedClickable(
                 onClick = onClick,
@@ -366,22 +390,28 @@ private fun ChannelRow(
                     onLongClick()
                 },
             )
-            .padding(horizontal = 12.dp, vertical = 6.dp), // ভেতরের প্যাডিং (মোট ১৬+১২ = ২৮ ডিপি)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // নাম্বার
         Text(
             text = "%02d".format(channel.number),
             color = TextMuted,
-            fontSize = 14.sp,
-            modifier = Modifier.width(32.dp),
+            fontSize = 13.sp,
+            modifier = Modifier.width(28.dp),
         )
+        
+        // লোগো (সাইজ ZalTV এর মতো ছোট করা হয়েছে)
         AsyncImage(
             model = channel.logoUrl,
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
+            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(4.dp)),
         )
-        Spacer(Modifier.width(10.dp))
+        
+        Spacer(Modifier.width(12.dp))
+        
+        // নাম
         Text(
             text = channel.name,
             color = if (playing) Accent else TextPrimary,
@@ -390,6 +420,7 @@ private fun ChannelRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        
         if (channel.isLocked) {
             Spacer(Modifier.width(6.dp))
             Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Accent, modifier = Modifier.size(14.dp))
