@@ -52,65 +52,71 @@ fun ActivationScreen(
     var epgUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
 
-    // Box এর পরিবর্তে Column ব্যবহার করা হলো যাতে কিবোর্ড ওপেন হলে স্ক্রল ঠিকমতো কাজ করে
-    Column(
+    // Box + Center Alignment ব্যবহার করা হয়েছে যাতে স্ক্রল ছাড়াই ফর্ম স্ক্রিনের মাঝখানে ফিট হয়ে থাকে
+    Box(
         Modifier
             .fillMaxSize()
-            .background(BgDark) // Solid Background (Smarters Pro স্টাইল)
+            .background(BgDark)
             .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
     ) {
-        Spacer(Modifier.height(16.dp))
-        Text("STREAMBD", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-        Text("IPTV", color = TextPrimary, fontSize = 16.sp)
-        Spacer(Modifier.height(32.dp))
-
-        if (serverMode) {
-            ServerActivationContent(
-                code = code,
-                busy = busy,
-                error = error,
-                devEnabled = BuildConfig.DEBUG,
-                fieldFocus = fieldFocus,
-                onCodeChange = vm::setCode,
-                onActivate = vm::activate,
-                onOpenDev = { showDevDialog = true },
-            )
-        } else {
-            // ফ্লোটিং টেক্সট বাদ দেওয়া হলো এবং প্লেসহোল্ডারে সেট করা হলো
-            UrlField(
-                label = "Playlist M3U URL",
-                placeholder = "Enter your M3U playlist link...",
-                value = playlistUrl,
-                imeAction = ImeAction.Next,
-                modifier = Modifier.focusRequester(fieldFocus),
-                onValue = { playlistUrl = it },
-            )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 600.dp) // বড় স্ক্রিনে চওড়া দেখাবে
+                .verticalScroll(rememberScrollState()) // কিবোর্ড ওপেন হলে প্রয়োজনে স্ক্রল হবে
+                .padding(horizontal = 32.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // লোগো সেকশন (মার্জিন কমিয়ে স্ক্রিনের সাথে ফিট করা হয়েছে)
+            Text("STREAMBD", color = Accent, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+            Text("IPTV", color = TextPrimary, fontSize = 16.sp)
             
-            Spacer(Modifier.height(16.dp))
-            
-            UrlField(
-                label = "EPG URL (optional)",
-                placeholder = "Enter EPG link (optional)...",
-                value = epgUrl,
-                imeAction = ImeAction.Done,
-                onValue = { epgUrl = it },
-            )
+            Spacer(Modifier.height(32.dp)) // উপরে-নিচে গ্যাপ অ্যাডজাস্ট করা হয়েছে
 
-            ErrorText(error)
+            if (serverMode) {
+                ServerActivationContent(
+                    code = code,
+                    busy = busy,
+                    error = error,
+                    devEnabled = BuildConfig.DEBUG,
+                    fieldFocus = fieldFocus,
+                    onCodeChange = vm::setCode,
+                    onActivate = vm::activate,
+                    onOpenDev = { showDevDialog = true },
+                )
+            } else {
+                UrlField(
+                    label = "Playlist M3U URL",
+                    placeholder = "Enter your M3U playlist link...",
+                    value = playlistUrl,
+                    imeAction = ImeAction.Next,
+                    modifier = Modifier.focusRequester(fieldFocus),
+                    onValue = { playlistUrl = it },
+                )
+                
+                Spacer(Modifier.height(20.dp)) // ইনপুট বক্সের মাঝের গ্যাপ
+                
+                UrlField(
+                    label = "EPG URL (optional)",
+                    placeholder = "Enter EPG link (optional)...",
+                    value = epgUrl,
+                    imeAction = ImeAction.Done,
+                    onValue = { epgUrl = it },
+                )
 
-            Spacer(Modifier.height(24.dp))
-            ActionButton(
-                label = "Save & Continue",
-                enabled = playlistUrl.isNotBlank() && !busy,
-                busy = busy,
-                onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
-            )
+                ErrorText(error)
+
+                Spacer(Modifier.height(32.dp)) // বাটনের আগে গ্যাপ
+                ActionButton(
+                    label = "Save & Continue",
+                    enabled = playlistUrl.isNotBlank() && !busy,
+                    busy = busy,
+                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, epgUrl) },
+                )
+            }
         }
-        Spacer(Modifier.height(32.dp))
     }
 
     if (serverMode && BuildConfig.DEBUG && showDevDialog) {
@@ -171,7 +177,7 @@ private fun ServerActivationContent(
         }
     }
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
             .border(2.dp, Accent, RoundedCornerShape(8.dp))
@@ -216,7 +222,7 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(50.dp), // বাটন একটু বড় করা হলো Smarters Pro এর মত
+        modifier = Modifier.fillMaxWidth().height(48.dp),
         shape = RoundedCornerShape(8.dp)
     ) {
         if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
@@ -280,7 +286,7 @@ private fun UrlField(
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface1)
                 .border(1.dp, Divider, RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp, vertical = 16.dp), // Smarters Pro এর মত বড় প্যাডিং
+                .padding(horizontal = 16.dp, vertical = 14.dp), 
         ) {
             if (value.isEmpty()) {
                 Text(placeholder, color = TextMuted.copy(alpha = 0.4f), fontSize = 15.sp)
