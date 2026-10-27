@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.FilterList
@@ -25,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -35,6 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.ProgramEntity
+import com.streambd.iptv.ui.components.ScreenTopBar
+import com.streambd.iptv.ui.components.sideInsets
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -68,6 +70,13 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     }
     LaunchedEffect(selected) { picked = null }
 
+    // নচ/বারের পাশের জায়গা: ব্যাকগ্রাউন্ড কিনারা পর্যন্ত, লেখা ভেতরে
+    val dir = LocalLayoutDirection.current
+    val insets = WindowInsets.safeDrawing.asPaddingValues()
+    val leftInset = insets.calculateLeftPadding(dir)
+    val rightInset = insets.calculateRightPadding(dir)
+    val bottomInset = insets.calculateBottomPadding()
+
     val shiftMs = settings.epgTimeShiftMins * 60_000L
     val windowStart = remember(now, hourOffset) {
         val aligned = ((now - SLOT_MS) / SLOT_MS) * SLOT_MS
@@ -81,8 +90,12 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
         ?.let { programs[it] }.orEmpty()
         .firstOrNull { now >= it.start + shiftMs && now < it.end + shiftMs }
 
-    Column(Modifier.fillMaxSize().background(BgDark).displayCutoutPadding()) {
-        TopBar(now, onBack)
+    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+
+    Column(Modifier.fillMaxSize().background(BgDark)) {
+        ScreenTopBar("TV Guide", onBack) {
+            Text(timeFormat.format(Date(now)), color = TextPrimary, fontSize = 15.sp)
+        }
         InfoHeader(
             channel = headerChannel,
             program = headerProgram,
@@ -100,17 +113,20 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
             onToday = vm::resetWindow,
         )
 
-        Row(Modifier.fillMaxWidth().height(30.dp).background(TopBar)) {
-            Spacer(Modifier.width(CHANNEL_COL_WIDTH))
+        Row(Modifier.fillMaxWidth().height(30.dp).background(TopBar).padding(end = rightInset)) {
+            Spacer(Modifier.width(CHANNEL_COL_WIDTH + leftInset))
             Box(Modifier.fillMaxHeight().horizontalScroll(horizontalScroll)) {
                 TimelineRuler(windowStart, SLOT_COUNT, shiftMs)
             }
         }
 
-        LazyColumn(Modifier.fillMaxSize().navigationBarsPadding()) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = bottomInset),
+        ) {
             items(channels, key = { it.id }) { channel ->
-                Row(Modifier.fillMaxWidth().height(ROW_HEIGHT)) {
-                    ChannelCell(channel)
+                Row(Modifier.fillMaxWidth().height(ROW_HEIGHT).padding(end = rightInset)) {
+                    ChannelCell(channel, leftInset)
                     Box(Modifier.fillMaxHeight().weight(1f).horizontalScroll(horizontalScroll)) {
                         ProgramStrip(
                             programs = channel.tvgId?.let { programs[it] }.orEmpty(),
@@ -143,31 +159,6 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun TopBar(now: Long, onBack: () -> Unit) {
-    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(TopBar)
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Filled.ArrowBack,
-            contentDescription = "Back",
-            tint = TextPrimary,
-            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onBack).padding(8.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text("TV Guide", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.weight(1f))
-        Text(timeFormat.format(Date(now)), color = TextPrimary, fontSize = 15.sp)
-    }
-}
-
-@Composable
 private fun InfoHeader(
     channel: ChannelEntity?,
     program: ProgramEntity?,
@@ -178,7 +169,8 @@ private fun InfoHeader(
 ) {
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
     Row(
-        Modifier.fillMaxWidth().background(Panel).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().background(Panel).sideInsets()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -242,7 +234,8 @@ private fun ControlsRow(
     onToday: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().background(TopBar).padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().background(TopBar).sideInsets()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PillButton(onClick = onOpenGroups) {
@@ -307,9 +300,13 @@ private fun TimelineRuler(windowStart: Long, slots: Int, shiftMs: Long) {
 }
 
 @Composable
-private fun ChannelCell(channel: ChannelEntity) {
+private fun ChannelCell(channel: ChannelEntity, leftInset: Dp) {
     Row(
-        Modifier.width(CHANNEL_COL_WIDTH).fillMaxHeight().background(Panel).padding(horizontal = 10.dp),
+        Modifier
+            .width(CHANNEL_COL_WIDTH + leftInset)
+            .fillMaxHeight()
+            .background(Panel)
+            .padding(start = leftInset + 10.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
