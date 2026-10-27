@@ -79,6 +79,8 @@ class SplashViewModel @Inject constructor(
             return
         }
 
+        var epgUrl = state.epgUrl
+
         // চ্যানেল না থাকলে প্লেলিস্ট আনতেই হবে, ব্যর্থ হলে এগোনো যাবে না
         if (!repo.hasContent()) {
             if (state.playlistUrl.isBlank()) {
@@ -87,7 +89,9 @@ class SplashViewModel @Inject constructor(
             }
             _status.value = "Downloading playlist…"
             try {
-                sync.syncPlaylist(state.playlistUrl)
+                val synced = sync.syncPlaylist(state.playlistUrl)
+                epgUrl = sync.chooseEpg(state.epgUrl, synced.epgUrls, activation.isLocal(state))
+                if (epgUrl != state.epgUrl) activation.updateEpgUrl(epgUrl)
             } catch (e: SyncException) {
                 _failure.value = SplashFailure(e.message ?: "Could not load the playlist.")
                 return
@@ -95,10 +99,10 @@ class SplashViewModel @Inject constructor(
         }
 
         // EPG ব্যর্থ হলে অ্যাপ চালু হবে, শুধু Guide ফাঁকা থাকবে
-        if (state.epgUrl.isNotBlank() && sync.isEpgDue()) {
+        if (epgUrl.isNotBlank() && sync.isEpgDue()) {
             _status.value = "Updating TV guide…"
             try {
-                sync.syncEpg(state.epgUrl)
+                sync.syncEpg(epgUrl)
             } catch (e: SyncException) {
                 Log.w(TAG, "EPG sync failed: ${e.message}")
             }
