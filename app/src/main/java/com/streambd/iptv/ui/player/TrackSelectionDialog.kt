@@ -1,6 +1,7 @@
 package com.streambd.iptv.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -13,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -59,7 +61,7 @@ fun TrackSelectionDialog(
     onDismiss: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(0) }
-    
+
     fun initialChoice(key: String?, groups: List<Tracks.Group>): TrackChoice {
         if (key == "") return TrackChoice.None
         if (key == null) return TrackChoice.Auto
@@ -109,36 +111,37 @@ fun TrackSelectionDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // উইন্ডো পুরো স্ক্রিন, তাই "বাইরে ট্যাপ" নিজেরাই ধরতে হয়
         Box(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing) 
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(16.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Column(
                 Modifier
-                    .width(340.dp) 
-                    .heightIn(min = 280.dp, max = 340.dp) 
+                    .width(340.dp)
+                    .heightIn(min = 280.dp, max = 340.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Panel)
-                    .clip(RoundedCornerShape(6.dp)) 
+                    .pointerInput(Unit) { detectTapGestures { } },
             ) {
-                // Title padding reduced
                 Text(
-                    "Select tracks", 
-                    color = TextPrimary, 
-                    fontSize = 18.sp, 
+                    "Select tracks",
+                    color = TextPrimary,
+                    fontSize = 18.sp,
                     modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
                 )
-                
+
                 Row(Modifier.fillMaxWidth()) {
                     DialogTab("VIDEO", tab == 0, Modifier.weight(1f)) { tab = 0 }
                     DialogTab("AUDIO", tab == 1, Modifier.weight(1f)) { tab = 1 }
                 }
-                
-                // LazyColumn padding reduced
+
                 LazyColumn(
                     Modifier
                         .weight(1f)
@@ -155,14 +158,13 @@ fun TrackSelectionDialog(
                         }
                     }
                 }
-                
-                // Bottom button row padding reduced
+
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     DialogTextButton("CANCEL", TextMuted, onDismiss)
-                    Spacer(Modifier.width(8.dp)) // Gap between buttons reduced
+                    Spacer(Modifier.width(8.dp))
                     DialogTextButton("CONFIRM", Accent) { onConfirm(videoChoice, audioChoice) }
                 }
             }
