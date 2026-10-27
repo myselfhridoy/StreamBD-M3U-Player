@@ -28,6 +28,9 @@ class ActivationRepository @Inject constructor(
     private fun isLocal(code: String): Boolean =
         code == LOCAL_CODE || code == LEGACY_LOCAL_CODE
 
+    // --- নতুন যোগ করা ফাংশন ১ ---
+    fun isLocal(active: ActivationState.Active): Boolean = isLocal(active.code)
+
     suspend fun activate(code: String): Result<ActivationState.Active> {
         if (!BuildConfig.ACTIVATION_ENABLED) {
             return Result.failure(IllegalStateException("Activation server is not available yet"))
@@ -63,6 +66,14 @@ class ActivationRepository @Inject constructor(
     suspend fun activateLocally(playlistUrl: String, epgUrl: String): ActivationState.Active {
         store.saveActive(LOCAL_CODE, 0L, playlistUrl, epgUrl)
         return ActivationState.Active(LOCAL_CODE, 0L, playlistUrl, epgUrl)
+    }
+
+    // --- নতুন যোগ করা ফাংশন ২ ---
+    /** প্লেলিস্ট থেকে পাওয়া EPG লিংক সংরক্ষণ। বাকি তথ্য অপরিবর্তিত। */
+    suspend fun updateEpgUrl(epgUrl: String) {
+        val active = store.current() as? ActivationState.Active ?: return
+        if (active.epgUrl == epgUrl) return
+        store.saveActive(active.code, active.expiresAt, active.playlistUrl, epgUrl)
     }
 
     suspend fun revalidateIfNeeded() {
