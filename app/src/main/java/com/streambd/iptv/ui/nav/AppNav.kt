@@ -8,9 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.ui.screens.HomeMenuScreen
-import com.streambd.iptv.ui.screens.PlaceholderScreen
 import com.streambd.iptv.ui.screens.activation.ActivationScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
 import com.streambd.iptv.ui.screens.live.LiveScreen
@@ -70,7 +68,10 @@ fun AppNav() {
                 defaultValue = -1L
             }),
         ) { entry ->
-            LiveScreen(preselectChannelId = entry.arguments?.getLong("channelId") ?: -1L)
+            LiveScreen(
+                preselectChannelId = entry.arguments?.getLong("channelId") ?: -1L,
+                onBack = { nav.popBackStack() },
+            )
         }
         composable(
             route = Routes.VOD_PATTERN,
