@@ -49,14 +49,14 @@ class PlaylistSync @Inject constructor(
         const val KEY_EPG_TRY = "epg_last_attempt"
         const val EPG_MAX_AGE_MS = 12L * 60 * 60 * 1000
         const val EPG_RETRY_GAP_MS = 60L * 60 * 1000
-        // নতুন: প্লেলিস্টের শেষ সফল আপডেট ট্র্যাকিং
+        // প্লেলিস্টের শেষ সফল আপডেট ট্র্যাকিং
         const val KEY_PLAYLIST_OK = "playlist_last_success"
         const val PLAYLIST_MAX_AGE_MS = 6L * 60 * 60 * 1000
     }
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
     
-    // নতুন: ম্যানুয়াল রিফ্রেশ ও অটো-রিফ্রেশ একসঙ্গে চললে একটা অপরটার জন্য অপেক্ষা করবে
+    // ম্যানুয়াল রিফ্রেশ ও অটো-রিফ্রেশ একসঙ্গে চললে একটা অপরটার জন্য অপেক্ষা করবে
     private val playlistLock = Mutex()
 
     /** প্লেলিস্ট নামিয়ে ইমপোর্ট করে। একসঙ্গে একটাই চলে। */
@@ -71,6 +71,9 @@ class PlaylistSync @Inject constructor(
         now: Long = System.currentTimeMillis(),
         maxAgeMs: Long = PLAYLIST_MAX_AGE_MS,
     ): Boolean = now - prefs.getLong(KEY_PLAYLIST_OK, 0L) > maxAgeMs
+
+    /** শেষবার প্লেলিস্ট সফলভাবে আপডেট হওয়ার টাইমস্ট্যাম্প। ০ হলে কখনো আপডেট হয়নি। */
+    fun lastPlaylistUpdateTime(): Long = prefs.getLong(KEY_PLAYLIST_OK, 0L)
 
     private suspend fun fetchAndImport(url: String): SyncedPlaylist {
         val body = try {
