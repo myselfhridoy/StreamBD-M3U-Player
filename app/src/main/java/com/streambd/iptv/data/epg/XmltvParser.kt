@@ -46,9 +46,18 @@ object XmltvParser {
 
         val dates = DateParser()
 
+        // XMLTV এর <channel> এবং <display-name> ম্যাপ করার জন্য ভেরিয়েবল
+        val channelToDisplayName = HashMap<String, String>()
+        var inChannel = false
+        var currentChannelId: String? = null
+        var currentDisplayName: StringBuilder? = null
+        var capturingDisplayName = false
+
         var inProgramme = false
-        var skip = false
+        var skipOriginal = false
+        var skipMapped = false
         var channel: String? = null
+        var mappedChannel: String? = null // name:displayName
         var start = 0L
         var stop = 0L
         var title: StringBuilder? = null
@@ -60,6 +69,17 @@ object XmltvParser {
         while (event != XmlPullParser.END_DOCUMENT) {
             when (event) {
                 XmlPullParser.START_TAG -> when (parser.name) {
+                    "channel" -> {
+                        inChannel = true
+                        currentChannelId = parser.getAttributeValue(null, "id")
+                        currentDisplayName = null
+                    }
+                    "display-name" -> {
+                        if (inChannel && currentChannelId != null && currentDisplayName == null) {
+                            currentDisplayName = StringBuilder()
+                            capturingDisplayName = true
+                        }
+                    }
                     "programme" -> {
                         inProgramme = true
                         channel = parser.getAttributeValue(null, "channel")
@@ -69,44 +89,96 @@ object XmltvParser {
                         desc = null
                         poster = null
                         capturing = null
+
                         val ch = channel
-                        skip = ch.isNullOrBlank() || stop <= start ||
-                            (accept != null && !accept(ch, start, stop))
+                        // ১. ওরিজিনাল চ্যানেল আইডির (tvg-id) জন্য ফিল্টার
+                        skipOriginal = ch.isNullOrBlank() || stop <= start ||
+                                (accept != null && !accept(ch, start, stop))
+
+                        // ২. XMLTV এর display-name থেকে তৈরি করা আইডির (name:XXX) জন্য ফিল্টার
+                        val displayName = channelToDisplayName[ch]
+                        mappedChannel = if (!displayName.isNullOrBlank()) "name:$displayName" else null
+                        val mappedCh = mappedChannel
+                        skipMapped = mappedCh.isNullOrBlank() || stop <= start ||
+                                (accept != null && !accept(mappedCh, start, stop))
+
+                        // যদি দুইভাবেই ম্যাচ না করে, তবে প্রসেস করার দরকার নেই
+                        if (skipOriginal && skipMapped) {
+                            inProgramme = false 
+                        }
                     }
-                    // একাধিক ভাষার title/desc থাকলে শুধু প্রথমটা নেওয়া
-                    "title" -> if (inProgramme && !skip && title == null) {
+                    "title" -> if (inProgramme && !(skipOriginal && skipMapped) && title == null) {
                         title = StringBuilder().also { capturing = it }
                     }
-                    "desc" -> if (inProgramme && !skip && desc == null) {
+                    "desc" -> if (inProgramme && !(skipOriginal && skipMapped) && desc == null) {
                         desc = StringBuilder().also { capturing = it }
                     }
-                    "icon" -> if (inProgramme && !skip && poster == null) {
+                    "icon" -> if (inProgramme && !(skipOriginal && skipMapped) && poster == null) {
                         poster = parser.getAttributeValue(null, "src")
                     }
                 }
 
-                XmlPullParser.TEXT -> capturing?.append(parser.text)
+                XmlPullParser.TEXT -> {
+                    if (capturingDisplayName) currentDisplayName?.append(parser.text)
+                    if (capturing != null) capturing?.append(parser.text)
+                }
 
                 XmlPullParser.END_TAG -> when (parser.name) {
+                    "display-name" -> {
+                        capturingDisplayName = false
+                    }
+                    "channel" -> {
+                        if (inChannel && currentChannelId != null && currentDisplayName != null) {
+                            val name = currentDisplayName.toString().trim()
+                            if (name.isNotEmpty()) {
+                                channelToDisplayName[currentChannelId!!] = name
+                            }
+                        }
+                        inChannel = false
+                        currentChannelId = null
+                        currentDisplayName = null
+                    }
                     "title", "desc" -> capturing = null
                     "programme" -> {
-                        val channelId = channel
-                        if (inProgramme && !skip && channelId != null) {
-                            onProgram(
-                                ProgramEntity(
-                                    id = stableId("$channelId|$start"),
-                                    channelTvgId = channelId,
-                                    start = start,
-                                    end = stop,
-                                    title = title?.toString().orEmpty().trim()
-                                        .ifBlank { "No information available" },
-                                    desc = desc?.toString().orEmpty().trim(),
-                                    poster = poster,
-                                ),
-                            )
+                        if (inProgramme) {
+                            val titleStr = title?.toString().orEmpty().trim().ifBlank { "No information available" }
+                            val descStr = desc?.toString().orEmpty().trim()
+                            val ch = channel
+                            val mappedCh = mappedChannel
+
+                            // ১. ওরিজিনাল tvg-id এর জন্য সেভ করা
+                            if (!skipOriginal && ch != null) {
+                                onProgram(
+                                    ProgramEntity(
+                                        id = stableId("$ch|$start"),
+                                        channelTvgId = ch,
+                                        start = start,
+                                        end = stop,
+                                        title = titleStr,
+                                        desc = descStr,
+                                        poster = poster,
+                                    )
+                                )
+                            }
+
+                            // ২. ডিসপ্লে-নেম ম্যাপড আইডির (name:XXX) জন্য সেভ করা
+                            if (!skipMapped && mappedCh != null) {
+                                onProgram(
+                                    ProgramEntity(
+                                        id = stableId("$mappedCh|$start"),
+                                        channelTvgId = mappedCh,
+                                        start = start,
+                                        end = stop,
+                                        title = titleStr,
+                                        desc = descStr,
+                                        poster = poster,
+                                    )
+                                )
+                            }
                         }
                         inProgramme = false
                         channel = null
+                        mappedChannel = null
                         capturing = null
                     }
                 }
