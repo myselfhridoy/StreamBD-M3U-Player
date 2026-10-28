@@ -28,6 +28,7 @@ import java.util.Locale
 
 private data class Option(val label: String, val choice: TrackChoice)
 
+// ফিক্স: width, height, bitrate যোগ করা হয়েছে
 private fun keyOf(group: Tracks.Group, index: Int): String {
     val format = group.getTrackFormat(index)
     return listOf(
@@ -35,6 +36,9 @@ private fun keyOf(group: Tracks.Group, index: Int): String {
         format.sampleMimeType.orEmpty(),
         format.language.orEmpty(),
         format.label.orEmpty(),
+        format.width.toString(),
+        format.height.toString(),
+        format.bitrate.toString()
     ).joinToString("|")
 }
 
@@ -113,7 +117,6 @@ fun TrackSelectionDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // উইন্ডো পুরো স্ক্রিন, তাই "বাইরে ট্যাপ" নিজেরাই ধরতে হয়
         Box(
             Modifier
                 .fillMaxSize()
