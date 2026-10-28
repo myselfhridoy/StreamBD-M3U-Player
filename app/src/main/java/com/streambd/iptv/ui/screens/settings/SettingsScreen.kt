@@ -38,6 +38,9 @@ import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.theme.*
 import com.streambd.iptv.util.isTelevision
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private const val APP_VERSION = "1.0.0"
@@ -65,6 +68,7 @@ fun SettingsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val activationState by vm.activationState.collectAsStateWithLifecycle()
     val refresh by vm.refreshState.collectAsStateWithLifecycle()
+    val lastUpdateTime by vm.lastUpdateTime.collectAsStateWithLifecycle() // নতুন
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val isTv = remember { ctx.isTelevision() }
@@ -73,12 +77,11 @@ fun SettingsScreen(
     var pendingPin by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().background(BgDark)) {
-        // TopBar বাদ দেওয়া হয়েছে
         Column(
             Modifier
                 .fillMaxSize()
-                .statusBarsPadding() // স্ট্যাটাস বারের নিচে যাওয়া আটকাতে
-                .navigationBarsPadding() // নেভিগেশন বারের উপরে থাকতে
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
@@ -138,10 +141,13 @@ fun SettingsScreen(
             )
 
             val refreshing = refresh is RefreshState.Running
+            // নতুন: রিফ্রেশ রো-তে শেষ আপডেটের সময় দেখানো হচ্ছে
             ActionRow(
                 label = if (refreshing) "Refreshing playlist…" else "Refresh Playlist",
+                subtitle = formatLastUpdate(lastUpdateTime),
                 onClick = { if (!refreshing) vm.refreshPlaylist() },
             )
+            
             ActionRow("Change PIN Code", onClick = { dlg = Sd.PinCurrent })
             ActionRow("Reset Application", danger = true, onClick = { dlg = Sd.PinForReset })
             ActionRow("Clear Disk Cache", onClick = { dlg = Sd.ClearCache })
@@ -166,7 +172,6 @@ fun SettingsScreen(
         }
     }
 
-    // Refresh-এর ফলাফল
     when (val r = refresh) {
         is RefreshState.Done -> ConfirmDialog(
             title = "Playlist updated",
@@ -298,6 +303,13 @@ fun SettingsScreen(
     }
 }
 
+// নতুন: টাইম ফরম্যাট করার ফাংশন
+private fun formatLastUpdate(timeMs: Long): String? {
+    if (timeMs == 0L) return null
+    val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+    return "Last updated: ${sdf.format(Date(timeMs))}"
+}
+
 @Composable
 private fun SectionHeader(text: String) {
     Text(text.uppercase(), color = Accent, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
@@ -347,13 +359,16 @@ private fun ValueRow(label: String, value: String, onClick: () -> Unit) {
     }
 }
 
+// নতুন: subtitle সাপোর্ট সহ ActionRow
 @Composable
-private fun ActionRow(label: String, danger: Boolean = false, onClick: () -> Unit) {
+private fun ActionRow(
+    label: String,
+    subtitle: String? = null,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
-    Text(
-        text = label,
-        color = if (danger) Danger else TextPrimary,
-        fontSize = 15.sp,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
@@ -361,8 +376,22 @@ private fun ActionRow(label: String, danger: Boolean = false, onClick: () -> Uni
             .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 14.dp),
-    )
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (danger) Danger else TextPrimary,
+            fontSize = 15.sp,
+        )
+        if (subtitle != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                color = TextMuted,
+                fontSize = 12.sp,
+            )
+        }
+    }
 }
 
 @Composable
