@@ -9,11 +9,6 @@ import android.util.Log
 /**
  * Robust TV detection for real Android TV, cheap Chinese TV boxes
  * (TX3 Mini, MXQ, H96, X88, Tanix, …), tablets, and phones.
- *
- * Cheap boxes typically fail the official `FEATURE_LEANBACK` check, so we
- * combine multiple signals and accept "any one matches". This is intentionally
- * generous — a false-positive (treating a big tablet as TV) is much less
- * harmful than a false-negative (a TV box stuck in mobile layout).
  */
 object DeviceType {
 
@@ -54,13 +49,20 @@ object DeviceType {
             return true
         }
 
-        // 4) No touchscreen → almost certainly a TV or set-top box
+        // 4) সিম/টেলিফোনি থাকলে এটা ফোন, TV বক্স নয়। 
+        // নিচের মডেল-অনুমান শুধু টেলিফোনিহীন ডিভাইসের জন্য।
+        if (pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
+            Log.d(TAG, "isTv=false (has telephony)")
+            return false
+        }
+
+        // 5) No touchscreen → almost certainly a TV or set-top box
         if (!pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) {
             Log.d(TAG, "isTv=true (no touchscreen)")
             return true
         }
 
-        // 5) Model / product / device-name / hardware heuristics.
+        // 6) Model / product / device-name / hardware heuristics.
         val model = (
             Build.MODEL + " " +
                 Build.PRODUCT + " " +
@@ -84,14 +86,13 @@ object DeviceType {
             return true
         }
 
-        // 6) Landscape-only + no telephony + no sensors
-        val hasTelephony = pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)
+        // 7) Landscape-only + no sensors (hasTelephony বাদ দেওয়া হয়েছে)
         val hasAccel = pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER)
         val hasGyro = pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE)
         val isLandscapeOnly = config.orientation == Configuration.ORIENTATION_LANDSCAPE &&
                 !hasAccel && !hasGyro
-        if (isLandscapeOnly && !hasTelephony) {
-            Log.d(TAG, "isTv=true (landscape-only, no telephony, no sensors)")
+        if (isLandscapeOnly) {
+            Log.d(TAG, "isTv=true (landscape-only, no sensors)")
             return true
         }
 
