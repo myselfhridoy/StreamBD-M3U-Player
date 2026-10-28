@@ -40,6 +40,7 @@ class BootReceiver : BroadcastReceiver() {
                 if (settings.flow.first().startAfterReboot) {
                     val launchIntent = Intent(appContext, MainActivity::class.java).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        putExtra(MainActivity.EXTRA_FROM_BOOT, true) // নতুন লাইন
                     }
                     appContext.startActivity(launchIntent)
                 }
