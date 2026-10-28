@@ -11,17 +11,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// নতুন কম্পোনেন্ট: প্লেলিস্ট আপডেটিং ব্যানার (ডান কোণে)
+// নতুন কম্পোনেন্ট: প্লেলিস্ট আপডেটিং ব্যানার (ব্যাকগ্রাউন্ড ছাড়া)
 @Composable
 private fun UpdatingBanner(autoRefresher: AutoRefresher) {
     val isRefreshing by autoRefresher.isRefreshing.collectAsStateWithLifecycle()
@@ -150,34 +150,37 @@ private fun UpdatingBanner(autoRefresher: AutoRefresher) {
         exit = fadeOut(),
         modifier = Modifier.fillMaxSize()
     ) {
-        // সিস্টেম বার (নচ/স্ট্যাটাস বার) থেকে দূরে রাখতে safeDrawing প্যাডিং
         Box(
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(16.dp),
+                .padding(24.dp), // স্ক্রিনের একদম কিনারায় না রেখে সামান্য প্যাডিং
             contentAlignment = Alignment.TopEnd // উপরের ডান কোণে
         ) {
             Column(
-                Modifier
-                    .background(Panel.copy(alpha = 0.95f), RoundedCornerShape(8.dp))
-                    .border(1.dp, Divider, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.End // ডান দিক থেকে অ্যালাইন
             ) {
                 Text(
                     "Playlist Updating...",
-                    color = TextPrimary,
+                    color = Color.White, // সাদা রঙ, যাতে ভিডিওর ওপর স্পষ্ট দেখা যায়
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    // ভিডিওর ওপর যাতে মিলিয়ে না যায়, সেজন্য কালো শ্যাডো
+                    style = TextStyle(
+                        shadow = Shadow(
+                            color = Color.Black,
+                            offset = Offset(1f, 1f),
+                            blurRadius = 4f
+                        )
+                    )
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 LinearProgressIndicator(
                     modifier = Modifier
                         .width(140.dp)
                         .height(3.dp),
                     color = Accent,
-                    trackColor = Color.White.copy(alpha = 0.2f)
+                    trackColor = Color.White.copy(alpha = 0.3f)
                 )
             }
         }
