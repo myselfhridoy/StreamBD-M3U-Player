@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,19 +24,23 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.BuildConfig
+import com.streambd.iptv.ui.components.AppDialog
+import com.streambd.iptv.ui.components.AppDialogButton
 import com.streambd.iptv.ui.theme.*
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ActivationScreen(
     onActivated: () -> Unit,
@@ -50,65 +55,75 @@ fun ActivationScreen(
     var showDevDialog by remember { mutableStateOf(false) }
     var playlistUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    
+    // ল্যান্ডস্কেপ ফোনে (কিবোর্ড খোলা অবস্থায় আরও কম) উল্লম্ব লেআউট ধরে না, তাই পাশাপাশি
+    val compact = LocalConfiguration.current.screenHeightDp < 460
 
-    // EPG URL স্টেট বাদ দেওয়া হয়েছে
+    // মোবাইলে কিবোর্ড অটো ওপেন এড়াতে চাইলে নিচের লাইনটি কমেন্ট আউট করতে পারেন
+    // LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
 
+    fun submit() {
+        if (busy) return
+        focusManager.clearFocus()
+        if (serverMode) {
+            if (code.isNotBlank()) vm.activate()
+        } else if (playlistUrl.isNotBlank()) {
+            vm.activateWithPlaylistUrl(playlistUrl, "")
+        }
+    }
+
+    val form: @Composable ColumnScope.() -> Unit = {
+        ActivationForm(
+            serverMode = serverMode,
+            code = code,
+            playlistUrl = playlistUrl,
+            busy = busy,
+            error = error,
+            compact = compact,
+            devEnabled = BuildConfig.DEBUG,
+            fieldFocus = fieldFocus,
+            onCodeChange = vm::setCode,
+            onPlaylistChange = { playlistUrl = it },
+            onSubmit = ::submit,
+            onOpenDev = { showDevDialog = true },
+        )
+    }
+
+    // safeDrawing কিবোর্ডের জায়গাও ধরে, তাই কিবোর্ড খুললে Box ছোট হয়
     Box(
         Modifier
             .fillMaxSize()
             .background(BgDark)
-            .imePadding() // কিবোর্ড ওপেন হলে স্ক্রিন রিসাইজ হবে
-            .navigationBarsPadding()
-            .statusBarsPadding(),
-        contentAlignment = Alignment.Center
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .widthIn(max = 550.dp)
-                .verticalScroll(rememberScrollState()) // ছোট স্ক্রিনে স্ক্রল হবে
-                .padding(horizontal = 24.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            
-            // লোগো সেকশন
-            Text("STREAMBD", color = Accent, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-            Text("IPTV", color = TextPrimary, fontSize = 15.sp)
-            
-            Spacer(Modifier.height(32.dp))
-
-            if (serverMode) {
-                ServerActivationContent(
-                    code = code,
-                    busy = busy,
-                    error = error,
-                    devEnabled = BuildConfig.DEBUG,
-                    fieldFocus = fieldFocus,
-                    onCodeChange = vm::setCode,
-                    onActivate = vm::activate,
-                    onOpenDev = { showDevDialog = true },
+        if (compact) {
+            Row(
+                Modifier.fillMaxWidth().widthIn(max = 760.dp).padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(0.8f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Logo(titleSize = 30.sp, subSize = 14.sp)
+                }
+                Spacer(Modifier.width(24.dp))
+                Column(
+                    Modifier.weight(1.2f).verticalScroll(rememberScrollState()),
+                    content = form,
                 )
-            } else {
-                // শুধুমাত্র Playlist URL ফিল্ড
-                UrlField(
-                    label = "Playlist M3U URL",
-                    placeholder = "Enter your M3U playlist link...",
-                    value = playlistUrl,
-                    imeAction = ImeAction.Done,
-                    modifier = Modifier.focusRequester(fieldFocus),
-                    onValue = { playlistUrl = it },
-                )
-
-                ErrorText(error)
-
+            }
+        } else {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 550.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Logo(titleSize = 34.sp, subSize = 15.sp)
                 Spacer(Modifier.height(32.dp))
-                
-                ActionButton(
-                    label = "Save & Continue",
-                    enabled = playlistUrl.isNotBlank() && !busy,
-                    busy = busy,
-                    onClick = { vm.activateWithPlaylistUrl(playlistUrl, "") }, // EPG URL খালি পাঠানো হচ্ছে
-                )
+                form()
             }
         }
     }
@@ -116,7 +131,7 @@ fun ActivationScreen(
     if (serverMode && BuildConfig.DEBUG && showDevDialog) {
         DevUrlDialog(
             onDismiss = { showDevDialog = false },
-            onApply = { playlist, _ ->
+            onApply = { playlist ->
                 showDevDialog = false
                 vm.activateWithPlaylistUrl(playlist, "")
             },
@@ -138,83 +153,130 @@ fun ActivationScreen(
     }
 }
 
-/* ------------------------- server activation mode ------------------------- */
+@Composable
+private fun Logo(titleSize: TextUnit, subSize: TextUnit) {
+    Text("STREAMBD", color = Accent, fontSize = titleSize, fontWeight = FontWeight.Bold)
+    Text("IPTV", color = TextPrimary, fontSize = subSize)
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ServerActivationContent(
+private fun ActivationForm(
+    serverMode: Boolean,
     code: String,
+    playlistUrl: String,
     busy: Boolean,
     error: String?,
+    compact: Boolean,
     devEnabled: Boolean,
     fieldFocus: FocusRequester,
     onCodeChange: (String) -> Unit,
-    onActivate: () -> Unit,
+    onPlaylistChange: (String) -> Unit,
+    onSubmit: () -> Unit,
     onOpenDev: () -> Unit,
 ) {
-    Box(Modifier.widthIn(max = 550.dp).fillMaxWidth()) {
-        Column {
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Panel)
-                    .then(
-                        if (devEnabled) Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
-                        else Modifier,
-                    )
-                    .padding(14.dp),
-            ) {
-                Text(
-                    "Enter the activation code you received with your subscription.",
-                    color = TextPrimary,
-                    fontSize = 14.sp,
-                )
-                if (devEnabled) {
-                    Spacer(Modifier.height(4.dp))
-                    Text("Debug: long-press this card for advanced setup.", color = TextMuted, fontSize = 11.sp)
-                }
-            }
+    val fieldHeight = if (compact) 46.dp else 52.dp
+    val gap = if (compact) 10.dp else 16.dp
 
-            Spacer(Modifier.height(16.dp))
-            Box(
-                Modifier.fillMaxWidth()
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Surface1)
-                    .border(2.dp, Accent, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                if (code.isEmpty()) Text("Activation code", color = TextMuted.copy(alpha = 0.5f), fontSize = 15.sp)
-                BasicTextField(
-                    value = code,
-                    onValueChange = onCodeChange,
-                    singleLine = true,
-                    cursorBrush = SolidColor(Accent),
-                    textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
-                )
-            }
+    if (serverMode) {
+        Text(
+            "Enter the activation code you received with your subscription.",
+            color = TextPrimary,
+            fontSize = if (compact) 13.sp else 14.sp,
+            modifier = if (devEnabled) {
+                Modifier.combinedClickable(onClick = {}, onLongClick = onOpenDev)
+            } else {
+                Modifier
+            },
+        )
+        if (devEnabled) {
+            Spacer(Modifier.height(2.dp))
+            Text("Debug: long-press the text above for advanced setup.", color = TextMuted, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(gap))
+        InputField(
+            label = null,
+            placeholder = "Activation code",
+            value = code,
+            keyboardType = KeyboardType.Text,
+            height = fieldHeight,
+            highlight = true,
+            modifier = Modifier.focusRequester(fieldFocus),
+            onSubmit = onSubmit,
+            onValue = onCodeChange,
+        )
+    } else {
+        InputField(
+            label = "Playlist M3U URL",
+            placeholder = "Enter your M3U playlist link...",
+            value = playlistUrl,
+            keyboardType = KeyboardType.Uri,
+            height = fieldHeight,
+            highlight = false,
+            modifier = Modifier.focusRequester(fieldFocus),
+            onSubmit = onSubmit,
+            onValue = onPlaylistChange,
+        )
+    }
 
-            ErrorText(error)
+    error?.let {
+        Spacer(Modifier.height(6.dp))
+        Text(it, color = Danger, fontSize = 12.sp)
+    }
 
-            Spacer(Modifier.height(28.dp))
-            ActionButton("Activate", enabled = code.isNotBlank() && !busy, busy = busy, onClick = onActivate)
+    Spacer(Modifier.height(gap))
+    ActionButton(
+        label = if (serverMode) "Activate" else "Save & Continue",
+        enabled = (if (serverMode) code.isNotBlank() else playlistUrl.isNotBlank()) && !busy,
+        busy = busy,
+        height = if (compact) 46.dp else 50.dp,
+        onClick = onSubmit,
+    )
+}
+
+@Composable
+private fun InputField(
+    label: String?,
+    placeholder: String,
+    value: String,
+    keyboardType: KeyboardType,
+    height: Dp,
+    highlight: Boolean,
+    modifier: Modifier = Modifier,
+    onSubmit: () -> Unit,
+    onValue: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        if (label != null) {
+            Text(label, color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Surface1)
+                .border(if (highlight) 2.dp else 1.dp, if (highlight) Accent else Divider, RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (value.isEmpty()) Text(placeholder, color = TextMuted.copy(alpha = 0.5f), fontSize = 15.sp)
+            BasicTextField(
+                value = value,
+                onValueChange = onValue,
+                singleLine = true,
+                cursorBrush = SolidColor(Accent),
+                textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+                modifier = modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
-/* ------------------------------ shared bits ------------------------------ */
-
 @Composable
-private fun ErrorText(error: String?) {
-    error?.let {
-        Spacer(Modifier.height(10.dp))
-        Text(it, color = Danger, fontSize = 13.sp)
-    }
-}
-
-@Composable
-private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick: () -> Unit) {
+private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, height: Dp, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -224,23 +286,20 @@ private fun ActionButton(label: String, enabled: Boolean, busy: Boolean, onClick
             disabledContainerColor = Accent.copy(alpha = 0.35f),
             disabledContentColor = Color.Black.copy(alpha = 0.6f),
         ),
-        modifier = Modifier.fillMaxWidth().height(50.dp),
-        shape = RoundedCornerShape(8.dp)
+        modifier = Modifier.fillMaxWidth().height(height),
+        shape = RoundedCornerShape(8.dp),
     ) {
-        if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+        if (busy) CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
         else Text(label, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
     }
 }
 
 @Composable
-private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Unit) {
+private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String) -> Unit) {
     var playlistUrl by remember { mutableStateOf("") }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().widthIn(max = 460.dp).clip(RoundedCornerShape(8.dp))
-                .background(Panel).padding(20.dp),
-        ) {
+    AppDialog(onDismiss = onDismiss, width = 460.dp) {
+        Column(Modifier.padding(20.dp)) {
             Text("Advanced setup", color = TextPrimary, fontSize = 18.sp)
             Spacer(Modifier.height(6.dp))
             Text(
@@ -248,70 +307,23 @@ private fun DevUrlDialog(onDismiss: () -> Unit, onApply: (String, String) -> Uni
                 color = TextMuted,
                 fontSize = 13.sp,
             )
-            Spacer(Modifier.height(16.dp))
-            UrlField(
+            Spacer(Modifier.height(12.dp))
+            InputField(
                 label = "Playlist M3U URL",
                 placeholder = "Enter M3U Playlist URL...",
                 value = playlistUrl,
-                imeAction = ImeAction.Done,
+                keyboardType = KeyboardType.Uri,
+                height = 46.dp,
+                highlight = false,
+                onSubmit = { onApply(playlistUrl) },
                 onValue = { playlistUrl = it },
             )
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                DialogAction("CANCEL", TextMuted, onDismiss)
+                AppDialogButton("CANCEL", TextMuted, onClick = onDismiss)
                 Spacer(Modifier.width(8.dp))
-                DialogAction("APPLY", Accent) { onApply(playlistUrl, "") }
+                AppDialogButton("APPLY", Accent) { onApply(playlistUrl) }
             }
         }
     }
-}
-
-@Composable
-private fun UrlField(
-    label: String,
-    placeholder: String,
-    value: String,
-    imeAction: ImeAction = ImeAction.Next,
-    modifier: Modifier = Modifier,
-    onValue: (String) -> Unit,
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
-        Box(
-            Modifier.fillMaxWidth()
-                .height(52.dp) 
-                .clip(RoundedCornerShape(8.dp))
-                .background(Surface1)
-                .border(1.dp, Divider, RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            if (value.isEmpty()) {
-                Text(placeholder, color = TextMuted.copy(alpha = 0.4f), fontSize = 15.sp)
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValue,
-                singleLine = true,
-                cursorBrush = SolidColor(Accent),
-                textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = imeAction),
-                modifier = modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DialogAction(label: String, color: Color, onClick: () -> Unit) {
-    Text(
-        label,
-        color = color,
-        fontSize = 13.sp,
-        modifier = Modifier.clip(RoundedCornerShape(4.dp)).combinedClickable(
-            onClick = onClick,
-            onLongClick = onClick,
-        ).padding(horizontal = 12.dp, vertical = 8.dp),
-    )
 }
