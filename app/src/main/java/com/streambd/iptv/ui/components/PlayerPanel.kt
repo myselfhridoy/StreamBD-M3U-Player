@@ -44,10 +44,6 @@ fun Modifier.consumeTaps(): Modifier = pointerInput(Unit) { detectTapGestures { 
 
 data class PanelTab(val id: Long?, val label: String)
 
-/**
- * LiveScreen-এর ধাঁচ: বাম অর্ধেকে হালকা গ্রেডিয়েন্ট ও তালিকা, উপরে পুরো প্রস্থে সলিড ট্যাব বার,
- * ডান অর্ধেকে ভিডিও দেখা যায়। নচের জায়গাতেও ব্যাকগ্রাউন্ড ঢোকে।
- */
 @Composable
 fun PanelScaffold(
     tabs: List<PanelTab>,
@@ -56,23 +52,28 @@ fun PanelScaffold(
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.35f)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.4f)),
-                    ),
-                ),
-        )
         Column(Modifier.fillMaxSize()) {
+            // ট্যাব বার (ফুল স্ক্রিন জুড়ে)
             Box(Modifier.fillMaxWidth().background(Color(0xFF101010))) {
                 PanelTabs(tabs, selectedTab, onSelectTab)
             }
+            
             Row(Modifier.weight(1f).fillMaxWidth()) {
-                Box(Modifier.weight(0.5f).fillMaxHeight().consumeTaps(), content = content)
-                Spacer(Modifier.weight(0.5f))
+                // তালিকা এবং ব্যাকগ্রাউন্ড একসাথে একই Box-এ রাখা হলো
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.35f) // <--- এখানে আপনার পছন্দমতো মান (যেমন 0.3f, 0.4f) দিন
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.4f)),
+                            ),
+                        )
+                        .consumeTaps(),
+                    content = content
+                )
+                // ডান দিকের ভিডিও এরিয়ার জন্য ফাঁকা জায়গা
+                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -145,7 +146,6 @@ fun PanelRow(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(6.dp)
 
-    // focused অথবা playing—যেকোনোটি সত্য হলে হাইলাইট (বর্ডার) দেখাবে
     val isHighlighted = focused || playing
 
     Row(
@@ -205,10 +205,6 @@ fun PanelRow(
     }
 }
 
-/**
- * যেকোনো তালিকার জন্য: আগে স্ক্রল, তারপর ফোকাস। ফোকাস শুধু প্রথমবার নেয় (ট্যাবে ঘোরার সময় নয়)।
- * [resetKey] বদলালে (গ্রুপ বদল ইত্যাদি) [startIndex]-এ স্ক্রল হয়।
- */
 @Composable
 fun <T> PanelList(
     items: List<T>,
