@@ -10,6 +10,7 @@ import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.M3uParser
 import com.streambd.iptv.data.m3u.ParsedChannel
 import com.streambd.iptv.data.util.stableId
+import com.streambd.iptv.data.util.epgNameKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
