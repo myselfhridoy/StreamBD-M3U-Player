@@ -55,6 +55,18 @@ class SettingsViewModel @Inject constructor(
     private val _refresh = MutableStateFlow<RefreshState>(RefreshState.Idle)
     val refreshState: StateFlow<RefreshState> = _refresh.asStateFlow()
 
+    // নতুন: শেষ আপডেটের সময় (টাইমস্ট্যাম্প)
+    private val _lastUpdateTime = MutableStateFlow(0L)
+    val lastUpdateTime: StateFlow<Long> = _lastUpdateTime.asStateFlow()
+
+    init {
+        loadLastUpdateTime()
+    }
+
+    fun loadLastUpdateTime() {
+        _lastUpdateTime.value = sync.lastPlaylistUpdateTime()
+    }
+
     fun setStartAfterReboot(v: Boolean) = viewModelScope.launch { settings.setStartAfterReboot(v) }
     fun setShowEpg(v: Boolean) = viewModelScope.launch { settings.setShowEpgOnSelect(v) }
     fun setAspect(m: AspectMode) = viewModelScope.launch { settings.setAspectMode(m) }
@@ -84,6 +96,10 @@ class SettingsViewModel @Inject constructor(
                     preferDiscovered = activation.isLocal(active),
                 )
                 if (result.epgUrl != active.epgUrl) activation.updateEpgUrl(result.epgUrl)
+                
+                // নতুন: রিফ্রেশ সফল হলে শেষ আপডেটের সময় আপডেট করে নিন
+                loadLastUpdateTime()
+                
                 RefreshState.Done(result.channels, result.programs, result.epgError)
             } catch (e: SyncException) {
                 RefreshState.Failed(e.message ?: "Refresh failed")
@@ -111,6 +127,7 @@ class SettingsViewModel @Inject constructor(
         activation.clear()
         settings.clearAll()
         sync.clearState()
+        _lastUpdateTime.value = 0L // নতুন: অ্যাপ রিসেট হলে সময় রিসেট করে দিন
         onDone()
     }
 }
