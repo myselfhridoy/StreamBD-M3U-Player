@@ -50,6 +50,12 @@ fun AppNav() {
                         popUpTo(Routes.SPLASH) { inclusive = true }
                     }
                 },
+                onToLive = { channelId ->
+                    nav.navigate(Routes.HOME) { 
+                        popUpTo(Routes.SPLASH) { inclusive = true } 
+                    }
+                    nav.navigate(Routes.live(channelId))
+                },
             )
         }
         composable(Routes.HOME) {
