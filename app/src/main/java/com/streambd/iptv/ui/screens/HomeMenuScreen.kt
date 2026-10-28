@@ -1,8 +1,5 @@
 package com.streambd.iptv.ui.screens
 
-import android.app.UiModeManager
-import android.content.Context
-import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.nav.Routes
 import com.streambd.iptv.ui.theme.*
+import com.streambd.iptv.util.DeviceType
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -61,12 +59,10 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
         }
     }
 
-    // শুধু TV-তে প্রথম টাইলে ফোকাস। ফোনে দিলে "All" সবসময় হাইলাইট দেখাত।
-    val isTv = remember {
-        val ui = ctx.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
-        ui?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
-    }
+    // নতুন শক্তিশালী DeviceType ব্যবহার করে TV ডিটেকশন
+    val isTv = remember { DeviceType.isTv(ctx) }
     val firstTile = remember { FocusRequester() }
+    
     LaunchedEffect(Unit) {
         if (isTv) runCatching { firstTile.requestFocus() }
     }
@@ -151,13 +147,13 @@ private fun HomeTile(item: HomeItem, modifier: Modifier = Modifier, onClick: () 
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(item.icon, contentDescription = item.label, tint = tint, modifier = Modifier.size(44.dp))
-Spacer(Modifier.height(8.dp))
-Text(
-    item.label,
-    color = tint,
-    fontSize = 14.sp,
-    maxLines = 1,
-    overflow = TextOverflow.Ellipsis,
-)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            item.label,
+            color = tint,
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
