@@ -396,7 +396,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    // ফিক্স: width, height, bitrate যোগ করা হয়েছে
     private fun formatKey(group: Tracks.Group, index: Int): String {
         val format = group.getTrackFormat(index)
         return listOf(
@@ -410,17 +409,30 @@ class PlayerManager @Inject constructor(
         ).joinToString("|")
     }
 
+    // ফিক্স: Auto মোড ডিটেকশনসহ currentKeys() আপডেট করা হয়েছে
     private fun currentKeys(): Pair<String?, String?> {
-        val disabledTypes = player.trackSelectionParameters.disabledTrackTypes
+        val params = player.trackSelectionParameters
+        val disabledTypes = params.disabledTrackTypes
+
         fun keyOfType(type: Int): String? {
+            // ১. ট্র্যাক ডিজেবল থাকলে (None)
             if (disabledTypes.contains(type)) return ""
+
+            // ২. ইউজার ম্যানুয়ালি কোনো ট্র্যাক সিলেক্ট করেছে কি না (Override) চেক করা
+            val hasOverride = params.overrides.keys.any { it.type == type }
+            if (!hasOverride) return null // যদি ম্যানুয়ালি সিলেক্ট না থাকে, তবে এটি Auto
+
+            // ৩. যদি ম্যানুয়ালি সিলেক্ট করা থাকে, তবে সেই নির্দিষ্ট ট্র্যাকের key বের করা
             for (group in player.currentTracks.groups) {
                 if (group.type != type) continue
-                for (index in 0 until group.length) {
-                    if (group.isTrackSelected(index)) return formatKey(group, index)
+                val override = params.overrides[group.mediaTrackGroup] ?: continue
+                for (index in override.trackIndices) {
+                    if (index < group.length) {
+                        return formatKey(group, index)
+                    }
                 }
             }
-            return null
+            return null // Fallback
         }
         return keyOfType(C.TRACK_TYPE_VIDEO) to keyOfType(C.TRACK_TYPE_AUDIO)
     }
