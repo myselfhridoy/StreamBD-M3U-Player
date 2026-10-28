@@ -93,6 +93,13 @@ class VodViewModel @Inject constructor(
     val sessionUnlocked: StateFlow<Boolean> = lockController.unlocked
     val player get() = playerManager
 
+    // --- নতুন যোগ করা ফাংশন ---
+    /** স্ক্রিনে ঢোকার সময়: অন্য ধরনের (যেমন লাইভ) কিছু চললে বন্ধ। একই ধরনের হলে চলতে থাকে। */
+    fun onEnter() {
+        val current = playerManager.state.value.current ?: return
+        if (current.kind != kind.name) playerManager.stopAndClear()
+    }
+
     fun selectGroup(id: Long?) {
         selectedGroupId.value = id
         selectedSeries.value = null
