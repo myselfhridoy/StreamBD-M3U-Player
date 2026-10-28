@@ -1,6 +1,10 @@
 package com.streambd.iptv.ui.screens.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +36,7 @@ import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.theme.*
+import com.streambd.iptv.util.isTelevision
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -48,6 +53,7 @@ private sealed interface Sd {
     data object PinForReset : Sd
     data object Help : Sd
     data object Licenses : Sd
+    data object OverlayPermission : Sd
 }
 
 @Composable
@@ -61,6 +67,7 @@ fun SettingsScreen(
     val refresh by vm.refreshState.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isTv = remember { ctx.isTelevision() }
 
     var dlg by remember { mutableStateOf<Sd>(Sd.None) }
     var pendingPin by remember { mutableStateOf("") }
@@ -77,11 +84,19 @@ fun SettingsScreen(
         ) {
             SectionHeader("General")
 
-            CheckRow(
-                label = "Start App automatically after reboot",
-                checked = state.startAfterReboot,
-                onCheckedChange = vm::setStartAfterReboot,
-            )
+            if (isTv) {
+                CheckRow(
+                    label = "Start App automatically after reboot",
+                    checked = state.startAfterReboot,
+                    onCheckedChange = { enable ->
+                        val needsOverlay = enable &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                            !Settings.canDrawOverlays(ctx)
+                        if (needsOverlay) dlg = Sd.OverlayPermission else vm.setStartAfterReboot(enable)
+                    },
+                )
+            }
+
             CheckRow(
                 label = "Show EPG when a channel is selected",
                 checked = state.showEpgOnSelect,
@@ -257,6 +272,26 @@ fun SettingsScreen(
             confirmIsDangerous = false,
             onCancel = { dlg = Sd.None },
             onConfirm = { dlg = Sd.None },
+        )
+
+        Sd.OverlayPermission -> ConfirmDialog(
+            title = "Allow auto-start",
+            body = "To open the app after the TV restarts, Android requires the \"Display over other apps\" permission. Tap CONTINUE, enable StreamBD IPTV, then come back.",
+            confirmLabel = "CONTINUE",
+            confirmIsDangerous = false,
+            onCancel = { dlg = Sd.None },
+            onConfirm = {
+                dlg = Sd.None
+                vm.setStartAfterReboot(true)
+                try {
+                    ctx.startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(ctx, "This device can't open that setting. Auto-start may not work.", Toast.LENGTH_LONG).show()
+                }
+            },
         )
 
         Sd.None -> Unit
