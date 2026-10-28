@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,9 +37,12 @@ import com.streambd.iptv.data.repo.AutoRefresher
 import com.streambd.iptv.player.ChannelJumpController
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.ui.nav.AppNav
+import com.streambd.iptv.ui.player.VolumeOverlay
 import com.streambd.iptv.ui.theme.*
 import com.streambd.iptv.util.LaunchState
+import com.streambd.iptv.util.VolumeController
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -55,6 +59,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var jumpController: ChannelJumpController
     @Inject lateinit var launchState: LaunchState
     @Inject lateinit var autoRefresher: AutoRefresher
+    @Inject lateinit var volumeController: VolumeController // নতুন ইনজেক্ট
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,7 +67,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             launchState.bootLaunch = intent?.getBooleanExtra(EXTRA_FROM_BOOT, false) == true
         }
-        // ভলিউম বাটন সবসময় মিডিয়া ভলিউম বদলাবে (সিস্টেম নিজেই ভলিউম UI দেখায়)
+        
         volumeControlStream = AudioManager.STREAM_MUSIC
         enableEdgeToEdge()
         hideSystemBars()
@@ -82,10 +87,30 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             StreamBdTheme {
+                val volumeState by volumeController.state.collectAsStateWithLifecycle()
+
+                // ভলিউম বারটি দেখানোর ২ সেকেন্ড পর অটো-হাইড হয়ে যাবে
+                LaunchedEffect(volumeState.isVisible, volumeState.level) {
+                    if (volumeState.isVisible) {
+                        delay(2_000L)
+                        volumeController.hideOverlay()
+                    }
+                }
+
                 Box(Modifier.fillMaxSize()) {
                     AppNav()
-                    // লোডিং ব্যানারটি AppNav-এর ওপরে ডান কোণে ভেসে থাকবে
+                    
+                    // প্লেলিস্ট আপডেটিং ব্যানার
                     UpdatingBanner(autoRefresher)
+                    
+                    // কাস্টম ভলিউম ওভারলে
+                    AnimatedVisibility(
+                        visible = volumeState.isVisible,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        VolumeOverlay(level = volumeState.level)
+                    }
                 }
             }
         }
@@ -105,7 +130,6 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         playerManager.pause()
         autoRefresher.stop()
-        // অ্যাক্টিভিটি থামলে (স্ক্রিনসেভার/হোমে গেলে) ফ্ল্যাগ ক্লিয়ার করে দিন
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -124,6 +148,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
+            // নতুন: ভলিউম আপ/ডাউন বাটন কাস্টম কন্ট্রোলারের কাছে পাঠানো হচ্ছে
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                volumeController.increaseVolume()
+                true // true রিটার্ন করায় সিস্টেম আর নিজের ভলিউম প্যানেল দেখাবে না
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                volumeController.decreaseVolume()
+                true
+            }
             in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 if (!jumpController.isEnabled) return super.onKeyDown(keyCode, event)
                 jumpController.onDigit('0' + (keyCode - KeyEvent.KEYCODE_0))
@@ -139,7 +172,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// নতুন কম্পোনেন্ট: প্লেলিস্ট আপডেটিং ব্যানার (ব্যাকগ্রাউন্ড ছাড়া)
+// প্লেলিস্ট আপডেটিং ব্যানার (ব্যাকগ্রাউন্ড ছাড়া)
 @Composable
 private fun UpdatingBanner(autoRefresher: AutoRefresher) {
     val isRefreshing by autoRefresher.isRefreshing.collectAsStateWithLifecycle()
@@ -154,18 +187,17 @@ private fun UpdatingBanner(autoRefresher: AutoRefresher) {
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(24.dp), // স্ক্রিনের একদম কিনারায় না রেখে সামান্য প্যাডিং
-            contentAlignment = Alignment.TopEnd // উপরের ডান কোণে
+                .padding(24.dp),
+            contentAlignment = Alignment.TopEnd
         ) {
             Column(
-                horizontalAlignment = Alignment.End // ডান দিক থেকে অ্যালাইন
+                horizontalAlignment = Alignment.End
             ) {
                 Text(
                     "Playlist Updating...",
-                    color = Color.White, // সাদা রঙ, যাতে ভিডিওর ওপর স্পষ্ট দেখা যায়
+                    color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    // ভিডিওর ওপর যাতে মিলিয়ে না যায়, সেজন্য কালো শ্যাডো
                     style = TextStyle(
                         shadow = Shadow(
                             color = Color.Black,
