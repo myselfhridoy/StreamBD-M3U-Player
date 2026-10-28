@@ -59,11 +59,10 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var jumpController: ChannelJumpController
     @Inject lateinit var launchState: LaunchState
     @Inject lateinit var autoRefresher: AutoRefresher
-    @Inject lateinit var volumeController: VolumeController // নতুন ইনজেক্ট
+    @Inject lateinit var volumeController: VolumeController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // শুধু নতুন চালুতে (ঘোরানো/প্রসেস পুনরুদ্ধারে নয়)
         if (savedInstanceState == null) {
             launchState.bootLaunch = intent?.getBooleanExtra(EXTRA_FROM_BOOT, false) == true
         }
@@ -72,7 +71,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideSystemBars()
 
-        // কিছু চলছে বা লোড হচ্ছে (আবার চেষ্টা চলাও ধরে) থাকলে স্ক্রিন জেগে থাকবে।
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 playerManager.state
@@ -100,10 +98,8 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize()) {
                     AppNav()
                     
-                    // প্লেলিস্ট আপডেটিং ব্যানার
                     UpdatingBanner(autoRefresher)
                     
-                    // কাস্টম ভলিউম ওভারলে
                     AnimatedVisibility(
                         visible = volumeState.isVisible,
                         enter = fadeIn(),
@@ -133,7 +129,6 @@ class MainActivity : ComponentActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    // ডায়ালগ/কিবোর্ড বন্ধ হয়ে ফোকাস ফিরলে বার আবার লুকানো
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
@@ -146,17 +141,25 @@ class MainActivity : ComponentActivity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 
+    // FIX: dispatchKeyEvent ব্যবহার করে সিস্টেমের ভলিউম UI ব্লক করা হলো
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                    volumeController.increaseVolume()
+                } else {
+                    volumeController.decreaseVolume()
+                }
+            }
+            // true রিটার্ন করায় অ্যান্ড্রয়েড সিস্টেমের নিজস্ব ভলিউম বার আর দেখাবে না
+            return true 
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    // নাম্বার প্যাড দিয়ে চ্যানেল বদলানোর জন্য onKeyDown আগের মতোই থাকবে
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
-            // নতুন: ভলিউম আপ/ডাউন বাটন কাস্টম কন্ট্রোলারের কাছে পাঠানো হচ্ছে
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                volumeController.increaseVolume()
-                true // true রিটার্ন করায় সিস্টেম আর নিজের ভলিউম প্যানেল দেখাবে না
-            }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                volumeController.decreaseVolume()
-                true
-            }
             in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 if (!jumpController.isEnabled) return super.onKeyDown(keyCode, event)
                 jumpController.onDigit('0' + (keyCode - KeyEvent.KEYCODE_0))
