@@ -81,14 +81,14 @@ fun FullscreenPlayer(
     onRetry: (() -> Unit)? = null,
     listOpen: Boolean = false,
     onListOpenChange: (Boolean) -> Unit = {},
-    listAutoHideMs: Long = 6_000L, // নতুন: তালিকা অটো-হাইড হওয়ার সময়
+    listAutoHideMs: Long = 6_000L,
     listContent: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val hasList = listContent != null
     val view = LocalView.current
     val focusManager = LocalFocusManager.current
 
-    // স্ক্রিন জাগিয়ে রাখা (সিস্টেম বার পুরো অ্যাপেই MainActivity লুকিয়ে রাখে)
+    // স্ক্রিন জাগিয়ে রাখা
     DisposableEffect(view) {
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
@@ -97,9 +97,9 @@ fun FullscreenPlayer(
     val rootFocus = remember { FocusRequester() }
     val controlsFocus = remember { FocusRequester() }
     var controlsVisible by remember { mutableStateOf(false) }
-    var interactive by remember { mutableStateOf(false) } // TV: ফোকাস কন্ট্রোলের ভেতরে
-    var tick by remember { mutableIntStateOf(0) }          // প্রতিটা ইনপুটে ৪ সেকেন্ডের টাইমার রিসেট
-    var listTick by remember { mutableIntStateOf(0) }      // নতুন: তালিকায় শেষ ইনপুটের চিহ্ন
+    var interactive by remember { mutableStateOf(false) }
+    var tick by remember { mutableIntStateOf(0) }
+    var listTick by remember { mutableIntStateOf(0) }
 
     fun showControls(interactiveMode: Boolean = false) {
         controlsVisible = true
@@ -116,7 +116,7 @@ fun FullscreenPlayer(
     val hasListNow by rememberUpdatedState(hasList)
     val listChangeNow by rememberUpdatedState(onListOpenChange)
 
-    // ৪ সেকেন্ড পর অটো-হাইড (pause/buffering/error-এ খোলা থাকে)
+    // ৪ সেকেন্ড পর অটো-হাইড
     LaunchedEffect(controlsVisible, tick, state.isPlaying) {
         if (controlsVisible && state.isPlaying) {
             delay(4_000L)
@@ -132,12 +132,13 @@ fun FullscreenPlayer(
     LaunchedEffect(state.error) {
         if (state.error != null) showControls()
     }
-    // তালিকা খুললে কন্ট্রোল সরে যায়
+    
+    // FIX: তালিকা খোলা বা বন্ধ হলে কন্ট্রোল সবসময় লুকিয়ে থাকবে, যাতে ফ্ল্যাশ না করে
     LaunchedEffect(listOpen) {
-        if (listOpen) hideControls()
+        hideControls()
     }
 
-    // নতুন: তালিকা খোলা থাকলে ইনপুট না পেলে নিজে বন্ধ (শুধু যখন কিছু চলছে)
+    // তালিকা খোলা থাকলে ইনপুট না পেলে নিজে বন্ধ
     LaunchedEffect(listOpen, listTick, state.current?.id, state.error) {
         if (listOpen && hasList && state.current != null && state.error == null) {
             delay(listAutoHideMs)
@@ -145,7 +146,7 @@ fun FullscreenPlayer(
         }
     }
 
-    // ফোকাস কোথায় থাকবে: তালিকা খোলা → তালিকা নিজে; কন্ট্রোলে ঢুকলে → play বাটন; নইলে root
+    // ফোকাস কোথায় থাকবে
     LaunchedEffect(controlsVisible, interactive, listOpen) {
         if (listOpen) return@LaunchedEffect
         val target = if (controlsVisible && interactive) controlsFocus else rootFocus
@@ -201,9 +202,8 @@ fun FullscreenPlayer(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (controlsVisible) tick++
-                if (listOpen) listTick++ // নতুন: রিমোটের বাটন চাপলেও তালিকার টাইমার রিসেট হবে
+                if (listOpen) listTick++
 
-                // মিডিয়া ও চ্যানেল কী সবসময় কাজ করে
                 when (event.key) {
                     Key.MediaPlayPause -> { onTogglePlay(); return@onPreviewKeyEvent true }
                     Key.MediaPlay -> { if (!state.isPlaying) onTogglePlay(); return@onPreviewKeyEvent true }
@@ -213,7 +213,6 @@ fun FullscreenPlayer(
                     else -> Unit
                 }
 
-                // তালিকা খোলা থাকলে নেভিগেশন ফোকাস সিস্টেমের হাতে
                 if (listOpen) return@onPreviewKeyEvent false
 
                 val repeat = event.nativeKeyEvent.repeatCount > 0
@@ -231,7 +230,6 @@ fun FullscreenPlayer(
                         if (inControls) {
                             false
                         } else {
-                            // চ্যানেল বদলে key-repeat উপেক্ষা (এক চাপে এক চ্যানেল), seek-এ repeat চলে
                             if (!repeat || onStep == null) stepOrSeek(if (event.key == Key.DirectionRight) 1 else -1)
                             true
                         }
@@ -308,7 +306,6 @@ fun FullscreenPlayer(
             Box(
                 Modifier
                     .fillMaxSize()
-                    // নতুন: ট্যাপ/স্ক্রল দেখে টাইমার রিসেট। ইভেন্ট খেয়ে ফেলে না।
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
@@ -450,7 +447,6 @@ private fun ControlButton(
     )
 }
 
-/** পাতলা seekbar: ট্যাপ বা টেনে সিক। টানা শেষ হলে একবারই seek হয়। */
 @Composable
 private fun ThinSeekBar(
     position: Long,
@@ -584,7 +580,6 @@ private fun NowNextStrip(nowNext: NowNext) {
     }
 }
 
-/** 1.777 → "16:9"। চেনা অনুপাত না হলে "2.35:1" আকারে। */
 private fun aspectLabel(aspect: Float): String? {
     if (aspect <= 0f) return null
     val known = listOf(
