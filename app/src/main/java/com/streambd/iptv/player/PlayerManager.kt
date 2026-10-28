@@ -37,10 +37,6 @@ import java.net.URLDecoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Single shared ExoPlayer for preview + fullscreen. Compose screens only
- * observe [state] and call the small command surface below.
- */
 @OptIn(UnstableApi::class)
 @Singleton
 class PlayerManager @Inject constructor(
@@ -78,7 +74,7 @@ class PlayerManager @Inject constructor(
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     private var retriesLeft = MAX_RETRIES
-    private var networkRetries = 0 // নতুন ভেরিয়েবল: নেটওয়ার্ক রিট্রাই ট্র্যাকিং
+    private var networkRetries = 0
     private var retryJob: Job? = null
     private var restoredForMediaId: String? = null
     private var currentItem: MediaItem? = null
@@ -98,7 +94,7 @@ class PlayerManager @Inject constructor(
             }
             if (playbackState == Player.STATE_READY) {
                 retriesLeft = MAX_RETRIES
-                networkRetries = 0 // নতুন: রিট্রাই রিসেট
+                networkRetries = 0
                 retryJob?.cancel()
             }
         }
@@ -161,6 +157,7 @@ class PlayerManager @Inject constructor(
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK) // নতুন: নেটওয়ার্ক ও সিপিইউ জাগিয়ে রাখার জন্য
             .build()
             .also { it.addListener(playerListener) }
     }
@@ -208,15 +205,13 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    /* ------------------------------ commands ------------------------------ */
-
     fun play(channel: ChannelEntity) {
         val same = _state.value.current?.id == channel.id
         if (same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
 
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
-        networkRetries = 0 // নতুন: রিট্রাই রিসেট
+        networkRetries = 0
         hlsHintApplied = false
         restoredForMediaId = null
 
@@ -286,8 +281,6 @@ class PlayerManager @Inject constructor(
     fun setAspectMode(mode: AspectMode) { _state.update { it.copy(aspectMode = mode) } }
     fun clearError() { _state.update { it.copy(error = null) } }
 
-    /* ------------------------------- errors ------------------------------- */
-
     private fun handleError(error: PlaybackException) {
         retryJob?.cancel()
 
@@ -309,7 +302,6 @@ class PlayerManager @Inject constructor(
             return
         }
 
-        // নতুন: নেটওয়ার্ক-ত্রুটি (বুটের পর ওয়াইফাই তখনও ওঠেনি ইত্যাদি): লম্বা সময় ধরে আবার চেষ্টা
         val networkDown = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
         if (networkDown && networkRetries < 12) {
@@ -331,7 +323,7 @@ class PlayerManager @Inject constructor(
             retriesLeft--
             _state.update { it.copy(isBuffering = true) }
             retryJob = scope.launch {
-                delay(1_000L shl attempt) // 1s, 2s, 4s
+                delay(1_000L shl attempt)
                 player.prepare()
             }
         } else {
@@ -367,17 +359,11 @@ class PlayerManager @Inject constructor(
         return raw.substring(0, bar) to headers
     }
 
-    /* ------------------------------ tracks ------------------------------ */
-
     fun applyTrackChoice(type: Int, choice: TrackChoice) {
         val b = player.trackSelectionParameters.buildUpon()
         when (choice) {
-            TrackChoice.None ->
-                b.setTrackTypeDisabled(type, true)
-
-            TrackChoice.Auto ->
-                b.setTrackTypeDisabled(type, false).clearOverridesOfType(type)
-
+            TrackChoice.None -> b.setTrackTypeDisabled(type, true)
+            TrackChoice.Auto -> b.setTrackTypeDisabled(type, false).clearOverridesOfType(type)
             is TrackChoice.Specific -> {
                 val override = TrackSelectionOverride(
                     choice.group.mediaTrackGroup, choice.index
@@ -431,14 +417,11 @@ class PlayerManager @Inject constructor(
         val disabledTypes = params.disabledTrackTypes
 
         fun keyOfType(type: Int): String? {
-            // ১. ট্র্যাক ডিজেবল থাকলে (None)
             if (disabledTypes.contains(type)) return ""
 
-            // ২. ইউজার ম্যানুয়ালি কোনো ট্র্যাক সিলেক্ট করেছে কি না (Override) চেক করা
             val hasOverride = params.overrides.keys.any { it.type == type }
-            if (!hasOverride) return null // যদি ম্যানুয়ালি সিলেক্ট না থাকে, তবে এটি Auto
+            if (!hasOverride) return null 
 
-            // ৩. যদি ম্যানুয়ালি সিলেক্ট করা থাকে, তবে সেই নির্দিষ্ট ট্র্যাকের key বের করা
             for (group in player.currentTracks.groups) {
                 if (group.type != type) continue
                 val override = params.overrides[group.mediaTrackGroup] ?: continue
@@ -448,7 +431,7 @@ class PlayerManager @Inject constructor(
                     }
                 }
             }
-            return null // Fallback
+            return null
         }
         return keyOfType(C.TRACK_TYPE_VIDEO) to keyOfType(C.TRACK_TYPE_AUDIO)
     }
