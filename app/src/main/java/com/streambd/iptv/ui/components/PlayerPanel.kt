@@ -59,7 +59,7 @@ fun PanelScaffold(
         Box(
             Modifier
                 .fillMaxHeight()
-                .fillMaxWidth(0.5f)
+                .fillMaxWidth(0.35f)
                 .background(
                     Brush.horizontalGradient(
                         listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.4f)),
