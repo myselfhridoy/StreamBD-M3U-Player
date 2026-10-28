@@ -36,6 +36,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
@@ -80,6 +81,7 @@ fun FullscreenPlayer(
     onRetry: (() -> Unit)? = null,
     listOpen: Boolean = false,
     onListOpenChange: (Boolean) -> Unit = {},
+    listAutoHideMs: Long = 6_000L, // নতুন: তালিকা অটো-হাইড হওয়ার সময়
     listContent: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val hasList = listContent != null
@@ -97,6 +99,7 @@ fun FullscreenPlayer(
     var controlsVisible by remember { mutableStateOf(false) }
     var interactive by remember { mutableStateOf(false) } // TV: ফোকাস কন্ট্রোলের ভেতরে
     var tick by remember { mutableIntStateOf(0) }          // প্রতিটা ইনপুটে ৪ সেকেন্ডের টাইমার রিসেট
+    var listTick by remember { mutableIntStateOf(0) }      // নতুন: তালিকায় শেষ ইনপুটের চিহ্ন
 
     fun showControls(interactiveMode: Boolean = false) {
         controlsVisible = true
@@ -132,6 +135,14 @@ fun FullscreenPlayer(
     // তালিকা খুললে কন্ট্রোল সরে যায়
     LaunchedEffect(listOpen) {
         if (listOpen) hideControls()
+    }
+
+    // নতুন: তালিকা খোলা থাকলে ইনপুট না পেলে নিজে বন্ধ (শুধু যখন কিছু চলছে)
+    LaunchedEffect(listOpen, listTick, state.current?.id, state.error) {
+        if (listOpen && hasList && state.current != null && state.error == null) {
+            delay(listAutoHideMs)
+            onListOpenChange(false)
+        }
     }
 
     // ফোকাস কোথায় থাকবে: তালিকা খোলা → তালিকা নিজে; কন্ট্রোলে ঢুকলে → play বাটন; নইলে root
@@ -190,6 +201,7 @@ fun FullscreenPlayer(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (controlsVisible) tick++
+                if (listOpen) listTick++ // নতুন: রিমোটের বাটন চাপলেও তালিকার টাইমার রিসেট হবে
 
                 // মিডিয়া ও চ্যানেল কী সবসময় কাজ করে
                 when (event.key) {
@@ -293,7 +305,19 @@ fun FullscreenPlayer(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    // নতুন: ট্যাপ/স্ক্রল দেখে টাইমার রিসেট। ইভেন্ট খেয়ে ফেলে না।
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent(PointerEventPass.Initial)
+                                listTick++
+                            }
+                        }
+                    },
+            ) {
                 listContent?.invoke(this)
             }
         }
