@@ -5,6 +5,8 @@ import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.m3u.M3uParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,12 +49,30 @@ class PlaylistSync @Inject constructor(
         const val KEY_EPG_TRY = "epg_last_attempt"
         const val EPG_MAX_AGE_MS = 12L * 60 * 60 * 1000
         const val EPG_RETRY_GAP_MS = 60L * 60 * 1000
+        // নতুন: প্লেলিস্টের শেষ সফল আপডেট ট্র্যাকিং
+        const val KEY_PLAYLIST_OK = "playlist_last_success"
+        const val PLAYLIST_MAX_AGE_MS = 6L * 60 * 60 * 1000
     }
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
+    
+    // নতুন: ম্যানুয়াল রিফ্রেশ ও অটো-রিফ্রেশ একসঙ্গে চললে একটা অপরটার জন্য অপেক্ষা করবে
+    private val playlistLock = Mutex()
 
-    /** প্লেলিস্ট নামিয়ে যাচাই করে ইমপোর্ট করে। */
-    suspend fun syncPlaylist(url: String): SyncedPlaylist {
+    /** প্লেলিস্ট নামিয়ে ইমপোর্ট করে। একসঙ্গে একটাই চলে। */
+    suspend fun syncPlaylist(url: String): SyncedPlaylist = playlistLock.withLock {
+        val result = fetchAndImport(url)
+        prefs.edit().putLong(KEY_PLAYLIST_OK, System.currentTimeMillis()).apply()
+        result
+    }
+
+    /** শেষ সফল প্লেলিস্ট হালনাগাদ [maxAgeMs]-এর চেয়ে পুরনো কিনা। */
+    fun isPlaylistDue(
+        now: Long = System.currentTimeMillis(),
+        maxAgeMs: Long = PLAYLIST_MAX_AGE_MS,
+    ): Boolean = now - prefs.getLong(KEY_PLAYLIST_OK, 0L) > maxAgeMs
+
+    private suspend fun fetchAndImport(url: String): SyncedPlaylist {
         val body = try {
             download(url)
         } catch (e: CancellationException) {
