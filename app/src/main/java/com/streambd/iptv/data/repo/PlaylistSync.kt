@@ -123,7 +123,7 @@ class PlaylistSync @Inject constructor(
         if (total == 0) {
             throw firstError ?: SyncException(
                 "The guide was downloaded, but no programmes matched your channels. " +
-                    "Check that the playlist's tvg-id values match the guide.",
+                    "Check that the guide covers these channels (matched by tvg-id or channel name).",
             )
         }
         prefs.edit().putLong(KEY_EPG_OK, System.currentTimeMillis()).apply()
