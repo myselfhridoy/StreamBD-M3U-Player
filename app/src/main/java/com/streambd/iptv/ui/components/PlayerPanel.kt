@@ -145,13 +145,20 @@ fun PanelRow(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(6.dp)
 
+    // focused অথবা playing—যেকোনোটি সত্য হলে হাইলাইট (বর্ডার) দেখাবে
+    val isHighlighted = focused || playing
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 2.dp)
             .clip(shape)
-            .background(if (focused) Color.White.copy(alpha = 0.15f) else Color.Transparent)
-            .border(1.dp, if (focused) Accent else Color.Transparent, shape)
+            .background(
+                if (focused) Color.White.copy(alpha = 0.15f) 
+                else if (playing) Accent.copy(alpha = 0.1f) 
+                else Color.Transparent
+            )
+            .border(1.dp, if (isHighlighted) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.isFocused }
             .combinedClickable(
                 onClick = onClick,
