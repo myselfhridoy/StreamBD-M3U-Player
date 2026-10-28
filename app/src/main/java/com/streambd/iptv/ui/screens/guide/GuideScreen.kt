@@ -57,7 +57,10 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     val hourOffset by vm.hourOffsetFlow.collectAsStateWithLifecycle()
     var showGroupDialog by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var picked by remember { mutableStateOf<Pair<ChannelEntity, ProgramEntity>?>(null) }
+    
+    // নতুন স্টেট
+    var pickedChannel by remember { mutableStateOf<ChannelEntity?>(null) }
+    var pickedProgram by remember { mutableStateOf<ProgramEntity?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -65,7 +68,11 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
             now = System.currentTimeMillis()
         }
     }
-    LaunchedEffect(selected) { picked = null }
+    
+    LaunchedEffect(selected) {
+        pickedChannel = null
+        pickedProgram = null
+    }
 
     val bottomInset = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 
@@ -77,15 +84,15 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     val windowEnd = windowStart + SLOT_COUNT * SLOT_MS
     val horizontalScroll = rememberScrollState()
 
-    val headerChannel = picked?.first ?: channels.firstOrNull()
-    val headerProgram = picked?.second ?: headerChannel?.tvgId
+    // হেডারের জন্য চ্যানেল ও প্রোগ্রাম লজিক
+    val headerChannel = pickedChannel ?: channels.firstOrNull()
+    val headerProgram = pickedProgram ?: headerChannel?.tvgId
         ?.let { programs[it] }.orEmpty()
         .firstOrNull { now >= it.start + shiftMs && now < it.end + shiftMs }
 
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
 
     Column(Modifier.fillMaxSize().background(BgDark)) {
-        // TopBar বাদ দেওয়া হয়েছে
         InfoHeader(
             channel = headerChannel,
             program = headerProgram,
@@ -116,14 +123,23 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
         ) {
             items(channels, key = { it.id }) { channel ->
                 Row(Modifier.fillMaxWidth().height(ROW_HEIGHT)) {
-                    ChannelCell(channel)
+                    ChannelCell(
+                        channel = channel,
+                        onFocus = {
+                            pickedChannel = channel
+                            pickedProgram = null
+                        }
+                    )
                     Box(Modifier.fillMaxHeight().weight(1f).horizontalScroll(horizontalScroll)) {
                         ProgramStrip(
                             programs = channel.tvgId?.let { programs[it] }.orEmpty(),
                             windowStart = windowStart,
                             shiftMs = shiftMs,
                             now = now,
-                            onPick = { program -> picked = channel to program },
+                            onPick = { program ->
+                                pickedChannel = channel
+                                pickedProgram = program
+                            },
                         )
                     }
                 }
@@ -162,7 +178,7 @@ private fun InfoHeader(
         Modifier
             .fillMaxWidth()
             .background(Panel)
-            .statusBarsPadding() // স্ট্যাটাস বারের নিচে যাওয়া আটকাতে
+            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -293,12 +309,22 @@ private fun TimelineRuler(windowStart: Long, slots: Int, shiftMs: Long) {
 }
 
 @Composable
-private fun ChannelCell(channel: ChannelEntity) {
+private fun ChannelCell(
+    channel: ChannelEntity,
+    onFocus: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
     Row(
         Modifier
             .width(CHANNEL_COL_WIDTH)
             .fillMaxHeight()
-            .background(Panel)
+            .background(if (focused) Surface1 else Panel)
+            .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
+            .clickable(onClick = onFocus)
             .padding(start = 10.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
