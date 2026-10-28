@@ -55,15 +55,9 @@ class PlayerManager @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    /**
-     * চ্যানেলের URL-এর `|Header=Value` থেকে আসা header। প্লেয়ার একসময়ে এক চ্যানেল চালায়,
-     * তাই একটা জায়গাই যথেষ্ট; প্রতিটা request (playlist ও segment) এখান থেকে header পায়।
-     */
     @Volatile
     private var requestHeaders: Map<String, String> = emptyMap()
 
-    // setUserAgent ইচ্ছে করেই নেই: Media3 ওটা সবসময় header-এর ওপরে বসায়,
-    // ফলে চ্যানেলের নিজস্ব User-Agent কাজ করত না। UA নিচের resolver-এ বসে।
     private val httpFactory = DefaultHttpDataSource.Factory()
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(15_000)
@@ -148,7 +142,6 @@ class PlayerManager @Inject constructor(
     private fun createPlayer(bufferMs: Int): ExoPlayer {
         val minMs = bufferMs.coerceAtLeast(1_000)
         val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
-        // DefaultLoadControl শর্ত: bufferForPlayback(AfterRebuffer) <= minBuffer, তাই min() লাগে
         val forPlaybackMs = minOf(1_000, minMs)
         val afterRebufferMs = minOf(2_000, minMs)
         return ExoPlayer.Builder(appContext)
@@ -186,7 +179,6 @@ class PlayerManager @Inject constructor(
         scope.launch {
             settings.flow.collect { s ->
                 _state.update { it.copy(aspectMode = s.aspectMode) }
-                // শুধু মান সত্যিই বদলালে রিক্রিয়েট (আগে স্টার্টআপেই একবার হতো)
                 if (s.bufferTimeMs != bufferMs) {
                     bufferMs = s.bufferTimeMs
                     rebuildPlayer()
@@ -209,7 +201,6 @@ class PlayerManager @Inject constructor(
         player.volume = volume
         player.playWhenReady = playWhenReady
         if (item != null) {
-            // লাইভে পুরনো position window-এর বাইরে চলে যেতে পারে, তাই ডিফল্ট (লাইভ প্রান্ত)
             player.setMediaItem(item, if (live) C.TIME_UNSET else position)
             player.prepare()
         }
@@ -219,7 +210,6 @@ class PlayerManager @Inject constructor(
 
     fun play(channel: ChannelEntity) {
         val same = _state.value.current?.id == channel.id
-        // একই চ্যানেল ঠিকঠাক চললে কিছু করার নেই। error/idle হলে আবার চালু হবে।
         if (same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
 
         retryJob?.cancel()
@@ -252,7 +242,6 @@ class PlayerManager @Inject constructor(
         player.playWhenReady = true
     }
 
-    /** শেষ চ্যানেল আবার চালানো (error-এর পর)। */
     fun retry() {
         _state.value.current?.let(::play)
     }
@@ -299,14 +288,12 @@ class PlayerManager @Inject constructor(
     private fun handleError(error: PlaybackException) {
         retryJob?.cancel()
 
-        // লাইভ window পেরিয়ে গেলে লাইভ প্রান্তে ফিরে গেলেই চলে
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
             player.seekToDefaultPosition()
             player.prepare()
             return
         }
 
-        // URL-এ .m3u8 নেই অথচ আসলে HLS: একবার HLS ধরে চেষ্টা
         val item = currentItem
         if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED &&
             !hlsHintApplied && item != null
@@ -323,11 +310,11 @@ class PlayerManager @Inject constructor(
         val clientError = cause is HttpDataSource.InvalidResponseCodeException &&
             cause.responseCode in 400..499
         if (!clientError && retriesLeft > 0) {
-            val attempt = MAX_RETRIES - retriesLeft // 0, 1, 2
+            val attempt = MAX_RETRIES - retriesLeft
             retriesLeft--
             _state.update { it.copy(isBuffering = true) }
             retryJob = scope.launch {
-                delay(1_000L shl attempt) // 1s, 2s, 4s
+                delay(1_000L shl attempt)
                 player.prepare()
             }
         } else {
@@ -347,10 +334,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    /**
-     * "https://host/live.m3u8|User-Agent=X&Referer=Y" থেকে (পরিষ্কার URL, header map)।
-     * মানগুলো URL-encoded (M3uParser এভাবেই লেখে)।
-     */
     private fun splitHeaders(raw: String): Pair<String, Map<String, String>> {
         val bar = raw.indexOf('|')
         if (bar < 0) return raw to emptyMap()
@@ -413,6 +396,7 @@ class PlayerManager @Inject constructor(
         }
     }
 
+    // ফিক্স: width, height, bitrate যোগ করা হয়েছে
     private fun formatKey(group: Tracks.Group, index: Int): String {
         val format = group.getTrackFormat(index)
         return listOf(
@@ -420,6 +404,9 @@ class PlayerManager @Inject constructor(
             format.sampleMimeType.orEmpty(),
             format.language.orEmpty(),
             format.label.orEmpty(),
+            format.width.toString(),
+            format.height.toString(),
+            format.bitrate.toString()
         ).joinToString("|")
     }
 
