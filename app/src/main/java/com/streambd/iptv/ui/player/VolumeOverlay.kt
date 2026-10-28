@@ -4,43 +4,47 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.streambd.iptv.ui.theme.Accent
-import com.streambd.iptv.ui.theme.Panel
-import com.streambd.iptv.ui.theme.TextPrimary
 
 @Composable
 fun VolumeOverlay(level: Float) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
+        Row(
             Modifier
-                .width(260.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Panel.copy(alpha = 0.95f))
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .background(Color(0xFF333333).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.VolumeUp, contentDescription = null, tint = Accent)
-                Spacer(Modifier.width(12.dp))
-                Text("${(level * 100).toInt()}%", color = TextPrimary, fontSize = 15.sp)
-            }
-            Spacer(Modifier.height(10.dp))
-            LinearProgressIndicator(
-                progress = { level },
-                color = Accent,
-                trackColor = TextPrimary.copy(alpha = 0.15f),
-                modifier = Modifier.fillMaxWidth().height(4.dp),
+            // বাম দিকে মিউজিক আইকন (ছবির মতো)
+            Icon(
+                imageVector = Icons.Filled.MusicNote,
+                contentDescription = "Volume",
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
             )
+            
+            Spacer(Modifier.width(12.dp))
+            
+            // ডান দিকে চিকন সাদা ভলিউম বার
+            Box(
+                Modifier
+                    .width(120.dp)
+                    .height(3.dp)
+                    .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(1.5.dp))
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(level.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(Color.White, RoundedCornerShape(1.5.dp))
+                )
+            }
         }
     }
 }
