@@ -14,14 +14,19 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun VolumeOverlay(level: Float) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(top = 50.dp), // উপরে কিছুটা নিচে নামানো হলো
+        contentAlignment = Alignment.TopCenter // স্ক্রিনের মাঝখানে নয়, উপরে দেখাবে
+    ) {
         Row(
             Modifier
                 .background(Color(0xFF333333).copy(alpha = 0.9f), RoundedCornerShape(6.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // বাম দিকে মিউজিক আইকন (ছবির মতো)
+            // বাম দিকে মিউজিক আইকন
             Icon(
                 imageVector = Icons.Filled.MusicNote,
                 contentDescription = "Volume",
