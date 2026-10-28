@@ -2,7 +2,7 @@ package com.streambd.iptv.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Accent      = Color(0xFFF5A623)
+val Accent      = Color(0xFF3B9EFF)
 val Danger      = Color(0xFFE5484D)
 val BgDark      = Color(0xFF141414)
 val Surface1    = Color(0xFF2B2B2B)
