@@ -83,6 +83,7 @@ class LiveViewModel @Inject constructor(
                 requestPlay(target)
             }
         }
+        
         viewModelScope.launch {
             combine(playerManager.state, settingsStore.flow) { player, settings ->
                 Triple(player.current?.tvgId, settings.showEpgOnSelect, settings.epgTimeShiftMins)
@@ -96,6 +97,18 @@ class LiveViewModel @Inject constructor(
                     delay(60_000L)
                 }
             }
+        }
+
+        // শেষ দেখা লাইভ চ্যানেল মনে রাখা (বুটে সরাসরি চালানোর জন্য)
+        viewModelScope.launch {
+            playerManager.state
+                .map { it.current }
+                .distinctUntilChanged { a, b -> a?.id == b?.id }
+                .collect { channel ->
+                    if (channel != null && channel.kind == ChannelKind.LIVE.name) {
+                        settingsStore.setLastLiveChannel(channel.id)
+                    }
+                }
         }
     }
 
@@ -123,9 +136,11 @@ class LiveViewModel @Inject constructor(
         }
     }
 
-    suspend fun playById(id: Long) {
-        val target = repo.liveChannels().first().firstOrNull { it.id == id } ?: return
+    /** চ্যানেল পেলে চালু করে true; না পেলে (প্লেলিস্ট বদলে গেছে) false। */
+    suspend fun playById(id: Long): Boolean {
+        val target = repo.liveChannels().first().firstOrNull { it.id == id } ?: return false
         requestPlay(target)
+        return true
     }
 
     /** +1 পরের, -1 আগের চ্যানেল (বর্তমান তালিকার ভেতরে ঘুরে আসে)। */
