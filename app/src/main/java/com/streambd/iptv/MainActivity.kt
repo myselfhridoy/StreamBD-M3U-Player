@@ -4,12 +4,16 @@ import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.streambd.iptv.data.repo.AutoRefresher
 import com.streambd.iptv.player.ChannelJumpController
 import com.streambd.iptv.player.PlayerManager
@@ -17,6 +21,9 @@ import com.streambd.iptv.ui.nav.AppNav
 import com.streambd.iptv.ui.theme.StreamBdTheme
 import com.streambd.iptv.util.LaunchState
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -41,6 +48,21 @@ class MainActivity : ComponentActivity() {
         volumeControlStream = AudioManager.STREAM_MUSIC
         enableEdgeToEdge()
         hideSystemBars()
+
+        // নতুন: কিছু চলছে বা লোড হচ্ছে (আবার চেষ্টা চলাও ধরে) থাকলে স্ক্রিন জেগে থাকবে।
+        // pause বা থেমে গেলে সিস্টেমের নিয়মে আবার ঘুমাতে পারবে।
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                playerManager.state
+                    .map { it.isPlaying || it.isBuffering }
+                    .distinctUntilChanged()
+                    .collect { active ->
+                        if (active) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+            }
+        }
+
         setContent {
             StreamBdTheme { AppNav() }
         }
@@ -60,6 +82,8 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         playerManager.pause()
         autoRefresher.stop()
+        // নতুন: অ্যাক্টিভিটি থামলে (স্ক্রিনসেভার/হোমে গেলে) ফ্ল্যাগ ক্লিয়ার করে দিন
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     // ডায়ালগ/কিবোর্ড বন্ধ হয়ে ফোকাস ফিরলে বার আবার লুকানো
