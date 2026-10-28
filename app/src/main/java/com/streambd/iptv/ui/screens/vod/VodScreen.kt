@@ -1,57 +1,45 @@
 package com.streambd.iptv.ui.screens.vod
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C as Media3C
-import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
-import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
-import com.streambd.iptv.data.vod.EpisodeEntry
-import com.streambd.iptv.data.vod.SeriesGroup
 import com.streambd.iptv.ui.components.ChannelActionsDialog
+import com.streambd.iptv.ui.components.PanelList
+import com.streambd.iptv.ui.components.PanelRow
+import com.streambd.iptv.ui.components.PanelScaffold
+import com.streambd.iptv.ui.components.PanelTab
 import com.streambd.iptv.ui.components.PinDialog
-import com.streambd.iptv.ui.components.ScreenTopBar
-import com.streambd.iptv.ui.components.sideInsets
 import com.streambd.iptv.ui.player.FullscreenPlayer
 import com.streambd.iptv.ui.player.PlayerSettingsDialog
 import com.streambd.iptv.ui.player.TrackSelectionDialog
 import com.streambd.iptv.ui.theme.*
 
+/**
+ * Movies/Series স্ক্রিন, LiveScreen-এর মতোই: ফুলস্ক্রিন প্লেয়ারের ওপর বাঁ দিকে তালিকা।
+ * Series-এ প্রথমে সিরিজের তালিকা, নির্বাচন করলে এপিসোড।
+ */
 @Composable
 fun VodScreen(
     onBack: () -> Unit,
@@ -68,112 +56,146 @@ fun VodScreen(
     val episodes by vm.episodes.collectAsStateWithLifecycle()
     val state by vm.playerState.collectAsStateWithLifecycle()
     val unlocked by vm.sessionUnlocked.collectAsStateWithLifecycle()
+
+    var listOpen by rememberSaveable { mutableStateOf(directPlayId == null) }
     var showTracks by remember { mutableStateOf(false) }
-    var showPlayerSettings by remember { mutableStateOf(false) }
+    var showAspect by remember { mutableStateOf(false) }
     var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
     var actionsItemId by remember { mutableStateOf<Long?>(null) }
 
+    val seriesOpen = isSeries && seriesName != null
+    val favoritesFlat = isSeries && selected == VOD_GROUP_FAVORITES
+    val playingId = state.current?.id
+
+    fun pick(item: ChannelEntity) {
+        if (item.isLocked && !unlocked) {
+            vm.stopForLock()
+            pendingUnlock = item
+        } else {
+            vm.play(item)
+        }
+    }
+
+    LaunchedEffect(Unit) { vm.onEnter() }
+
+    // Search থেকে সরাসরি চালানো
     LaunchedEffect(directPlayId, allItems) {
         val id = directPlayId ?: return@LaunchedEffect
         val item = allItems.firstOrNull { it.id == id } ?: return@LaunchedEffect
-        if (item.isLocked && !unlocked) pendingUnlock = item else vm.play(item)
+        if (state.current?.id != id) pick(item)
     }
 
     DisposableEffect(vm) {
         onDispose { vm.player.pause() }
     }
 
-    val seriesOpen = isSeries && seriesName != null
-    val favoritesFlat = isSeries && selected == VOD_GROUP_FAVORITES
-    BackHandler(enabled = seriesOpen && !state.isFullscreen) { vm.closeSeries() }
+    // নতুন কিছু চালু হলে তালিকা বন্ধ
+    var lastPlayingId by remember { mutableStateOf(playingId) }
+    LaunchedEffect(playingId) {
+        if (playingId != null && playingId != lastPlayingId) listOpen = false
+        lastPlayingId = playingId
+    }
 
-    Box(Modifier.fillMaxSize().background(BgDark)) {
-        if (!state.isFullscreen) {
-            Column(Modifier.fillMaxSize()) {
-                if (seriesOpen) {
-                    ScreenTopBar(seriesName.orEmpty(), onBack = vm::closeSeries)
-                } else {
-                    ScreenTopBar(vm.title, onBack = onBack)
-                    GroupTabs(groups, selected, vm::selectGroup)
-                }
+    val tabs = remember(groups) {
+        listOf(PanelTab(null, "All"), PanelTab(VOD_GROUP_FAVORITES, "Favorites")) +
+            groups.map { PanelTab(it.id, it.name) }
+    }
 
-                when {
-                    seriesOpen -> EpisodeList(
-                        episodes = episodes,
-                        onPick = { episode ->
-                            val item = allItems.firstOrNull { it.id == episode.id }
-                            if (item != null) {
-                                if (item.isLocked && !unlocked) {
-                                    vm.stopForLock()
-                                    pendingUnlock = item
-                                } else {
-                                    vm.play(item)
+    val current = allItems.firstOrNull { it.id == playingId } ?: state.current
+    val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: vm.title
+    val noun = vm.title.lowercase()
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        FullscreenPlayer(
+            player = vm.player.player,
+            state = state,
+            isFavorite = current?.isFavorite == true,
+            isLocked = current?.isLocked == true,
+            kindLabel = vm.kindLabel,
+            groupName = groupName,
+            showNumber = false,
+            onExit = onBack,
+            onTogglePlay = vm::togglePlayPause,
+            onToggleFavorite = { current?.let(vm::toggleFavorite) },
+            onToggleLock = { current?.let(vm::toggleLock) },
+            onOpenTracks = { showTracks = true },
+            onOpenSettings = { showAspect = true },
+            onRetry = { vm.player.retry() },
+            listOpen = listOpen,
+            onListOpenChange = { listOpen = it },
+            listContent = {
+                PanelScaffold(tabs, selected, vm::selectGroup) {
+                    when {
+                        seriesOpen -> Column(Modifier.fillMaxSize()) {
+                            BackRow(seriesName.orEmpty(), onClick = vm::closeSeries)
+                            PanelList(
+                                items = episodes,
+                                key = { it.id },
+                                startIndex = episodes.indexOfFirst { it.id == playingId },
+                                resetKey = seriesName,
+                                emptyText = "No episodes found.",
+                                modifier = Modifier.weight(1f),
+                            ) { episode, rowModifier ->
+                                PanelRow(
+                                    title = episode.displayName,
+                                    modifier = rowModifier,
+                                    logoUrl = episode.logoUrl,
+                                    playing = episode.id == playingId,
+                                    locked = episode.isLocked,
+                                    favorite = episode.isFavorite,
+                                    onLongClick = { actionsItemId = episode.id },
+                                ) {
+                                    allItems.firstOrNull { it.id == episode.id }?.let(::pick)
                                 }
                             }
-                        },
-                        onLongPress = { id -> actionsItemId = id },
-                    )
-
-                    isSeries && !favoritesFlat -> {
-                        if (seriesGrid.isEmpty()) {
-                            EmptyState(if (groups.isEmpty()) "No series in your playlist." else "No series in this group.")
-                        } else {
-                            SeriesGrid(seriesGrid, onPick = { vm.openSeries(it.name) })
                         }
-                    }
 
-                    else -> {
-                        if (items.isEmpty()) {
-                            EmptyState(
-                                when {
-                                    favoritesFlat ->
-                                        "No favorite series yet.\nTap the heart in the player to add one."
-                                    selected == VOD_GROUP_FAVORITES ->
-                                        "No favorite ${vm.title.lowercase()} yet.\nTap the heart in the player to add one."
-                                    groups.isEmpty() -> "No ${vm.title.lowercase()} in your playlist."
-                                    else -> "No ${vm.title.lowercase()} in this group."
-                                },
-                            )
-                        } else {
-                            PosterGrid(
-                                items = items,
-                                onPick = { item ->
-                                    if (item.isLocked && !unlocked) {
-                                        vm.stopForLock()
-                                        pendingUnlock = item
-                                    } else {
-                                        vm.play(item)
-                                    }
-                                },
-                                onLongPress = { id -> actionsItemId = id },
-                                modifier = Modifier.weight(1f),
-                            )
+                        isSeries && !favoritesFlat -> PanelList(
+                            items = seriesGrid,
+                            key = { it.name },
+                            startIndex = 0,
+                            resetKey = selected,
+                            emptyText = if (groups.isEmpty()) "No series in your playlist." else "No series in this group.",
+                        ) { group, rowModifier ->
+                            PanelRow(
+                                title = group.name,
+                                modifier = rowModifier,
+                                logoUrl = group.poster,
+                                subtitle = if (group.episodeCount == 1) "1 episode" else "${group.episodeCount} episodes",
+                            ) { vm.openSeries(group.name) }
+                        }
+
+                        else -> PanelList(
+                            items = items,
+                            key = { it.id },
+                            startIndex = items.indexOfFirst { it.id == playingId },
+                            resetKey = selected,
+                            emptyText = when {
+                                favoritesFlat -> "No favorite series yet.\nLong-press an episode to add one."
+                                selected == VOD_GROUP_FAVORITES -> "No favorite $noun yet.\nLong-press an item to add one."
+                                groups.isEmpty() -> "No $noun in your playlist."
+                                else -> "No $noun in this group."
+                            },
+                        ) { item, rowModifier ->
+                            PanelRow(
+                                title = item.name,
+                                modifier = rowModifier,
+                                logoUrl = item.logoUrl,
+                                playing = item.id == playingId,
+                                locked = item.isLocked,
+                                favorite = item.isFavorite,
+                                onLongClick = { actionsItemId = item.id },
+                            ) { pick(item) }
                         }
                     }
                 }
-            }
-        }
-
-        if (state.isFullscreen) {
-            val current = allItems.firstOrNull { it.id == state.current?.id } ?: state.current
-            val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: vm.title
-            FullscreenPlayer(
-                player = vm.player.player,
-                state = state,
-                isFavorite = current?.isFavorite == true,
-                isLocked = current?.isLocked == true,
-                kindLabel = vm.kindLabel,
-                groupName = groupName,
-                showNumber = false,
-                onExit = vm::closeFullscreen,
-                onTogglePlay = vm::togglePlayPause,
-                onToggleFavorite = { current?.let(vm::toggleFavorite) },
-                onToggleLock = { current?.let(vm::toggleLock) },
-                onOpenTracks = { showTracks = true },
-                onOpenSettings = { showPlayerSettings = true },
-            )
-        }
+            },
+        )
     }
+
+    // FullscreenPlayer-এর নিজের BackHandler আগে নিবন্ধিত, এটা পরে, তাই এটার অগ্রাধিকার বেশি:
+    // এপিসোড তালিকা খোলা থাকলে Back প্রথমে সিরিজ তালিকায় ফেরে।
+    BackHandler(enabled = seriesOpen && listOpen) { vm.closeSeries() }
 
     if (showTracks) {
         TrackSelectionDialog(
@@ -187,11 +209,11 @@ fun VodScreen(
         )
     }
 
-    if (showPlayerSettings) {
+    if (showAspect) {
         PlayerSettingsDialog(
             currentAspect = state.aspectMode,
             onAspectChange = vm::setAspectMode,
-            onDismiss = { showPlayerSettings = false },
+            onDismiss = { showAspect = false },
         )
     }
 
@@ -218,265 +240,31 @@ fun VodScreen(
     }
 }
 
-/* ------------------------------ helpers ------------------------------ */
-
-/** গ্রিড/তালিকার চারপাশের প্যাডিং: ১৬dp + নচ/নিচের জায়গা। */
+/** এপিসোড তালিকার মাথায় "‹ সিরিজের নাম"। */
 @Composable
-private fun contentPadding(extra: androidx.compose.ui.unit.Dp = 16.dp): PaddingValues {
-    val dir = LocalLayoutDirection.current
-    val s = WindowInsets.safeDrawing
-        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-        .asPaddingValues()
-    return PaddingValues(
-        start = extra + s.calculateLeftPadding(dir),
-        end = extra + s.calculateRightPadding(dir),
-        top = 16.dp,
-        bottom = 16.dp + s.calculateBottomPadding(),
-    )
-}
-
-/**
- * আসল পোস্টারের অনুপাত (প্রায় ২:৩) হলে ক্রপ, নইলে (চ্যানেল লোগো ইত্যাদি) পুরোটা দেখায়।
- * আগে সবই ক্রপ হতো বলে লোগো গোল হয়ে কেটে যেত।
- */
-@Composable
-private fun PosterImage(model: String?, description: String, modifier: Modifier = Modifier) {
-    var crop by remember(model) { mutableStateOf(false) }
-    AsyncImage(
-        model = model,
-        contentDescription = description,
-        contentScale = if (crop) ContentScale.Crop else ContentScale.Fit,
-        onSuccess = { success ->
-            val size = success.painter.intrinsicSize
-            if (size.isSpecified && size.height > 0f) {
-                crop = (size.width / size.height) in 0.55f..0.85f
-            }
-        },
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun EmptyState(message: String) {
-    Box(Modifier.fillMaxSize().sideInsets(), contentAlignment = Alignment.Center) {
-        Text(message, color = TextMuted, fontSize = 15.sp)
-    }
-}
-
-@Composable
-private fun SeriesGrid(groups: List<SeriesGroup>, onPick: (SeriesGroup) -> Unit) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = contentPadding(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(groups, key = { it.name }) { group ->
-            SeriesCell(group) { onPick(group) }
-        }
-    }
-}
-
-@Composable
-private fun SeriesCell(group: SeriesGroup, onClick: () -> Unit) {
+private fun BackRow(title: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Column(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(if (focused) Panel else Color.Transparent)
-            .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick).padding(6.dp),
-    ) {
-        PosterImage(
-            model = group.poster,
-            description = group.name,
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(6.dp)).background(Surface1),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(group.name, color = TextPrimary, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(
-            if (group.episodeCount == 1) "1 episode" else "${group.episodeCount} episodes",
-            color = TextMuted,
-            fontSize = 11.sp,
-        )
-    }
-}
-
-@Composable
-private fun EpisodeList(
-    episodes: List<EpisodeEntry>,
-    onPick: (EpisodeEntry) -> Unit,
-    onLongPress: (Long) -> Unit,
-) {
-    if (episodes.isEmpty()) {
-        EmptyState("No episodes found.")
-        return
-    }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding(extra = 0.dp)) {
-        itemsIndexed(episodes, key = { _, episode -> episode.id }) { _, episode ->
-            EpisodeRow(
-                episode = episode,
-                onClick = { onPick(episode) },
-                onLongPress = { onLongPress(episode.id) },
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun EpisodeRow(episode: EpisodeEntry, onClick: () -> Unit, onLongPress: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val haptics = LocalHapticFeedback.current
+    val shape = RoundedCornerShape(6.dp)
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(8.dp)).background(if (focused) Panel else Color.Transparent)
-            .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(shape)
+            .background(if (focused) Color.White.copy(alpha = 0.15f) else Color.Transparent)
+            .border(1.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.isFocused }
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongPress()
-                },
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
-            model = episode.logoUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
-        )
-        Spacer(Modifier.width(14.dp))
+        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Accent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
         Text(
-            episode.displayName,
-            color = TextPrimary,
+            title,
+            color = Accent,
             fontSize = 15.sp,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
         )
-        if (episode.isLocked) {
-            Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Accent, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-        }
-        if (episode.isFavorite) {
-            Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = Accent, modifier = Modifier.size(14.dp))
-        }
-    }
-}
-
-@Composable
-private fun GroupTabs(groups: List<GroupEntity>, selectedId: Long?, onSelect: (Long?) -> Unit) {
-    LazyRow(
-        Modifier.fillMaxWidth().background(TopBar).sideInsets().padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        item {
-            GroupTab("Favorites", selectedId == VOD_GROUP_FAVORITES) {
-                onSelect(VOD_GROUP_FAVORITES)
-            }
-        }
-        item { GroupTab("All", selectedId == null) { onSelect(null) } }
-        items(groups, key = { it.id }) { group ->
-            GroupTab(group.name, selectedId == group.id) { onSelect(group.id) }
-        }
-    }
-}
-
-@Composable
-private fun GroupTab(label: String, selected: Boolean, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val color = when {
-        selected -> Accent
-        focused -> TextPrimary
-        else -> TextMuted
-    }
-    Text(
-        text = label,
-        color = color,
-        fontSize = 15.sp,
-        modifier = Modifier.clip(RoundedCornerShape(6.dp)).onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
-    )
-}
-
-@Composable
-private fun PosterGrid(
-    items: List<ChannelEntity>,
-    onPick: (ChannelEntity) -> Unit,
-    onLongPress: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = contentPadding(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        items(items, key = { it.id }) { item ->
-            PosterCell(
-                item = item,
-                onClick = { onPick(item) },
-                onLongPress = { onLongPress(item.id) },
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun PosterCell(item: ChannelEntity, onClick: () -> Unit, onLongPress: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val haptics = LocalHapticFeedback.current
-    Column(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(if (focused) Panel else Color.Transparent)
-            .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongPress()
-                },
-            )
-            .padding(6.dp),
-    ) {
-        Box {
-            PosterImage(
-                model = item.logoUrl,
-                description = item.name,
-                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(6.dp)).background(Surface1),
-            )
-            if (item.isLocked) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(6.dp)
-                        .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f))
-                        .padding(4.dp),
-                ) {
-                    Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Accent, modifier = Modifier.size(16.dp))
-                }
-            }
-            if (item.isFavorite) {
-                Box(
-                    Modifier.align(Alignment.TopStart).padding(6.dp)
-                        .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f))
-                        .padding(4.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.Favorite,
-                        contentDescription = "Favorite",
-                        tint = Accent,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(item.name, color = TextPrimary, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
