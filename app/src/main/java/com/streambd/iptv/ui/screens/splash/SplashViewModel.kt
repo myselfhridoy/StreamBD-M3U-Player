@@ -8,6 +8,8 @@ import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
+import com.streambd.iptv.data.settings.SettingsStore
+import com.streambd.iptv.util.LaunchState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -20,6 +22,7 @@ import javax.inject.Inject
 sealed interface SplashNav {
     data object ToActivation : SplashNav
     data object ToHome : SplashNav
+    data class ToLive(val channelId: Long) : SplashNav
 }
 
 data class SplashFailure(val message: String)
@@ -31,6 +34,8 @@ class SplashViewModel @Inject constructor(
     private val activation: ActivationRepository,
     private val repo: ChannelRepository,
     private val sync: PlaylistSync,
+    private val launchState: LaunchState,
+    private val settings: SettingsStore,
 ) : ViewModel() {
 
     private val _nav = MutableStateFlow<SplashNav?>(null)
@@ -109,6 +114,13 @@ class SplashViewModel @Inject constructor(
         }
 
         viewModelScope.launch { runCatching { activation.revalidateIfNeeded() } }
-        _nav.value = SplashNav.ToHome
+
+        // বুট থেকে খুললে শেষ দেখা লাইভ চ্যানেলে সরাসরি
+        val resumeId = if (launchState.consumeBoot()) settings.lastLiveChannel() else -1L
+        _nav.value = if (resumeId > 0L && repo.hasContent()) {
+            SplashNav.ToLive(resumeId)
+        } else {
+            SplashNav.ToHome
+        }
     }
 }
