@@ -138,7 +138,7 @@ class ChannelRepository @Inject constructor(
                 streamUrl = p.streamUrl,
                 groupId = gid,
                 // tvgId না থাকলে বা খালি থাকলে চ্যানেলের নাম দিয়ে "name:চ্যানেলের নাম" সেভ হবে
-                tvgId = p.tvgId?.takeIf { it.isNotBlank() } ?: "name:${p.name}",
+                tvgId = p.tvgId?.takeIf { it.isNotBlank() } ?: epgNameKey(p.name),
                 kind = p.kind.name,
             )
         }
