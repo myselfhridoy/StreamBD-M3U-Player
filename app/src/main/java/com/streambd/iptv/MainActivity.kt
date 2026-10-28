@@ -8,17 +8,35 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.streambd.iptv.data.repo.AutoRefresher
 import com.streambd.iptv.player.ChannelJumpController
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.ui.nav.AppNav
-import com.streambd.iptv.ui.theme.StreamBdTheme
+import com.streambd.iptv.ui.theme.*
 import com.streambd.iptv.util.LaunchState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -49,8 +67,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideSystemBars()
 
-        // নতুন: কিছু চলছে বা লোড হচ্ছে (আবার চেষ্টা চলাও ধরে) থাকলে স্ক্রিন জেগে থাকবে।
-        // pause বা থেমে গেলে সিস্টেমের নিয়মে আবার ঘুমাতে পারবে।
+        // কিছু চলছে বা লোড হচ্ছে (আবার চেষ্টা চলাও ধরে) থাকলে স্ক্রিন জেগে থাকবে।
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 playerManager.state
@@ -64,7 +81,13 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            StreamBdTheme { AppNav() }
+            StreamBdTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AppNav()
+                    // লোডিং ব্যানারটি AppNav-এর ওপরে ডান কোণে ভেসে থাকবে
+                    UpdatingBanner(autoRefresher)
+                }
+            }
         }
     }
 
@@ -82,7 +105,7 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         playerManager.pause()
         autoRefresher.stop()
-        // নতুন: অ্যাক্টিভিটি থামলে (স্ক্রিনসেভার/হোমে গেলে) ফ্ল্যাগ ক্লিয়ার করে দিন
+        // অ্যাক্টিভিটি থামলে (স্ক্রিনসেভার/হোমে গেলে) ফ্ল্যাগ ক্লিয়ার করে দিন
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -112,6 +135,51 @@ class MainActivity : ComponentActivity() {
                 true
             }
             else -> super.onKeyDown(keyCode, event)
+        }
+    }
+}
+
+// নতুন কম্পোনেন্ট: প্লেলিস্ট আপডেটিং ব্যানার (ডান কোণে)
+@Composable
+private fun UpdatingBanner(autoRefresher: AutoRefresher) {
+    val isRefreshing by autoRefresher.isRefreshing.collectAsStateWithLifecycle()
+    
+    AnimatedVisibility(
+        visible = isRefreshing,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        // সিস্টেম বার (নচ/স্ট্যাটাস বার) থেকে দূরে রাখতে safeDrawing প্যাডিং
+        Box(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(16.dp),
+            contentAlignment = Alignment.TopEnd // উপরের ডান কোণে
+        ) {
+            Column(
+                Modifier
+                    .background(Panel.copy(alpha = 0.95f), RoundedCornerShape(8.dp))
+                    .border(1.dp, Divider, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Playlist Updating...",
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .width(140.dp)
+                        .height(3.dp),
+                    color = Accent,
+                    trackColor = Color.White.copy(alpha = 0.2f)
+                )
+            }
         }
     }
 }
