@@ -10,14 +10,14 @@
     <path
         android:fillColor="#00000000"
         android:pathData="M100,60h120a6,6 0,0 1,6 6v60a6,6 0,0 1,-6 6h-120a6,6 0,0 1,-6 -6v-60a6,6 0,0 1,6 -6z"
-        android:strokeColor="#F5A623"
+        android:strokeColor="#3B9EFF"
         android:strokeWidth="3" />
     <path
         android:fillColor="#00000000"
         android:pathData="M130,60L118,42M190,60L202,42"
-        android:strokeColor="#F5A623"
+        android:strokeColor="#3B9EFF"
         android:strokeWidth="3" />
     <path
-        android:fillColor="#F5A623"
+        android:fillColor="#3B9EFF"
         android:pathData="M108,74h40v40h-40zM115,38a3,3 0,1 0,6 0a3,3 0,1 0,-6 0M199,38a3,3 0,1 0,6 0a3,3 0,1 0,-6 0M98,150h124v6h-124z" />
 </vector>
