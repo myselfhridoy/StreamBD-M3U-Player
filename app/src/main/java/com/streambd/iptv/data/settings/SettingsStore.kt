@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey // নতুন ইমপোর্ট
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streambd.iptv.player.AspectMode
@@ -54,6 +55,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         val VIDEO_KEY = stringPreferencesKey("track_video_key")
         val AUDIO_MODE = stringPreferencesKey("track_audio_mode")
         val AUDIO_KEY = stringPreferencesKey("track_audio_key")
+        val LAST_LIVE_ID = longPreferencesKey("last_live_id") // নতুন Key
     }
 
     private val prefs = ctx.settingsDataStore
@@ -100,6 +102,11 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         it[Keys.AUDIO_MODE] = mode.name
         it[Keys.AUDIO_KEY] = key
     }
+
+    // --- নতুন ফাংশন ---
+    suspend fun setLastLiveChannel(id: Long) = prefs.edit { it[Keys.LAST_LIVE_ID] = id }
+    suspend fun lastLiveChannel(): Long = prefs.data.first()[Keys.LAST_LIVE_ID] ?: -1L
+    // -----------------
 
     suspend fun setPin(pin: String) {
         val salt = randomSalt()
