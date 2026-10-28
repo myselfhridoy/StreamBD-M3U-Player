@@ -33,6 +33,7 @@ import com.streambd.iptv.ui.theme.TextPrimary
 fun SplashScreen(
     onToActivation: () -> Unit,
     onToHome: () -> Unit,
+    onToLive: (Long) -> Unit,
     vm: SplashViewModel = hiltViewModel(),
 ) {
     val nav by vm.nav.collectAsStateWithLifecycle()
@@ -40,9 +41,10 @@ fun SplashScreen(
     val failure by vm.failure.collectAsStateWithLifecycle()
 
     LaunchedEffect(nav) {
-        when (nav) {
+        when (val target = nav) {
             SplashNav.ToActivation -> onToActivation()
             SplashNav.ToHome -> onToHome()
+            is SplashNav.ToLive -> onToLive(target.channelId)
             null -> Unit
         }
     }
