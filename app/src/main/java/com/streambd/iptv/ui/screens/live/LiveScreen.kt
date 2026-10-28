@@ -64,7 +64,10 @@ fun LiveScreen(
 
     LaunchedEffect(Unit) { vm.onEnter() }
     LaunchedEffect(preselectChannelId) {
-        if (preselectChannelId > 0L) vm.playById(preselectChannelId)
+        // চ্যানেল আর না থাকলে (প্লেলিস্ট বদলে গেছে) তালিকা খুলে দেওয়া, কালো স্ক্রিন নয়
+        if (preselectChannelId > 0L && !vm.playById(preselectChannelId)) {
+            listOpen = true
+        }
     }
 
     DisposableEffect(vm) {
@@ -76,12 +79,8 @@ fun LiveScreen(
         }
     }
 
-    // নতুন চ্যানেল চালু হলে (তালিকা থেকে, নম্বর টিপে, zap) তালিকা বন্ধ
-    var lastPlayingId by remember { mutableStateOf(playingId) }
-    LaunchedEffect(playingId) {
-        if (playingId != null && playingId != lastPlayingId) listOpen = false
-        lastPlayingId = playingId
-    }
+    // এখান থেকে 'চ্যানেল চালু হলে তালিকা বন্ধ' লজিক সরানো হয়েছে।
+    // এখন FullscreenPlayer-এর ৬ সেকেন্ডের অটো-হাইড টাইমার কাজ করবে।
 
     val current = allChannels.firstOrNull { it.id == playingId } ?: state.current
     val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
