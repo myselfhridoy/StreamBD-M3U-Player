@@ -18,7 +18,6 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.settings.SettingsStore
@@ -218,8 +217,26 @@ class PlayerManager @Inject constructor(
         hlsHintApplied = false
         restoredForMediaId = null
 
-        val (url, headers) = splitHeaders(channel.streamUrl)
-        requestHeaders = headers
+        val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
+        
+        // DRM প্যারামিটারগুলো আলাদা করা (যদি URL-এর সাথে দেওয়া থাকে)
+        var drmScheme = channel.drmScheme
+        var drmLicense = channel.drmLicense
+        
+        val cleanHeaders = rawHeaders.filterKeys {
+            when (it.lowercase()) {
+                "drmscheme" -> {
+                    drmScheme = rawHeaders[it]
+                    false
+                }
+                "drmlicense" -> {
+                    drmLicense = rawHeaders[it]
+                    false
+                }
+                else -> true
+            }
+        }
+        requestHeaders = cleanHeaders
 
         _state.update {
             it.copy(
@@ -235,15 +252,13 @@ class PlayerManager @Inject constructor(
         }
 
         val itemBuilder = MediaItem.Builder()
-            .setUri(url)
+            .setUri(rawUrl)
             .setMediaId(channel.id.toString())
 
-        // DRM চেক এবং সেটআপ (ফিক্সড)
-        if (!channel.drmScheme.isNullOrBlank() && !channel.drmLicense.isNullOrBlank()) {
-            val scheme = channel.drmScheme.lowercase()
-            val licenseRaw = channel.drmLicense
-            // header বা অন্য কিছু থাকলে | এর আগ পর্যন্ত নেওয়া
-            val licenseClean = licenseRaw.substringBefore('|')
+        // DRM চেক এবং সেটআপ
+        if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
+            val scheme = drmScheme.lowercase()
+            val licenseClean = drmLicense.substringBefore('|')
 
             if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
                 // ClearKey raw key format (kid:key)
@@ -252,10 +267,13 @@ class PlayerManager @Inject constructor(
                     try {
                         val kidB64 = hexToBase64Url(parts[0])
                         val keyB64 = hexToBase64Url(parts[1])
-                        val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}""".toByteArray()
-                        val callback = LocalMediaDrmCallback(jsonResponse)
+                        val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
+                        
+                        // সমাধান: LocalMediaDrmCallback এর বদলে data: URI ব্যবহার করা হলো
+                        val dataUri = "data:application/json;base64," + Base64.encodeToString(jsonResponse.toByteArray(), Base64.NO_WRAP)
+                        
                         val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                            .setMediaDrmCallback(callback)
+                            .setLicenseUri(dataUri)
                             .build()
                         itemBuilder.setDrmConfiguration(drmConfig)
                     } catch (e: Exception) {
@@ -524,7 +542,7 @@ class PlayerManager @Inject constructor(
         player.trackSelectionParameters = builder.build()
     }
 
-    // নতুন: Hex থেকে Base64-URL-safe কনভার্টার (ClearKey-এর জন্য)
+    // Hex থেকে Base64-URL-safe কনভার্টার (ClearKey-এর জন্য)
     private fun hexToBase64Url(hex: String): String {
         val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
