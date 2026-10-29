@@ -15,15 +15,13 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
-import com.streambd.iptv.ui.components.ChannelActionsDialog
 import com.streambd.iptv.ui.components.PanelList
 import com.streambd.iptv.ui.components.PanelRow
 import com.streambd.iptv.ui.components.PanelScaffold
 import com.streambd.iptv.ui.components.PanelTab
-import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.player.FullscreenPlayer
-import com.streambd.iptv.ui.player.PlayerSettingsDialog
-import com.streambd.iptv.ui.player.TrackSelectionDialog
+import com.streambd.iptv.ui.player.PlayerDialogs
+import com.streambd.iptv.ui.player.rememberPlayerDialogs
 import com.streambd.iptv.ui.theme.*
 
 @Composable
@@ -43,9 +41,7 @@ fun LiveScreen(
     val pendingUnlock by vm.pendingUnlock.collectAsStateWithLifecycle()
 
     var listOpen by rememberSaveable { mutableStateOf(preselectChannelId <= 0L) }
-    var showTracks by remember { mutableStateOf(false) }
-    var showAspect by remember { mutableStateOf(false) }
-    var actionsChannelId by remember { mutableStateOf<Long?>(null) }
+    val dialogs = rememberPlayerDialogs()
 
     val playingId = state.current?.id
 
@@ -79,9 +75,6 @@ fun LiveScreen(
         }
     }
 
-    // এখান থেকে 'চ্যানেল চালু হলে তালিকা বন্ধ' লজিক সরানো হয়েছে।
-    // এখন FullscreenPlayer-এর ৬ সেকেন্ডের অটো-হাইড টাইমার কাজ করবে।
-
     val current = allChannels.firstOrNull { it.id == playingId } ?: state.current
     val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
     val startIndex = remember(channels, playingId) { channels.indexOfFirst { it.id == playingId } }
@@ -100,8 +93,8 @@ fun LiveScreen(
             onTogglePlay = vm::togglePlayPause,
             onToggleFavorite = { current?.let(vm::toggleFavorite) },
             onToggleLock = { current?.let(vm::toggleLock) },
-            onOpenTracks = { showTracks = true },
-            onOpenSettings = { showAspect = true },
+            onOpenTracks = dialogs::openTracks,
+            onOpenSettings = dialogs::openAspect,
             onStep = vm::step,
             onRetry = vm::retry,
             listOpen = listOpen,
@@ -124,7 +117,7 @@ fun LiveScreen(
                             playing = channel.id == playingId,
                             locked = channel.isLocked,
                             favorite = channel.isFavorite,
-                            onLongClick = { actionsChannelId = channel.id },
+                            onLongClick = { dialogs.openActions(channel.id) },
                         ) { vm.requestPlay(channel) }
                     }
                 }
@@ -146,42 +139,20 @@ fun LiveScreen(
         }
     }
 
-    if (showTracks) {
-        TrackSelectionDialog(
-            info = state.tracks,
-            onConfirm = { v, a ->
-                vm.applyTrackChoice(C.TRACK_TYPE_VIDEO, v)
-                vm.applyTrackChoice(C.TRACK_TYPE_AUDIO, a)
-                showTracks = false
-            },
-            onDismiss = { showTracks = false },
-        )
-    }
-
-    if (showAspect) {
-        PlayerSettingsDialog(
-            currentAspect = state.aspectMode,
-            onAspectChange = vm::setAspectMode,
-            onDismiss = { showAspect = false },
-        )
-    }
-
-    if (pendingUnlock != null) {
-        PinDialog(
-            title = "Enter PIN",
-            verify = vm::verifyPin,
-            onSuccess = vm::confirmUnlock,
-            onDismiss = vm::dismissUnlock,
-        )
-    }
-
-    val actionsChannel = actionsChannelId?.let { id -> allChannels.firstOrNull { it.id == id } }
-    if (actionsChannel != null) {
-        ChannelActionsDialog(
-            channel = actionsChannel,
-            onToggleFavorite = { vm.toggleFavorite(actionsChannel) },
-            onToggleLock = { vm.toggleLock(actionsChannel) },
-            onDismiss = { actionsChannelId = null },
-        )
-    }
+    PlayerDialogs(
+        dialogs = dialogs,
+        state = state,
+        items = allChannels,
+        pendingUnlock = pendingUnlock,
+        verifyPin = vm::verifyPin,
+        onUnlocked = vm::confirmUnlock,
+        onDismissUnlock = vm::dismissUnlock,
+        onApplyTracks = { video, audio ->
+            vm.applyTrackChoice(C.TRACK_TYPE_VIDEO, video)
+            vm.applyTrackChoice(C.TRACK_TYPE_AUDIO, audio)
+        },
+        onAspectChange = vm::setAspectMode,
+        onToggleFavorite = vm::toggleFavorite,
+        onToggleLock = vm::toggleLock,
+    )
 }
