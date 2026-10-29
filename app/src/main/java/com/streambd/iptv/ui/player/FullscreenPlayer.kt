@@ -51,15 +51,15 @@ import coil.compose.AsyncImage
 import com.streambd.iptv.data.epg.NowNext
 import com.streambd.iptv.player.PlayerUiState
 import com.streambd.iptv.ui.theme.*
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onStart
 import kotlin.math.abs
 
 /**
  * ZalTV-স্টাইল ফুলস্ক্রিন প্লেয়ার।
- *
- * - [listContent] দিলে (Live) ট্যাপ/OK তালিকা টগল করে, [onStep] দিয়ে Left/Right চ্যানেল বদলায়।
- * - [listContent] না দিলে (Movies/Series) ট্যাপে কন্ট্রোল টগল, OK-তে play/pause, Left/Right-এ ±১০ সেকেন্ড।
- * - কন্ট্রোল প্যানেল: উপরে সোয়াইপ/Up দেখায়, নিচে সোয়াইপ/Down লুকায়, ৪ সেকেন্ডে নিজে লুকায়।
  */
 @Composable
 fun FullscreenPlayer(
@@ -99,7 +99,11 @@ fun FullscreenPlayer(
     var controlsVisible by remember { mutableStateOf(false) }
     var interactive by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
-    var listTick by remember { mutableIntStateOf(0) }
+    
+    // নতুন: তালিকায় ইনপুট এলে টাইমার রিসেট। State নয়, তাই প্রতিটা পয়েন্টার ইভেন্টে recomposition হয় না।
+    val listActivity = remember {
+        MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    }
 
     fun showControls(interactiveMode: Boolean = false) {
         controlsVisible = true
@@ -138,11 +142,13 @@ fun FullscreenPlayer(
         hideControls()
     }
 
-    // তালিকা খোলা থাকলে ইনপুট না পেলে নিজে বন্ধ
-    LaunchedEffect(listOpen, listTick, state.current?.id, state.error) {
+    // নতুন: তালিকা খোলা থাকলে ইনপুট না পেলে নিজে বন্ধ (SharedFlow ব্যবহার করে)
+    LaunchedEffect(listOpen, state.current?.id, state.error) {
         if (listOpen && hasList && state.current != null && state.error == null) {
-            delay(listAutoHideMs)
-            onListOpenChange(false)
+            listActivity.onStart { emit(Unit) }.collectLatest {
+                delay(listAutoHideMs)
+                onListOpenChange(false)
+            }
         }
     }
 
@@ -202,7 +208,9 @@ fun FullscreenPlayer(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (controlsVisible) tick++
-                if (listOpen) listTick++
+                
+                // নতুন: রিমোটের বাটন চাপলেও তালিকার টাইমার রিসেট হবে
+                if (listOpen) listActivity.tryEmit(Unit)
 
                 when (event.key) {
                     Key.MediaPlayPause -> { onTogglePlay(); return@onPreviewKeyEvent true }
@@ -310,7 +318,8 @@ fun FullscreenPlayer(
                         awaitPointerEventScope {
                             while (true) {
                                 awaitPointerEvent(PointerEventPass.Initial)
-                                listTick++
+                                // নতুন: pointer ইভেন্ট সরাসরি SharedFlow-তে পাঠানো হচ্ছে, State আপডেট হচ্ছে না
+                                listActivity.tryEmit(Unit)
                             }
                         }
                     },
