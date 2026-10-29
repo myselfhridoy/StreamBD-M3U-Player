@@ -37,21 +37,28 @@ class VodViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
+    // new: "RADIO" string handle করা হলো
     val kind: ChannelKind = when (savedStateHandle.get<String>("kind")?.uppercase()) {
         "SERIES" -> ChannelKind.SERIES
+        "RADIO" -> ChannelKind.RADIO
+        "LIVE" -> ChannelKind.LIVE
         else -> ChannelKind.MOVIE
     }
 
+    // fixed: RADIO branch যোগ করা হলো
     val title: String = when (kind) {
         ChannelKind.SERIES -> "Series"
         ChannelKind.MOVIE -> "Movies"
         ChannelKind.LIVE -> "Live"
+        ChannelKind.RADIO -> "Radio"
     }
 
+    // fixed: RADIO branch যোগ করা হলো
     val kindLabel: String = when (kind) {
         ChannelKind.SERIES -> "SERIES"
         ChannelKind.MOVIE -> "MOVIE"
         ChannelKind.LIVE -> "LIVE"
+        ChannelKind.RADIO -> "RADIO"
     }
 
     val groups: StateFlow<List<GroupEntity>> =
@@ -93,8 +100,6 @@ class VodViewModel @Inject constructor(
     val sessionUnlocked: StateFlow<Boolean> = lockController.unlocked
     val player get() = playerManager
 
-    // --- নতুন যোগ করা ফাংশন ---
-    /** স্ক্রিনে ঢোকার সময়: অন্য ধরনের (যেমন লাইভ) কিছু চললে বন্ধ। একই ধরনের হলে চলতে থাকে। */
     fun onEnter() {
         val current = playerManager.state.value.current ?: return
         if (current.kind != kind.name) playerManager.stopAndClear()
