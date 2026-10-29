@@ -25,15 +25,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C as Media3C
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.m3u.ChannelKind
-import com.streambd.iptv.ui.components.ChannelActionsDialog
 import com.streambd.iptv.ui.components.PanelList
 import com.streambd.iptv.ui.components.PanelRow
 import com.streambd.iptv.ui.components.PanelScaffold
 import com.streambd.iptv.ui.components.PanelTab
-import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.player.FullscreenPlayer
-import com.streambd.iptv.ui.player.PlayerSettingsDialog
-import com.streambd.iptv.ui.player.TrackSelectionDialog
+import com.streambd.iptv.ui.player.PlayerDialogs
+import com.streambd.iptv.ui.player.rememberPlayerDialogs
 import com.streambd.iptv.ui.theme.*
 
 /**
@@ -58,10 +56,8 @@ fun VodScreen(
     val unlocked by vm.sessionUnlocked.collectAsStateWithLifecycle()
 
     var listOpen by rememberSaveable { mutableStateOf(directPlayId == null) }
-    var showTracks by remember { mutableStateOf(false) }
-    var showAspect by remember { mutableStateOf(false) }
     var pendingUnlock by remember { mutableStateOf<ChannelEntity?>(null) }
-    var actionsItemId by remember { mutableStateOf<Long?>(null) }
+    val dialogs = rememberPlayerDialogs()
 
     val seriesOpen = isSeries && seriesName != null
     val favoritesFlat = isSeries && selected == VOD_GROUP_FAVORITES
@@ -89,12 +85,8 @@ fun VodScreen(
         onDispose { vm.player.pause() }
     }
 
-    // নতুন কিছু চালু হলে তালিকা বন্ধ
-    var lastPlayingId by remember { mutableStateOf(playingId) }
-    LaunchedEffect(playingId) {
-        if (playingId != null && playingId != lastPlayingId) listOpen = false
-        lastPlayingId = playingId
-    }
+    // এখান থেকে 'চ্যানেল চালু হলে তালিকা বন্ধ' লজিক সরানো হয়েছে।
+    // এখন FullscreenPlayer-এর ৬ সেকেন্ডের অটো-হাইড টাইমার এটি সামলাবে।
 
     val tabs = remember(groups) {
         listOf(PanelTab(null, "All"), PanelTab(VOD_GROUP_FAVORITES, "Favorites")) +
@@ -118,8 +110,8 @@ fun VodScreen(
             onTogglePlay = vm::togglePlayPause,
             onToggleFavorite = { current?.let(vm::toggleFavorite) },
             onToggleLock = { current?.let(vm::toggleLock) },
-            onOpenTracks = { showTracks = true },
-            onOpenSettings = { showAspect = true },
+            onOpenTracks = dialogs::openTracks,
+            onOpenSettings = dialogs::openAspect,
             onRetry = { vm.player.retry() },
             listOpen = listOpen,
             onListOpenChange = { listOpen = it },
@@ -143,7 +135,7 @@ fun VodScreen(
                                     playing = episode.id == playingId,
                                     locked = episode.isLocked,
                                     favorite = episode.isFavorite,
-                                    onLongClick = { actionsItemId = episode.id },
+                                    onLongClick = { dialogs.openActions(episode.id) },
                                 ) {
                                     allItems.firstOrNull { it.id == episode.id }?.let(::pick)
                                 }
@@ -184,7 +176,7 @@ fun VodScreen(
                                 playing = item.id == playingId,
                                 locked = item.isLocked,
                                 favorite = item.isFavorite,
-                                onLongClick = { actionsItemId = item.id },
+                                onLongClick = { dialogs.openActions(item.id) },
                             ) { pick(item) }
                         }
                     }
@@ -197,47 +189,28 @@ fun VodScreen(
     // এপিসোড তালিকা খোলা থাকলে Back প্রথমে সিরিজ তালিকায় ফেরে।
     BackHandler(enabled = seriesOpen && listOpen) { vm.closeSeries() }
 
-    if (showTracks) {
-        TrackSelectionDialog(
-            info = state.tracks,
-            onConfirm = { video, audio ->
-                vm.player.applyTrackChoice(Media3C.TRACK_TYPE_VIDEO, video)
-                vm.player.applyTrackChoice(Media3C.TRACK_TYPE_AUDIO, audio)
-                showTracks = false
-            },
-            onDismiss = { showTracks = false },
-        )
-    }
-
-    if (showAspect) {
-        PlayerSettingsDialog(
-            currentAspect = state.aspectMode,
-            onAspectChange = vm::setAspectMode,
-            onDismiss = { showAspect = false },
-        )
-    }
-
-    pendingUnlock?.let { target ->
-        PinDialog(
-            title = "Enter PIN",
-            verify = vm::verifyPin,
-            onSuccess = {
+    // শেয়ার্ড ডায়ালগ (Track, Aspect, PIN, Actions) একসাথে হ্যান্ডেল করা হচ্ছে
+    PlayerDialogs(
+        dialogs = dialogs,
+        state = state,
+        items = allItems,
+        pendingUnlock = pendingUnlock,
+        verifyPin = vm::verifyPin,
+        onUnlocked = {
+            pendingUnlock?.let { target ->
                 pendingUnlock = null
                 vm.unlockAndPlay(target)
-            },
-            onDismiss = { pendingUnlock = null },
-        )
-    }
-
-    val actionsItem = actionsItemId?.let { id -> allItems.firstOrNull { it.id == id } }
-    if (actionsItem != null) {
-        ChannelActionsDialog(
-            channel = actionsItem,
-            onToggleFavorite = { vm.toggleFavorite(actionsItem) },
-            onToggleLock = { vm.toggleLock(actionsItem) },
-            onDismiss = { actionsItemId = null },
-        )
-    }
+            }
+        },
+        onDismissUnlock = { pendingUnlock = null },
+        onApplyTracks = { video, audio ->
+            vm.player.applyTrackChoice(Media3C.TRACK_TYPE_VIDEO, video)
+            vm.player.applyTrackChoice(Media3C.TRACK_TYPE_AUDIO, audio)
+        },
+        onAspectChange = vm::setAspectMode,
+        onToggleFavorite = vm::toggleFavorite,
+        onToggleLock = vm::toggleLock,
+    )
 }
 
 /** এপিসোড তালিকার মাথায় "‹ সিরিজের নাম"। */
