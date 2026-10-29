@@ -86,7 +86,8 @@ class AutoRefresher @Inject constructor(
                 epgUrl = active.epgUrl,
                 preferDiscovered = activation.isLocal(active),
             )
-            if (result.epgUrl != active.epgUrl) activation.updateEpGUrl(result.epgUrl)
+            // টাইপো ফিক্স: updateEpGUrl -> updateEpgUrl
+            if (result.epgUrl != active.epgUrl) activation.updateEpgUrl(result.epgUrl)
         } finally {
             if (atEntry) _isRefreshing.value = false
         }
