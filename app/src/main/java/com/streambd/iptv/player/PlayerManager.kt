@@ -219,22 +219,16 @@ class PlayerManager @Inject constructor(
 
         val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
         
-        // DRM প্যারামিটারগুলো আলাদা করা (যদি URL-এর সাথে দেওয়া থাকে)
-        var drmScheme = channel.drmScheme
-        var drmLicense = channel.drmLicense
-        
+        // ফিক্স: স্মার্ট কাস্ট এরর এড়াতে 헤ডার থেকে ভ্যালু বের করে val-এ রাখা হলো
+        val drmScheme = rawHeaders.entries.firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
+            ?: channel.drmScheme
+
+        val drmLicense = rawHeaders.entries.firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
+            ?: channel.drmLicense
+
+        // DRM প্যারামিটারগুলো HTTP হেডার থেকে বাদ দেওয়া
         val cleanHeaders = rawHeaders.filterKeys {
-            when (it.lowercase()) {
-                "drmscheme" -> {
-                    drmScheme = rawHeaders[it]
-                    false
-                }
-                "drmlicense" -> {
-                    drmLicense = rawHeaders[it]
-                    false
-                }
-                else -> true
-            }
+            !it.equals("drmScheme", ignoreCase = true) && !it.equals("drmLicense", ignoreCase = true)
         }
         requestHeaders = cleanHeaders
 
