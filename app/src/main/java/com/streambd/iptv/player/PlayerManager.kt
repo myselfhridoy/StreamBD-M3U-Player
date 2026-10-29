@@ -219,7 +219,7 @@ class PlayerManager @Inject constructor(
 
         val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
         
-        // ফিক্স: স্মার্ট কাস্ট এরর এড়াতে 헤ডার থেকে ভ্যালু বের করে val-এ রাখা হলো
+        // স্মার্ট কাস্ট এরর এড়াতে 헤ডার থেকে ভ্যালু বের করে val-এ রাখা হলো
         val drmScheme = rawHeaders.entries.firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
             ?: channel.drmScheme
 
@@ -245,57 +245,62 @@ class PlayerManager @Inject constructor(
             )
         }
 
-        val itemBuilder = MediaItem.Builder()
-            .setUri(rawUrl)
-            .setMediaId(channel.id.toString())
+        // নতুন: পুরো মিডিয়া আইটেম তৈরি ও প্লে করার কাজ ট্রাই-ক্যাচে রাখা হলো
+        try {
+            val itemBuilder = MediaItem.Builder()
+                .setUri(rawUrl)
+                .setMediaId(channel.id.toString())
 
-        // DRM চেক এবং সেটআপ
-        if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
-            val scheme = drmScheme.lowercase()
-            val licenseClean = drmLicense.substringBefore('|')
+            // DRM চেক এবং সেটআপ
+            if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
+                val scheme = drmScheme.lowercase()
+                val licenseClean = drmLicense.substringBefore('|').trim()
 
-            if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
-                // ClearKey raw key format (kid:key)
-                val parts = licenseClean.split(":")
-                if (parts.size == 2) {
-                    try {
+                if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
+                    // ClearKey raw key format (kid:key)
+                    val parts = licenseClean.split(":")
+                    if (parts.size == 2 && parts[0].length == 32 && parts[1].length == 32) {
                         val kidB64 = hexToBase64Url(parts[0])
                         val keyB64 = hexToBase64Url(parts[1])
-                        val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
-                        
-                        // সমাধান: LocalMediaDrmCallback এর বদলে data: URI ব্যবহার করা হলো
-                        val dataUri = "data:application/json;base64," + Base64.encodeToString(jsonResponse.toByteArray(), Base64.NO_WRAP)
-                        
-                        val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                            .setLicenseUri(dataUri)
+                        if (kidB64.isNotEmpty() && keyB64.isNotEmpty()) {
+                            val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
+                            val dataUri = "data:application/json;base64," + Base64.encodeToString(jsonResponse.toByteArray(), Base64.NO_WRAP)
+                            
+                            val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                                .setLicenseUri(dataUri)
+                                .build()
+                            itemBuilder.setDrmConfiguration(drmConfig)
+                        }
+                    } else {
+                        Log.e("PlayerManager", "Invalid ClearKey format: $licenseClean")
+                    }
+                } else {
+                    // URL based DRM (Widevine, PlayReady, ClearKey URL)
+                    val uuid = when {
+                        scheme.contains("widevine") -> C.WIDEVINE_UUID
+                        scheme.contains("playready") -> C.PLAYREADY_UUID
+                        scheme.contains("clearkey") -> C.CLEARKEY_UUID
+                        else -> null
+                    }
+                    if (uuid != null) {
+                        val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
+                            .setLicenseUri(licenseClean)
                             .build()
                         itemBuilder.setDrmConfiguration(drmConfig)
-                    } catch (e: Exception) {
-                        Log.e("PlayerManager", "Failed to parse ClearKey: $licenseClean", e)
                     }
                 }
-            } else {
-                // URL based DRM (Widevine, PlayReady, ClearKey URL)
-                val uuid = when {
-                    scheme.contains("widevine") -> C.WIDEVINE_UUID
-                    scheme.contains("playready") -> C.PLAYREADY_UUID
-                    scheme.contains("clearkey") -> C.CLEARKEY_UUID
-                    else -> null
-                }
-                if (uuid != null) {
-                    val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
-                        .setLicenseUri(licenseClean)
-                        .build()
-                    itemBuilder.setDrmConfiguration(drmConfig)
-                }
             }
-        }
 
-        val item = itemBuilder.build()
-        currentItem = item
-        player.setMediaItem(item)
-        player.prepare()
-        player.playWhenReady = true
+            val item = itemBuilder.build()
+            currentItem = item
+            player.setMediaItem(item)
+            player.prepare()
+            player.playWhenReady = true
+            
+        } catch (e: Exception) {
+            Log.e("PlayerManager", "Playback start failed: ${e.message}", e)
+            _state.update { it.copy(error = "Playback failed: ${e.message}", isBuffering = false) }
+        }
     }
 
     fun retry() {
@@ -538,7 +543,11 @@ class PlayerManager @Inject constructor(
 
     // Hex থেকে Base64-URL-safe কনভার্টার (ClearKey-এর জন্য)
     private fun hexToBase64Url(hex: String): String {
-        val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        return try {
+            val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        } catch (e: Exception) {
+            ""
+        }
     }
 }
