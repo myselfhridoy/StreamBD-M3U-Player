@@ -2,7 +2,7 @@ package com.streambd.iptv.data.repo
 
 import android.content.Context
 import com.streambd.iptv.data.epg.EpgRepository
-import com.streambd.iptv.data.m3u.M3uParser
+import com.streambd.iptv.data.parser.PlaylistParserFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -19,24 +19,17 @@ import javax.inject.Singleton
 import javax.net.ssl.SSLException
 import kotlin.coroutines.cancellation.CancellationException
 
-/** ইউজারকে সরাসরি দেখানোর মতো বার্তাসহ ব্যর্থতা। */
 class SyncException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-/** ইমপোর্ট হওয়া চ্যানেল সংখ্যা এবং প্লেলিস্টের header থেকে পাওয়া EPG লিংক। */
 data class SyncedPlaylist(val channels: Int, val epgUrls: List<String>)
 
 data class SyncResult(
     val channels: Int,
     val programs: Int,
-    /** EPG ব্যর্থ হলে বার্তা। প্লেলিস্ট সফল হলেও EPG ব্যর্থ হতে পারে। */
     val epgError: String?,
-    /** শেষ পর্যন্ত যে EPG লিংক ব্যবহার হয়েছে (নতুন লাইন দিয়ে আলাদা)। খালি হতে পারে। */
     val epgUrl: String = "",
 )
 
-/**
- * প্লেলিস্ট ও EPG ডাউনলোড + ইমপোর্টের এক জায়গা। Splash, Activation ও Settings সবাই এটা ব্যবহার করে।
- */
 @Singleton
 class PlaylistSync @Inject constructor(
     @ApplicationContext context: Context,
@@ -49,32 +42,24 @@ class PlaylistSync @Inject constructor(
         const val KEY_EPG_TRY = "epg_last_attempt"
         const val EPG_MAX_AGE_MS = 12L * 60 * 60 * 1000
         const val EPG_RETRY_GAP_MS = 60L * 60 * 1000
-        // প্লেলিস্টের শেষ সফল আপডেট ট্র্যাকিং
         const val KEY_PLAYLIST_OK = "playlist_last_success"
-        
-        // পরিবর্তন: ৬ ঘণ্টা থেকে কমিয়ে ৩০ মিনিট করা হলো (টোকেন এক্সপায়ার হওয়া আটকাতে)
-        const val PLAYLIST_MAX_AGE_MS = 30L * 60 * 1000 
+        const val PLAYLIST_MAX_AGE_MS = 30L * 60 * 1000
     }
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
-    
-    // ম্যানুয়াল রিফ্রেশ ও অটো-রিফ্রেশ একসঙ্গে চললে একটা অপরটার জন্য অপেক্ষা করবে
     private val playlistLock = Mutex()
 
-    /** প্লেলিস্ট নামিয়ে ইমপোর্ট করে। একসঙ্গে একটাই চলে। */
     suspend fun syncPlaylist(url: String): SyncedPlaylist = playlistLock.withLock {
         val result = fetchAndImport(url)
         prefs.edit().putLong(KEY_PLAYLIST_OK, System.currentTimeMillis()).apply()
         result
     }
 
-    /** শেষ সফল প্লেলিস্ট হালনাগাদ [maxAgeMs]-এর চেয়ে পুরনো কিনা। */
     fun isPlaylistDue(
         now: Long = System.currentTimeMillis(),
         maxAgeMs: Long = PLAYLIST_MAX_AGE_MS,
     ): Boolean = now - prefs.getLong(KEY_PLAYLIST_OK, 0L) > maxAgeMs
 
-    /** শেষবার প্লেলিস্ট সফলভাবে আপডেট হওয়ার টাইমস্ট্যাম্প। ০ হলে কখনো আপডেট হয়নি। */
     fun lastPlaylistUpdateTime(): Long = prefs.getLong(KEY_PLAYLIST_OK, 0L)
 
     private suspend fun fetchAndImport(url: String): SyncedPlaylist {
@@ -90,28 +75,28 @@ class PlaylistSync @Inject constructor(
 
         if (body.isBlank()) throw SyncException("The playlist is empty.")
         if (body.firstOrNull { !it.isWhitespace() } == '<') {
-            throw SyncException("This link returned a web page, not an M3U playlist.")
+            throw SyncException("This link returned a web page, not a playlist.")
         }
 
-        val epgUrls = M3uParser.epgUrls(body)
+        // নতুন: ফ্যাক্টরি ব্যবহার করে অটো-ডিটেক্ট করা (M3U বা JSON)
+        val parsed = PlaylistParserFactory.parse(body)
+        if (parsed.channels.isEmpty()) {
+            throw SyncException("No channels found. Check that the link is a valid playlist.")
+        }
+
         val count = try {
-            channels.import(body)
+            channels.import(parsed.channels)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw SyncException("Could not save the playlist on this device.", e)
         }
         if (count == 0) {
-            throw SyncException("No channels found. Check that the link is an M3U playlist.")
+            throw SyncException("No channels found. Check that the link is a valid playlist.")
         }
-        return SyncedPlaylist(count, epgUrls)
+        return SyncedPlaylist(count, parsed.epgUrls)
     }
 
-    /**
-     * কোন EPG লিংক ব্যবহার হবে।
-     * [preferDiscovered] সত্য হলে (লোকাল প্লেলিস্টে) প্লেলিস্টের নিজের লিংক সবসময় জেতে;
-     * নইলে (সার্ভার অ্যাক্টিভেশন) সংরক্ষিত লিংকই জেতে, শুধু খালি থাকলে আবিষ্কৃতটা।
-     */
     fun chooseEpg(stored: String, discovered: List<String>, preferDiscovered: Boolean): String {
         val found = discovered.joinToString("\n")
         return when {
@@ -121,10 +106,8 @@ class PlaylistSync @Inject constructor(
         }
     }
 
-    /** EPG নামিয়ে ইমপোর্ট করে। [urls] এক বা একাধিক লিংক (নতুন লাইন/ফাঁকা দিয়ে আলাদা)। */
     suspend fun syncEpg(urls: String): Int {
         prefs.edit().putLong(KEY_EPG_TRY, System.currentTimeMillis()).apply()
-
         val ids = channels.tvgIds()
         if (ids.isEmpty()) {
             throw SyncException(
@@ -155,7 +138,6 @@ class PlaylistSync @Inject constructor(
         return total
     }
 
-    /** Settings-এর "Refresh": প্লেলিস্ট ব্যর্থ হলে exception, EPG ব্যর্থ হলে ফলাফলে বার্তা। */
     suspend fun syncAll(playlistUrl: String, epgUrl: String, preferDiscovered: Boolean): SyncResult {
         val synced = syncPlaylist(playlistUrl)
         val effective = chooseEpg(epgUrl, synced.epgUrls, preferDiscovered)
@@ -167,17 +149,12 @@ class PlaylistSync @Inject constructor(
         }
     }
 
-    /**
-     * Splash-এ EPG দরকার কিনা: শেষ সফল ডাউনলোড ১২ ঘণ্টার বেশি পুরনো (বা কখনও হয়নি)
-     * এবং শেষ চেষ্টা ১ ঘণ্টার বেশি আগের।
-     */
     fun isEpgDue(now: Long = System.currentTimeMillis()): Boolean {
         val lastOk = prefs.getLong(KEY_EPG_OK, 0L)
         val lastTry = prefs.getLong(KEY_EPG_TRY, 0L)
         return now - lastOk > EPG_MAX_AGE_MS && now - lastTry > EPG_RETRY_GAP_MS
     }
 
-    /** Reset Application-এর সময় ডাকতে হবে। */
     fun clearState() {
         prefs.edit().clear().apply()
     }
