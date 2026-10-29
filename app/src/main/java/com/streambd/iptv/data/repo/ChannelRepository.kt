@@ -7,7 +7,6 @@ import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupDao
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
-import com.streambd.iptv.data.m3u.M3uParser
 import com.streambd.iptv.data.m3u.ParsedChannel
 import com.streambd.iptv.data.util.stableId
 import com.streambd.iptv.data.util.epgNameKey
@@ -51,7 +50,6 @@ class ChannelRepository @Inject constructor(
 
     suspend fun hasContent(): Boolean = channels.count() > 0
 
-    /** EPG ইমপোর্টে ফিল্টার হিসেবে ব্যবহারের জন্য। */
     suspend fun tvgIds(): Set<String> = channels.tvgIds().toHashSet()
 
     suspend fun setFavorite(channelId: Long, fav: Boolean) = channels.setFavorite(channelId, fav)
@@ -65,18 +63,15 @@ class ChannelRepository @Inject constructor(
     }
 
     /**
-     * Playlist পার্স করে ডেটাবেসে বসায়। পুরনো ডেটা বদলে যায়, তবে একই চ্যানেলের
-     * favorite/lock বজায় থাকে (id স্থিতিশীল)। সব এক transaction-এ, তাই UI-তে
-     * মাঝখানে খালি লিস্ট ঝিলিক দেয় না।
-     *
-     * @return ইমপোর্ট হওয়া চ্যানেল সংখ্যা। ০ মানে পার্স করে কিছু পাওয়া যায়নি
-     *         (ডেটাবেস অপরিবর্তিত থাকে)।
+     * নতুন: প্লেলিস্ট ফাইল নয়, বরং আগেই পার্স করা List<ParsedChannel> নেয়।
+     * এতে M3U, JSON বা ভবিষ্যতের যেকোনো পার্সার থেকে পাওয়া ডেটা সরাসরি সেভ করা যাবে।
      */
-    suspend fun import(playlist: String): Int {
+    suspend fun import(parsedChannels: List<ParsedChannel>): Int {
+        if (parsedChannels.isEmpty()) return 0
+
         val rows = withContext(Dispatchers.Default) {
-            val parsed = M3uParser.parse(playlist)
-            if (parsed.isEmpty()) null else buildRows(parsed)
-        } ?: return 0
+            buildRows(parsedChannels)
+        }
 
         db.withTransaction {
             val favorites = channels.favoriteIds().toHashSet()
@@ -96,12 +91,6 @@ class ChannelRepository @Inject constructor(
 
     private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
 
-    /**
-     * id স্কিম:
-     *  - group id = hash(kind + group নাম)
-     *  - channel id = hash(kind + group + নাম + কত নম্বর duplicate)
-     * URL ইচ্ছে করেই বাদ, কারণ token বদলালেও favorite টিকে থাকা দরকার।
-     */
     private fun buildRows(parsed: List<ParsedChannel>): ImportRows {
         val groupRows = LinkedHashMap<Long, GroupEntity>()
         val numbers = HashMap<ChannelKind, Int>()
@@ -138,7 +127,6 @@ class ChannelRepository @Inject constructor(
                 logoUrl = p.logoUrl,
                 streamUrl = p.streamUrl,
                 groupId = gid,
-                // tvgId না থাকলে বা খালি থাকলে চ্যানেলের নাম দিয়ে "name:চ্যানেলের নাম" সেভ হবে
                 tvgId = p.tvgId?.takeIf { it.isNotBlank() } ?: epgNameKey(p.name),
                 kind = p.kind.name,
             )
