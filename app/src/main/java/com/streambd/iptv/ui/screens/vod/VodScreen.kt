@@ -189,7 +189,6 @@ fun VodScreen(
     // এপিসোড তালিকা খোলা থাকলে Back প্রথমে সিরিজ তালিকায় ফেরে।
     BackHandler(enabled = seriesOpen && listOpen) { vm.closeSeries() }
 
-    // শেয়ার্ড ডায়ালগ (Track, Aspect, PIN, Actions) একসাথে হ্যান্ডেল করা হচ্ছে
     PlayerDialogs(
         dialogs = dialogs,
         state = state,
