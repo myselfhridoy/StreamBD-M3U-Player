@@ -23,10 +23,35 @@ class ChannelRepository @Inject constructor(
     private val channels: ChannelDao,
     private val groups: GroupDao,
 ) {
-    // ... (আগের ফাংশনগুলো অপরিবর্তিত)
+    fun liveChannels(): Flow<List<ChannelEntity>> = channels.observeByKind(ChannelKind.LIVE.name)
+    fun liveChannelsIn(groupId: Long): Flow<List<ChannelEntity>> =
+        channels.observeByKindAndGroup(ChannelKind.LIVE.name, groupId)
+    fun liveGroups(): Flow<List<GroupEntity>> = groups.observeByKind(ChannelKind.LIVE.name)
+
+    fun byKind(kind: ChannelKind): Flow<List<ChannelEntity>> =
+        channels.observeByKind(kind.name)
+
+    fun byKindIn(kind: ChannelKind, groupId: Long): Flow<List<ChannelEntity>> =
+        channels.observeByKindAndGroup(kind.name, groupId)
+
+    fun groupsByKind(kind: ChannelKind): Flow<List<GroupEntity>> =
+        groups.observeByKind(kind.name)
+
+    fun searchLive(query: String): Flow<List<ChannelEntity>> {
+        val trimmed = query.trim()
+        return if (trimmed.isBlank()) flowOf(emptyList())
+        else channels.searchByKind(ChannelKind.LIVE.name, trimmed, limit = 300)
+    }
+
+    fun searchAll(query: String): Flow<List<ChannelEntity>> {
+        val trimmed = query.trim()
+        return if (trimmed.isBlank()) flowOf(emptyList()) else channels.searchAll(trimmed)
+    }
 
     suspend fun hasContent(): Boolean = channels.count() > 0
+
     suspend fun tvgIds(): Set<String> = channels.tvgIds().toHashSet()
+
     suspend fun setFavorite(channelId: Long, fav: Boolean) = channels.setFavorite(channelId, fav)
     suspend fun setLocked(channelId: Long, locked: Boolean) = channels.setLocked(channelId, locked)
 
@@ -100,7 +125,7 @@ class ChannelRepository @Inject constructor(
                 groupId = gid,
                 tvgId = p.tvgId?.takeIf { it.isNotBlank() } ?: epgNameKey(p.name),
                 kind = p.kind.name,
-                
+
                 catchupType = p.catchupType,
                 catchupDays = p.catchupDays,
                 catchupSource = p.catchupSource,
