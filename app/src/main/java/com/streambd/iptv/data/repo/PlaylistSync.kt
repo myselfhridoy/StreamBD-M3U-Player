@@ -51,7 +51,9 @@ class PlaylistSync @Inject constructor(
         const val EPG_RETRY_GAP_MS = 60L * 60 * 1000
         // প্লেলিস্টের শেষ সফল আপডেট ট্র্যাকিং
         const val KEY_PLAYLIST_OK = "playlist_last_success"
-        const val PLAYLIST_MAX_AGE_MS = 6L * 60 * 60 * 1000
+        
+        // পরিবর্তন: ৬ ঘণ্টা থেকে কমিয়ে ৩০ মিনিট করা হলো (টোকেন এক্সপায়ার হওয়া আটকাতে)
+        const val PLAYLIST_MAX_AGE_MS = 30L * 60 * 1000 
     }
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
