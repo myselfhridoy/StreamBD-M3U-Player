@@ -157,7 +157,7 @@ class PlayerManager @Inject constructor(
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
-            .setWakeMode(C.WAKE_MODE_NETWORK) // নতুন: নেটওয়ার্ক ও সিপিইউ জাগিয়ে রাখার জন্য
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
             .also { it.addListener(playerListener) }
     }
@@ -230,10 +230,30 @@ class PlayerManager @Inject constructor(
                 videoAspect = 0f,
             )
         }
-        val item = MediaItem.Builder()
+        
+        // নতুন: MediaItem বিল্ডার এবং DRM কনফিগারেশন
+        val itemBuilder = MediaItem.Builder()
             .setUri(url)
             .setMediaId(channel.id.toString())
-            .build()
+
+        // DRM চেক এবং সেটআপ
+        if (!channel.drmScheme.isNullOrBlank() && !channel.drmLicense.isNullOrBlank()) {
+            val uuid = when {
+                channel.drmScheme.contains("widevine", ignoreCase = true) -> C.WIDEVINE_UUID
+                channel.drmScheme.contains("playready", ignoreCase = true) -> C.PLAYREADY_UUID
+                channel.drmScheme.contains("clearkey", ignoreCase = true) -> C.CLEARKEY_UUID
+                else -> null
+            }
+
+            if (uuid != null) {
+                val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
+                    .setLicenseUri(channel.drmLicense)
+                    .build()
+                itemBuilder.setDrmConfiguration(drmConfig)
+            }
+        }
+
+        val item = itemBuilder.build()
         currentItem = item
         player.setMediaItem(item)
         player.prepare()
@@ -339,6 +359,11 @@ class PlayerManager @Inject constructor(
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                 "Can't reach the stream. Check your connection."
+            // নতুন: DRM সংক্রান্ত এরর মেসেজ (ঐচ্ছিক)
+            error.errorCode == PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED ->
+                "DRM Error: Could not acquire license."
+            error.errorCode == PlaybackException.ERROR_CODE_DRM_UNSPECIFIED ->
+                "DRM Error: Unsupported DRM or invalid configuration."
             else -> "Playback failed"
         }
     }
