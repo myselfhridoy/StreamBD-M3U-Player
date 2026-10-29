@@ -1,6 +1,8 @@
 package com.streambd.iptv.player
 
 import android.content.Context
+import android.util.Base64
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -16,6 +18,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.settings.SettingsStore
@@ -230,26 +233,49 @@ class PlayerManager @Inject constructor(
                 videoAspect = 0f,
             )
         }
-        
-        // নতুন: MediaItem বিল্ডার এবং DRM কনফিগারেশন
+
         val itemBuilder = MediaItem.Builder()
             .setUri(url)
             .setMediaId(channel.id.toString())
 
-        // DRM চেক এবং সেটআপ
+        // DRM চেক এবং সেটআপ (ফিক্সড)
         if (!channel.drmScheme.isNullOrBlank() && !channel.drmLicense.isNullOrBlank()) {
-            val uuid = when {
-                channel.drmScheme.contains("widevine", ignoreCase = true) -> C.WIDEVINE_UUID
-                channel.drmScheme.contains("playready", ignoreCase = true) -> C.PLAYREADY_UUID
-                channel.drmScheme.contains("clearkey", ignoreCase = true) -> C.CLEARKEY_UUID
-                else -> null
-            }
+            val scheme = channel.drmScheme.lowercase()
+            val licenseRaw = channel.drmLicense
+            // header বা অন্য কিছু থাকলে | এর আগ পর্যন্ত নেওয়া
+            val licenseClean = licenseRaw.substringBefore('|')
 
-            if (uuid != null) {
-                val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
-                    .setLicenseUri(channel.drmLicense)
-                    .build()
-                itemBuilder.setDrmConfiguration(drmConfig)
+            if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
+                // ClearKey raw key format (kid:key)
+                val parts = licenseClean.split(":")
+                if (parts.size == 2) {
+                    try {
+                        val kidB64 = hexToBase64Url(parts[0])
+                        val keyB64 = hexToBase64Url(parts[1])
+                        val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}""".toByteArray()
+                        val callback = LocalMediaDrmCallback(jsonResponse)
+                        val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                            .setMediaDrmCallback(callback)
+                            .build()
+                        itemBuilder.setDrmConfiguration(drmConfig)
+                    } catch (e: Exception) {
+                        Log.e("PlayerManager", "Failed to parse ClearKey: $licenseClean", e)
+                    }
+                }
+            } else {
+                // URL based DRM (Widevine, PlayReady, ClearKey URL)
+                val uuid = when {
+                    scheme.contains("widevine") -> C.WIDEVINE_UUID
+                    scheme.contains("playready") -> C.PLAYREADY_UUID
+                    scheme.contains("clearkey") -> C.CLEARKEY_UUID
+                    else -> null
+                }
+                if (uuid != null) {
+                    val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
+                        .setLicenseUri(licenseClean)
+                        .build()
+                    itemBuilder.setDrmConfiguration(drmConfig)
+                }
             }
         }
 
@@ -359,7 +385,6 @@ class PlayerManager @Inject constructor(
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                 "Can't reach the stream. Check your connection."
-            // নতুন: DRM সংক্রান্ত এরর মেসেজ (ঐচ্ছিক)
             error.errorCode == PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED ->
                 "DRM Error: Could not acquire license."
             error.errorCode == PlaybackException.ERROR_CODE_DRM_UNSPECIFIED ->
@@ -445,7 +470,7 @@ class PlayerManager @Inject constructor(
             if (disabledTypes.contains(type)) return ""
 
             val hasOverride = params.overrides.keys.any { it.type == type }
-            if (!hasOverride) return null 
+            if (!hasOverride) return null
 
             for (group in player.currentTracks.groups) {
                 if (group.type != type) continue
@@ -497,5 +522,11 @@ class PlayerManager @Inject constructor(
             }
         }
         player.trackSelectionParameters = builder.build()
+    }
+
+    // নতুন: Hex থেকে Base64-URL-safe কনভার্টার (ClearKey-এর জন্য)
+    private fun hexToBase64Url(hex: String): String {
+        val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
     }
 }
