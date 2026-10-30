@@ -39,7 +39,8 @@ class ActivationViewModel @Inject constructor(
     val success: StateFlow<ActivationState.Active?> = _success.asStateFlow()
 
     fun setCode(raw: String) {
-        _code.value = raw.filter(Char::isLetterOrDigit).take(24)
+        // নতুন: শুধুমাত্র সংখ্যা (Digit) নেবে এবং সর্বোচ্চ ১২ ডিজিট পর্যন্ত
+        _code.value = raw.filter(Char::isDigit).take(12)
         _error.value = null
     }
 
