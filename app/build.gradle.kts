@@ -15,9 +15,11 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
-        buildConfigField("String", "ACTIVATION_API", "\"https://api.streambd.example\"")
-        // Backend তৈরি হলে true করো। false থাকলে অ্যাপ সরাসরি playlist URL ফর্ম দেখায়।
-        buildConfigField("boolean", "ACTIVATION_ENABLED", "false")
+        
+        // ১. আপনার Cloudflare Worker URL
+        buildConfigField("String", "ACTIVATION_API", "\"https://streambd-activation-server.streambdiptv.workers.dev\"")
+        // ২. অ্যাক্টিভেশন এনাবল করা হলো
+        buildConfigField("boolean", "ACTIVATION_ENABLED", "true")
     }
 
     buildTypes {
@@ -85,7 +87,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
     
-    // নতুন যোগ করা DASH (MPEG-DASH) এবং SmoothStreaming সাপোর্ট
+    // DASH (MPEG-DASH) এবং SmoothStreaming সাপোর্ট
     implementation("androidx.media3:media3-exoplayer-dash:1.3.1")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.3.1")
     
