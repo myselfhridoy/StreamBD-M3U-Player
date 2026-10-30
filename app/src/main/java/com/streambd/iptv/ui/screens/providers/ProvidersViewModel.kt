@@ -29,32 +29,38 @@ class ProvidersViewModel @Inject constructor(
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
-    // নতুন প্লেলিস্ট অ্যাড করার ফাংশন
+    // নতুন: URL ভ্যালিডেশন এবং সিঙ্ক ফেইল করলে ডেটাবেস থেকে ডিলিট করার লজিক
     fun addProvider(name: String, url: String, onResult: (Boolean, String?) -> Unit) {
-        if (name.isBlank() || url.isBlank()) {
+        if (name.isBlank() || url.isBlank()) { 
             onResult(false, "Name and URL are required")
+            return 
+        }
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            onResult(false, "Enter a valid http(s) link")
             return
         }
+        
         viewModelScope.launch {
             _isSyncing.value = true
+            var providerId = 0L
             try {
-                // ১. ডেটাবেসে সেভ করা (এটি একটি নতুন providerId রিটার্ন করবে)
-                val providerId = providerDao.insert(ProviderEntity(name = name, url = url))
-                // ২. চ্যানেল সিঙ্ক করা (isPremium = false যুক্ত হয়েছে PlaylistSync-এ)
-                sync.syncPlaylist(url, providerId = providerId)
-                _isSyncing.value = false
+                providerId = providerDao.insert(ProviderEntity(name = name.trim(), url = url.trim()))
+                sync.syncPlaylist(url.trim(), providerId = providerId)
                 onResult(true, null)
-            } catch (e: SyncException) {
-                _isSyncing.value = false
-                onResult(false, e.message)
             } catch (e: Exception) {
+                // সিঙ্ক ফেইল করলে ডেটাবেস থেকে ভাঙা প্রোভাইডারটি মুছে ফেলা হবে
+                if (providerId > 0L) {
+                    providerDao.deleteById(providerId)
+                    channelRepo.clearProviderData(providerId)
+                }
+                onResult(false, (e as? SyncException)?.message ?: e.message ?: "Unknown error")
+            } finally {
                 _isSyncing.value = false
-                onResult(false, e.message ?: "Unknown error")
             }
         }
     }
 
-    // নতুন: এডিট/আপডেট করার ফাংশন
+    // এডিট/আপডেট করার ফাংশন
     fun updateProvider(
         provider: ProviderEntity, 
         newName: String, 
@@ -65,28 +71,26 @@ class ProvidersViewModel @Inject constructor(
             onResult(false, "Name and URL are required")
             return
         }
+        if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
+            onResult(false, "Enter a valid http(s) link")
+            return
+        }
         viewModelScope.launch {
             _isSyncing.value = true
             try {
-                // ১. ডেটাবেসে নাম ও লিংক আপডেট করা
-                val updated = provider.copy(name = newName, url = newUrl)
+                val updated = provider.copy(name = newName.trim(), url = newUrl.trim())
                 providerDao.update(updated)
                 
-                // ২. যদি লিংক (URL) পরিবর্তন হয়ে থাকে, তবেই নতুন করে চ্যানেল ডাউনলোড হবে
-                // অন্যথায় শুধু নাম পরিবর্তনে বারবার ডাউনলোড হবে না।
-                if (provider.url != newUrl) {
-                    channelRepo.clearProviderData(provider.id) // আগের চ্যানেল ডিলিট
-                    sync.syncPlaylist(newUrl, providerId = provider.id) // নতুন লিংক সিঙ্ক
+                if (provider.url != newUrl.trim()) {
+                    channelRepo.clearProviderData(provider.id)
+                    sync.syncPlaylist(newUrl.trim(), providerId = provider.id)
                 }
                 
-                _isSyncing.value = false
                 onResult(true, null)
-            } catch (e: SyncException) {
-                _isSyncing.value = false
-                onResult(false, e.message)
             } catch (e: Exception) {
+                onResult(false, (e as? SyncException)?.message ?: e.message ?: "Unknown error")
+            } finally {
                 _isSyncing.value = false
-                onResult(false, e.message ?: "Unknown error")
             }
         }
     }
@@ -95,7 +99,6 @@ class ProvidersViewModel @Inject constructor(
     fun deleteProvider(provider: ProviderEntity) {
         viewModelScope.launch {
             providerDao.deleteById(provider.id)
-            // চ্যানেলগুলোও ডিটাবেস থেকে মুছে ফেলা হবে
             channelRepo.clearProviderData(provider.id)
         }
     }
