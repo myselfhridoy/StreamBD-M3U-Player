@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
@@ -34,6 +35,7 @@ private const val TAG = "Splash"
 class SplashViewModel @Inject constructor(
     private val activation: ActivationRepository,
     private val repo: ChannelRepository,
+    private val epgRepo: EpgRepository, // নতুন: পুরোনো EPG মুছতে
     private val sync: PlaylistSync,
     private val launchState: LaunchState,
     private val settings: SettingsStore,
@@ -58,7 +60,7 @@ class SplashViewModel @Inject constructor(
 
     fun changePlaylist() {
         viewModelScope.launch {
-            activation.clear()
+            clearLocalData()
             _nav.value = SplashNav.ToActivation
         }
     }
@@ -69,17 +71,29 @@ class SplashViewModel @Inject constructor(
         job = viewModelScope.launch { decide() }
     }
 
+    // নতুন হেল্পার ফাংশন: অ্যাক্টিভেশন না থাকলে বা এক্সপায়ার হলে সব লোকাল ডেটা মুছে ফেলা হবে
+    private suspend fun clearLocalData() {
+        try {
+            activation.clear()
+            repo.clearAll()
+            epgRepo.clear()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear local data: ${e.message}", e)
+        }
+    }
+
     private suspend fun decide() {
         _status.value = "Starting…"
         delay(700L)
 
         var state: ActivationState = activation.current()
         if (state !is ActivationState.Active) {
+            clearLocalData()
             _nav.value = SplashNav.ToActivation
             return
         }
         if (activation.isExpired(state)) {
-            activation.clear()
+            clearLocalData()
             _nav.value = SplashNav.ToActivation
             return
         }
@@ -96,11 +110,12 @@ class SplashViewModel @Inject constructor(
         state = activation.current()
         if (state !is ActivationState.Active) {
             Log.i(TAG, "activation cleared after revalidation → Activation screen")
+            clearLocalData()
             _nav.value = SplashNav.ToActivation
             return
         }
         if (activation.isExpired(state)) {
-            activation.clear()
+            clearLocalData()
             _nav.value = SplashNav.ToActivation
             return
         }
