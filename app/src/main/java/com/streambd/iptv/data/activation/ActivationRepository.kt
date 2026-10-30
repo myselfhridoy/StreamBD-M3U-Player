@@ -13,6 +13,7 @@ private const val TAG = "ActivationRepo"
 class ActivationRepository @Inject constructor(
     private val store: ActivationStore,
     private val api: ActivationApi,
+    private val clock: TrustedClock, // ★ নতুন: ট্রাস্টেড ক্লক ইনজেক্ট করা হলো
 ) {
     companion object {
         const val LOCAL_CODE = "LOCAL"
@@ -40,6 +41,10 @@ class ActivationRepository @Inject constructor(
         }
         return try {
             val response = api.activate(code, store.deviceId())
+            
+            // ★ নতুন: সার্ভার থেকে পাওয়া সময় দিয়ে ক্লক সিঙ্ক করা হলো
+            clock.sync(response.serverTime)
+            
             store.saveActive(
                 code = response.code,
                 expiresAt = response.expiresAt,
@@ -90,7 +95,8 @@ class ActivationRepository @Inject constructor(
 
     private fun intervalFor(active: ActivationState.Active): Long {
         if (active.expiresAt <= 0L) return REVALIDATE_INTERVAL_PREMIUM_MS
-        val daysLeft = (active.expiresAt - System.currentTimeMillis()) / (24L * 60 * 60 * 1000)
+        // ★ নতুন: System.currentTimeMillis() এর বদলে clock.now()
+        val daysLeft = (active.expiresAt - clock.now()) / (24L * 60 * 60 * 1000)
         return if (daysLeft <= TRIAL_THRESHOLD_DAYS) {
             REVALIDATE_INTERVAL_TRIAL_MS
         } else {
@@ -102,12 +108,18 @@ class ActivationRepository @Inject constructor(
         if (!BuildConfig.ACTIVATION_ENABLED) return
         val active = store.current() as? ActivationState.Active ?: return
         if (isLocal(active.code)) return
-        if (System.currentTimeMillis() - store.lastCheck() < intervalFor(active)) return
+        
+        // ★ নতুন: since < 0 হলে (ঘড়ি পেছালে) চেক বন্ধ হবে না, রিভ্যালিডেট হবে
+        val since = clock.now() - store.lastCheck()
+        if (since in 0 until intervalFor(active)) return
 
         store.touchLastCheck()
         try {
-            // ★ নতুন: activate-এর বদলে validate কল করা হচ্ছে
+            // activate-এর বদলে validate কল করা হচ্ছে
             val response = api.validate(active.code, store.deviceId())
+            
+            // ★ নতুন: রিভ্যালিডেট হওয়ার সময়ও ক্লক সিঙ্ক
+            clock.sync(response.serverTime)
             
             store.saveActive(
                 response.code,
@@ -132,6 +144,7 @@ class ActivationRepository @Inject constructor(
 
     fun isExpired(active: ActivationState.Active): Boolean {
         if (isLocal(active.code)) return false
-        return active.expiresAt > 0L && active.expiresAt < System.currentTimeMillis()
+        // ★ নতুন: System.currentTimeMillis() এর বদলে clock.now()
+        return active.expiresAt > 0L && active.expiresAt < clock.now()
     }
 }
