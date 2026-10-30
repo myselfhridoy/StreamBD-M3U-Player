@@ -1,6 +1,7 @@
 package com.streambd.iptv.data.repo
 
 import android.content.Context
+import android.util.Log
 import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.parser.PlaylistParserFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -38,12 +39,16 @@ class PlaylistSync @Inject constructor(
     private val epg: EpgRepository,
 ) {
     private companion object {
+        const val TAG = "PlaylistSync"
         const val KEY_EPG_OK = "epg_last_success"
         const val KEY_EPG_TRY = "epg_last_attempt"
         const val EPG_MAX_AGE_MS = 12L * 60 * 60 * 1000
         const val EPG_RETRY_GAP_MS = 60L * 60 * 1000
         const val KEY_PLAYLIST_OK = "playlist_last_success"
         const val PLAYLIST_MAX_AGE_MS = 30L * 60 * 1000
+        
+        // নতুন: ইনফিনিট লুপ এড়াতে সর্বোচ্চ কত লেভেল পর্যন্ত নেস্টেড প্লেলিস্ট চেক করবে
+        const val MAX_NESTED_DEPTH = 3
     }
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
@@ -62,39 +67,66 @@ class PlaylistSync @Inject constructor(
 
     fun lastPlaylistUpdateTime(): Long = prefs.getLong(KEY_PLAYLIST_OK, 0L)
 
+    /** 
+     * নতুন: রিকার্সিভ ফাংশন যা মূল প্লেলিস্ট এবং নেস্টেড প্লেলিস্ট থেকে 
+     * চ্যানেল এবং EPG লিংকগুলোকে একসাথে মার্জ করে।
+     */
     private suspend fun fetchAndImport(url: String): SyncedPlaylist {
-        val body = try {
-            download(url)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: SyncException) {
-            throw e
-        } catch (e: Exception) {
-            throw SyncException(friendly(e), e)
+        val allChannels = mutableListOf<com.streambd.iptv.data.m3u.ParsedChannel>()
+        val allEpgUrls = mutableSetOf<String>()
+
+        suspend fun fetchRecursive(targetUrl: String, depth: Int) {
+            if (depth > MAX_NESTED_DEPTH) return
+
+            val body = try {
+                download(targetUrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // যদি রুট লেভেলে হয় তবে এক্সসেপশন থ্রো করবে, নেস্টেড লেভেলে হলে ইগনোর করবে
+                if (depth == 0) throw SyncException(friendly(e), e)
+                else {
+                    Log.w(TAG, "Failed to download nested playlist $targetUrl: ${e.message}")
+                    return
+                }
+            }
+
+            if (body.isBlank()) return
+            if (body.firstOrNull { !it.isWhitespace() } == '<') return
+
+            val parsed = PlaylistParserFactory.parse(body)
+            allEpgUrls.addAll(parsed.epgUrls)
+
+            for (channel in parsed.channels) {
+                if (channel.isNestedPlaylist) {
+                    fetchRecursive(channel.streamUrl, depth + 1)
+                } else {
+                    allChannels.add(channel)
+                }
+            }
         }
 
-        if (body.isBlank()) throw SyncException("The playlist is empty.")
-        if (body.firstOrNull { !it.isWhitespace() } == '<') {
-            throw SyncException("This link returned a web page, not a playlist.")
-        }
+        // ডাউনলোড শুরু
+        fetchRecursive(url, 0)
 
-        // নতুন: ফ্যাক্টরি ব্যবহার করে অটো-ডিটেক্ট করা (M3U বা JSON)
-        val parsed = PlaylistParserFactory.parse(body)
-        if (parsed.channels.isEmpty()) {
+        if (allChannels.isEmpty()) {
             throw SyncException("No channels found. Check that the link is a valid playlist.")
         }
 
+        // ডেটাবেসে সেভ করা
         val count = try {
-            channels.import(parsed.channels)
+            channels.import(allChannels)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw SyncException("Could not save the playlist on this device.", e)
         }
+
         if (count == 0) {
             throw SyncException("No channels found. Check that the link is a valid playlist.")
         }
-        return SyncedPlaylist(count, parsed.epgUrls)
+
+        return SyncedPlaylist(count, allEpgUrls.toList())
     }
 
     fun chooseEpg(stored: String, discovered: List<String>, preferDiscovered: Boolean): String {
