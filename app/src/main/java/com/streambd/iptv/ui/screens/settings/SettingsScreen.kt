@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,13 +25,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.streambd.iptv.data.settings.AppSettings
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.settings.AppSettings
 import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
@@ -68,7 +74,7 @@ fun SettingsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val activationState by vm.activationState.collectAsStateWithLifecycle()
     val refresh by vm.refreshState.collectAsStateWithLifecycle()
-    val lastUpdateTime by vm.lastUpdateTime.collectAsStateWithLifecycle() // নতুন
+    val lastUpdateTime by vm.lastUpdateTime.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val isTv = remember { ctx.isTelevision() }
@@ -112,6 +118,7 @@ fun SettingsScreen(
                 onClick = { dlg = Sd.Aspect },
             )
 
+            // stepSize যোগ করা হলো রিমোটে ঠিকমতো কাজ করার জন্য
             SliderRow(
                 label = "EPG Time Shift",
                 valueLabel = if (state.epgTimeShiftMins % 60 == 0) {
@@ -122,18 +129,21 @@ fun SettingsScreen(
                 value = state.epgTimeShiftMins.toFloat(),
                 range = -600f..600f,
                 steps = 39,
+                stepSize = 30f, // ১২০০ / ৪০ স্টেপ = ৩০
                 onChange = {
                     val snapped = (it / 30f).roundToInt() * 30
                     vm.setEpgShift(snapped)
                 },
             )
 
+            // stepSize যোগ করা হলো রিমোটে ঠিকমতো কাজ করার জন্য
             SliderRow(
                 label = "Buffer Time",
                 valueLabel = "${state.bufferTimeMs} ms",
                 value = state.bufferTimeMs.toFloat(),
                 range = 1_000f..10_000f,
                 steps = 35,
+                stepSize = 250f, // ৯০০০ / ৩৬ স্টেপ = ২৫০
                 onChange = {
                     val snapped = (it / 250f).roundToInt() * 250
                     vm.setBuffer(snapped)
@@ -141,7 +151,6 @@ fun SettingsScreen(
             )
 
             val refreshing = refresh is RefreshState.Running
-            // নতুন: রিফ্রেশ রো-তে শেষ আপডেটের সময় দেখানো হচ্ছে
             ActionRow(
                 label = if (refreshing) "Refreshing playlist…" else "Refresh Playlist",
                 subtitle = formatLastUpdate(lastUpdateTime),
@@ -303,7 +312,6 @@ fun SettingsScreen(
     }
 }
 
-// নতুন: টাইম ফরম্যাট করার ফাংশন
 private fun formatLastUpdate(timeMs: Long): String? {
     if (timeMs == 0L) return null
     val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
@@ -359,7 +367,6 @@ private fun ValueRow(label: String, value: String, onClick: () -> Unit) {
     }
 }
 
-// নতুন: subtitle সাপোর্ট সহ ActionRow
 @Composable
 private fun ActionRow(
     label: String,
@@ -394,6 +401,7 @@ private fun ActionRow(
     }
 }
 
+// আপডেট করা SliderRow
 @Composable
 private fun SliderRow(
     label: String,
@@ -401,26 +409,57 @@ private fun SliderRow(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
+    stepSize: Float, // নতুন প্যারামিটার
     onChange: (Float) -> Unit,
 ) {
     var local by remember(value) { mutableStateOf(value) }
+    var focused by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
             Text(valueLabel, color = Accent, fontSize = 13.sp)
         }
-        Slider(
-            value = local,
-            onValueChange = { local = it },
-            onValueChangeFinished = { onChange(local) },
-            valueRange = range,
-            steps = steps,
-            colors = SliderDefaults.colors(
-                thumbColor = Accent,
-                activeTrackColor = Accent,
-                inactiveTrackColor = TextPrimary.copy(alpha = 0.25f),
-            ),
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (focused) Panel else Color.Transparent)
+                .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
+                .onFocusChanged { focused = it.isFocused }
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown) {
+                        when (event.key) {
+                            Key.DirectionLeft -> {
+                                local = (local - stepSize).coerceIn(range.start, range.endInclusive)
+                                onChange(local)
+                                true
+                            }
+                            Key.DirectionRight -> {
+                                local = (local + stepSize).coerceIn(range.start, range.endInclusive)
+                                onChange(local)
+                                true
+                            }
+                            else -> false
+                        }
+                    } else false
+                }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Slider(
+                value = local,
+                onValueChange = { local = it },
+                onValueChangeFinished = { onChange(local) },
+                valueRange = range,
+                steps = steps,
+                colors = SliderDefaults.colors(
+                    thumbColor = Accent,
+                    activeTrackColor = Accent,
+                    inactiveTrackColor = TextPrimary.copy(alpha = 0.25f),
+                ),
+            )
+        }
     }
 }
 
