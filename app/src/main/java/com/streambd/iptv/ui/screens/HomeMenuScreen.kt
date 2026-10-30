@@ -35,7 +35,8 @@ import java.util.Locale
 private data class HomeItem(val label: String, val icon: ImageVector, val route: String?)
 
 private val homeItems = listOf(
-    HomeItem("All",      Icons.Filled.Tv,           Routes.LIVE),
+    // "All" এর পরিবর্তে "Providers" যুক্ত করা হলো
+    HomeItem("Providers", Icons.Filled.PlaylistPlay, Routes.PROVIDERS),
     HomeItem("Live",     Icons.Filled.LiveTv,       Routes.LIVE),
     HomeItem("Movies",   Icons.Filled.Videocam,     Routes.MOVIES),
     HomeItem("Series",   Icons.Filled.VideoLibrary, Routes.SERIES),
@@ -59,7 +60,7 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
         }
     }
 
-    // নতুন শক্তিশালী DeviceType ব্যবহার করে TV ডিটেকশন
+    // শক্তিশালী DeviceType ব্যবহার করে TV ডিটেকশন
     val isTv = remember { DeviceType.isTv(ctx) }
     val firstTile = remember { FocusRequester() }
     
