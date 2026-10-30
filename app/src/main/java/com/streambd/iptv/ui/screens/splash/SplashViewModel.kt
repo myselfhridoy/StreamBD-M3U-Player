@@ -56,7 +56,6 @@ class SplashViewModel @Inject constructor(
 
     fun retry() = start()
 
-    /** প্লেলিস্ট/কোড বদলাতে Activation স্ক্রিনে ফেরা। */
     fun changePlaylist() {
         viewModelScope.launch {
             activation.clear()
@@ -74,9 +73,6 @@ class SplashViewModel @Inject constructor(
         _status.value = "Starting…"
         delay(700L)
 
-        // ────────────────────────────────────────────────────────────
-        // ১. লোকাল activation চেক — কোনো state নেই বা মেয়াদ শেষ হলে সরাসরি Activation
-        // ────────────────────────────────────────────────────────────
         var state: ActivationState = activation.current()
         if (state !is ActivationState.Active) {
             _nav.value = SplashNav.ToActivation
@@ -88,26 +84,15 @@ class SplashViewModel @Inject constructor(
             return
         }
 
-        // ────────────────────────────────────────────────────────────
-        // ২. Server revalidation — playlist ডাউনলোডের *আগে*।
-        //    কারণ: revoked হলে playlist নামিয়ে কোনো লাভ নেই।
-        //    বেশিরভাগ cold start-এ intervalOn() false ফেরায় → নেটওয়ার্ক কল হয় না → দ্রুত।
-        //    শুধু ৬ ঘণ্টা / ১ ঘণ্টা (trial) পার হলে আসল নেটওয়ার্ক কল হয়।
-        // ────────────────────────────────────────────────────────────
         _status.value = "Checking subscription…"
         try {
             activation.revalidateIfNeeded()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // নেটওয়ার্ক সমস্যা — পুরনো state রাখি, AutoRefresher পরে retry করবে
             Log.w(TAG, "revalidate failed (continuing with local state): ${e.message}", e)
         }
 
-        // ────────────────────────────────────────────────────────────
-        // ৩. revalidation-এ state মুছে গেলে (revoked/suspended/expired) → Activation
-        //    এছাড়া playlistUrl/epgUrl server-এ বদলালে সেটাও এখানে পড়া হয়
-        // ────────────────────────────────────────────────────────────
         state = activation.current()
         if (state !is ActivationState.Active) {
             Log.i(TAG, "activation cleared after revalidation → Activation screen")
@@ -121,35 +106,28 @@ class SplashViewModel @Inject constructor(
         }
 
         // ────────────────────────────────────────────────────────────
-        // ৪. Playlist download (শুধু চ্যানেল না থাকলে)
+        // ৪. Playlist download (মাল্টিপল প্লেলিস্ট)
         // ────────────────────────────────────────────────────────────
-        var epgUrl = state.epgUrl
-
         if (!repo.hasContent()) {
-            if (state.playlistUrl.isBlank()) {
+            if (state.playlists.isEmpty()) {
                 _failure.value = SplashFailure("No playlist link is saved for this activation.")
                 return
             }
-            _status.value = "Downloading playlist…"
+            
+            _status.value = "Downloading playlists…"
             try {
-                val synced = sync.syncPlaylist(state.playlistUrl)
-                epgUrl = sync.chooseEpg(state.epgUrl, synced.epgUrls, activation.isLocal(state))
-                if (epgUrl != state.epgUrl) activation.updateEpgUrl(epgUrl)
+                // নতুন: syncAll দিয়ে সব প্লেলিস্ট একসাথে ডাউনলোড
+                val result = sync.syncAll(
+                    playlists = state.playlists,
+                    preferDiscovered = activation.isLocal(state)
+                )
+                val firstEpg = state.playlists.firstOrNull()?.epgUrl ?: ""
+                if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
+                    activation.updateEpgUrl(result.epgUrl)
+                }
             } catch (e: SyncException) {
-                _failure.value = SplashFailure(e.message ?: "Could not load the playlist.")
+                _failure.value = SplashFailure(e.message ?: "Could not load the playlists.")
                 return
-            }
-        }
-
-        // ────────────────────────────────────────────────────────────
-        // ৫. EPG sync (ব্যর্থ হলেও এগোবে — শুধু Guide ফাঁকা থাকবে)
-        // ────────────────────────────────────────────────────────────
-        if (epgUrl.isNotBlank() && sync.isEpgDue()) {
-            _status.value = "Updating TV guide…"
-            try {
-                sync.syncEpg(epgUrl)
-            } catch (e: SyncException) {
-                Log.w(TAG, "EPG sync failed: ${e.message}")
             }
         }
 
