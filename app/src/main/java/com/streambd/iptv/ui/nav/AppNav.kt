@@ -6,11 +6,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -49,7 +49,7 @@ object Routes {
 @HiltViewModel
 class AppNavViewModel @Inject constructor(
     val activationRepository: ActivationRepository,
-    val playerManager: PlayerManager // নতুন: প্লেয়ার বন্ধ করার জন্য
+    val playerManager: PlayerManager
 ) : ViewModel()
 
 @Composable
@@ -57,7 +57,10 @@ fun AppNav() {
     val nav = rememberNavController()
     val navViewModel: AppNavViewModel = hiltViewModel()
     
-    val activationState by navViewModel.activationRepository.state.collectAsStateWithLifecycle()
+    // collectAsStateWithLifecycle এর বদলে collectAsState ব্যবহার করা হলো (initialValue সহ)
+    val activationState by navViewModel.activationRepository.state.collectAsState(
+        initial = ActivationState.NotActivated
+    )
 
     // গ্লোবাল চেক: অ্যাক্টিভেশন না থাকলে বা এক্সপায়ার হলে সরাসরি Activation স্ক্রিনে পাঠাবে
     LaunchedEffect(activationState) {
@@ -69,11 +72,11 @@ fun AppNav() {
             currentRoute != Routes.ACTIVATION && 
             currentRoute != Routes.SPLASH) {
             
-            // নতুন: Activation স্ক্রিনে যাওয়ার আগে চলমান প্লেয়ার বন্ধ করে দেওয়া
+            // চলমান প্লেয়ার বন্ধ করে দেওয়া
             navViewModel.playerManager.stopAndClear()
             
             nav.navigate(Routes.ACTIVATION) {
-                popUpTo(0) { inclusive = true } // পুরো নেভিগেশন স্ট্যাক মুছে ফেলা হবে
+                popUpTo(0) { inclusive = true }
             }
         }
     }
