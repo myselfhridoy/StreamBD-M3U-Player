@@ -23,6 +23,7 @@ import com.streambd.iptv.ui.screens.HomeMenuScreen
 import com.streambd.iptv.ui.screens.activation.ActivationScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
 import com.streambd.iptv.ui.screens.live.LiveScreen
+import com.streambd.iptv.ui.screens.providers.ProvidersScreen // নতুন ইমপোর্ট
 import com.streambd.iptv.ui.screens.search.SearchScreen
 import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
@@ -33,6 +34,7 @@ import javax.inject.Inject
 object Routes {
     const val SPLASH = "splash"
     const val HOME = "home"
+    const val PROVIDERS = "providers" // নতুন রুট
     const val LIVE_BASE = "live"
     const val LIVE = "live?channelId={channelId}"
     fun live(channelId: Long = -1L) = "live?channelId=$channelId"
@@ -118,6 +120,14 @@ fun AppNav() {
                 onExit = { activity?.finish() },
             )
         }
+        
+        // নতুন Providers স্ক্রিন
+        composable(Routes.PROVIDERS) {
+            ProvidersScreen(
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(
             route = Routes.LIVE,
             arguments = listOf(navArgument("channelId") {
