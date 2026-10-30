@@ -38,6 +38,14 @@ interface ChannelDao {
     @Query("DELETE FROM channels") suspend fun clear()
     @Query("DELETE FROM channels WHERE providerId = :providerId") suspend fun clearByProvider(providerId: Long)
     @Query("SELECT COUNT(*) FROM channels") suspend fun count(): Int
+
+    // নতুন: প্রোভাইডার অনুযায়ী অর্ডার করে সব চ্যানেল আনার জন্য
+    @Query("SELECT * FROM channels WHERE kind = :kind ORDER BY providerId, number")
+    suspend fun listByKindOrdered(kind: String): List<ChannelEntity>
+
+    // নতুন: চ্যানেলের নম্বর আপডেট করার জন্য
+    @Query("UPDATE channels SET number = :number WHERE id = :id")
+    suspend fun updateNumber(id: Long, number: Int)
 }
 
 @Dao
@@ -63,7 +71,6 @@ interface ProviderDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(provider: ProviderEntity): Long
 
-    // নতুন: এডিট করার জন্য @Update মেথড যুক্ত করা হলো
     @Update
     suspend fun update(provider: ProviderEntity)
 
