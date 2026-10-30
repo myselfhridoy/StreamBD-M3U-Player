@@ -18,9 +18,8 @@ class ActivationRepository @Inject constructor(
         const val LOCAL_CODE = "LOCAL"
         private const val LEGACY_LOCAL_CODE = "DEV"
 
-        // Shorter interval near expiry so trial abuse is caught quickly.
-        private const val REVALIDATE_INTERVAL_PREMIUM_MS = 6L * 60 * 60 * 1000  // 6h
-        private const val REVALIDATE_INTERVAL_TRIAL_MS   = 1L * 60 * 60 * 1000  // 1h
+        private const val REVALIDATE_INTERVAL_PREMIUM_MS = 6L * 60 * 60 * 1000
+        private const val REVALIDATE_INTERVAL_TRIAL_MS   = 1L * 60 * 60 * 1000
         private const val TRIAL_THRESHOLD_DAYS           = 7L
     }
 
@@ -44,25 +43,21 @@ class ActivationRepository @Inject constructor(
             store.saveActive(
                 code = response.code,
                 expiresAt = response.expiresAt,
-                playlistUrl = response.playlistUrl,
-                epgUrl = response.epgUrl,
+                playlists = response.playlists, // নতুন: লিস্ট সেভ
             )
             Result.success(
                 ActivationState.Active(
                     response.code,
                     response.expiresAt,
-                    response.playlistUrl,
-                    response.epgUrl,
+                    response.playlists,
                 ),
             )
         } catch (e: CancellationException) {
             throw e
         } catch (e: ActivationRejectedException) {
-            // Server said "no" — surface the message directly to the user.
             Log.w(TAG, "activate rejected: ${e.reason} (HTTP ${e.httpCode})")
             Result.failure(IllegalStateException(e.reason, e))
         } catch (e: ActivationNetworkException) {
-            // Offline or 5xx — generic network message.
             Log.w(TAG, "activate network error: ${e.message}", e)
             Result.failure(IllegalStateException(e.message ?: "Network error", e))
         } catch (e: Exception) {
@@ -73,21 +68,23 @@ class ActivationRepository @Inject constructor(
 
     /** Server ছাড়া সরাসরি playlist URL দিয়ে সেটআপ। মেয়াদ কখনও শেষ হয় না (expiresAt = 0). */
     suspend fun activateLocally(playlistUrl: String, epgUrl: String): ActivationState.Active {
-        store.saveActive(LOCAL_CODE, 0L, playlistUrl, epgUrl)
-        return ActivationState.Active(LOCAL_CODE, 0L, playlistUrl, epgUrl)
+        val p = PlaylistData("Local Playlist", playlistUrl, epgUrl)
+        store.saveActive(LOCAL_CODE, 0L, listOf(p))
+        return ActivationState.Active(LOCAL_CODE, 0L, listOf(p))
     }
 
-    /** প্লেলিস্ট থেকে পাওয়া EPG লিংক সংরক্ষণ। বাকি তথ্য অপরিবর্তিত। */
+    /** প্লেলিস্ট থেকে পাওয়া EPG লিংক সংরক্ষণ। এখানে প্রথম প্লেলিস্টের EPG আপডেট করা হচ্ছে। */
     suspend fun updateEpgUrl(epgUrl: String) {
         val active = store.current() as? ActivationState.Active ?: return
-        if (active.epgUrl == epgUrl) return
-        store.saveActive(active.code, active.expiresAt, active.playlistUrl, epgUrl)
+        if (active.playlists.isEmpty()) return
+        if (active.playlists[0].epgUrl == epgUrl) return
+        
+        val updatedList = active.playlists.mapIndexed { index, p ->
+            if (index == 0) p.copy(epgUrl = epgUrl) else p
+        }
+        store.saveActive(active.code, active.expiresAt, updatedList)
     }
 
-    /**
-     * Server থেকে এখন-কত-সময়-বাকি সেটার উপর ভিত্তি করে revalidation interval।
-     * ৭ দিন বা কম বাকি থাকলে দ্রুত (১ ঘণ্টা), নাহলে ধীরে (৬ ঘণ্টা)।
-     */
     private fun intervalFor(active: ActivationState.Active): Long {
         if (active.expiresAt <= 0L) return REVALIDATE_INTERVAL_PREMIUM_MS
         val daysLeft = (active.expiresAt - System.currentTimeMillis()) / (24L * 60 * 60 * 1000)
@@ -98,15 +95,6 @@ class ActivationRepository @Inject constructor(
         }
     }
 
-    /**
-     * Ping the server if enough time has passed. This is the *only* place that
-     * decides whether local activation state survives.
-     *
-     *   Success                       → refresh stored values (playlist URL may change)
-     *   Rejected + terminal (403)     → clear local state → forces re-activation
-     *   Rejected + recoverable        → keep state (device limit, unknown)
-     *   Network error / 5xx           → keep state, retry next cycle
-     */
     suspend fun revalidateIfNeeded() {
         if (!BuildConfig.ACTIVATION_ENABLED) return
         val active = store.current() as? ActivationState.Active ?: return
@@ -119,8 +107,7 @@ class ActivationRepository @Inject constructor(
             store.saveActive(
                 response.code,
                 response.expiresAt,
-                response.playlistUrl,
-                response.epgUrl,
+                response.playlists, // নতুন: লিস্ট সেভ
             )
         } catch (e: CancellationException) {
             throw e
