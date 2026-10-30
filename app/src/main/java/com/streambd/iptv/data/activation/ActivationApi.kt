@@ -18,10 +18,12 @@ import javax.inject.Singleton
 
 private const val TAG = "ActivationApi"
 
+// নতুন: serverTime যুক্ত করা হলো
 data class ActivationResponse(
     val code: String,
     val expiresAt: Long,
     val playlists: List<PlaylistData>,
+    val serverTime: Long = 0L,
 )
 
 class ActivationRejectedException(
@@ -51,7 +53,7 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
         }
     }
 
-    // নতুন: activate এবং validate দুটোই এই কমন ফাংশনটি কল করবে
+    // activate এবং validate দুটোই এই কমন ফাংশনটি কল করবে
     suspend fun activate(code: String, deviceId: String) = call("activate", code, deviceId)
     suspend fun validate(code: String, deviceId: String) = call("validate", code, deviceId)
 
@@ -67,7 +69,7 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
                 .toString()
 
             val request = Request.Builder()
-                // নতুন: path ভেরিয়েবল ব্যবহার করা হলো (activate অথবা validate)
+                // path ভেরিয়েবল ব্যবহার করা হলো (activate অথবা validate)
                 .url("${getBaseUrl().trimEnd('/')}/$path")
                 .post(payload.toRequestBody(jsonType))
                 .header("Accept", "application/json")
@@ -95,7 +97,7 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
                         resp.code == 403 -> {
                             val m = message.lowercase()
                             when {
-                                // নতুন: "not activated" চেক যুক্ত করা হলো
+                                // "not activated" চেক যুক্ত করা হলো
                                 "revoked" in m || "expired" in m || "suspended" in m || "not activated" in m -> true
                                 else -> false
                             }
@@ -139,7 +141,8 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
                 ActivationResponse(
                     code = code,
                     expiresAt = json.optLong("expiresAt", 0L),
-                    playlists = playlists
+                    playlists = playlists,
+                    serverTime = json.optLong("serverTime", 0L), // ★ নতুন: সার্ভারের সময় প্যার্স করা হলো
                 )
             }
         }
