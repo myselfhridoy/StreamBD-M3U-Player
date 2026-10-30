@@ -2,7 +2,6 @@ package com.streambd.iptv.player
 
 import android.content.Context
 import android.media.MediaDrm
-import android.util.Base64
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -47,10 +46,20 @@ class PlayerManager @Inject constructor(
     private val settings: SettingsStore,
 ) {
     private companion object {
+        const val TAG = "PlayerManager"
         const val DEFAULT_BUFFER_MS = 2_500
         const val MAX_RETRIES = 3
         const val USER_AGENT = "StreamBD/1.0"
+
+        // URL থেকে ধরন না চেনা গেলে এই ক্রমে চেষ্টা (ParserException হলে পরেরটা)
+        val FORMAT_HINTS = listOf(
+            MimeTypes.APPLICATION_M3U8,
+            MimeTypes.APPLICATION_MPD,
+            MimeTypes.APPLICATION_SS,
+        )
     }
+
+    private class DrmSetupException(message: String) : Exception(message)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -73,6 +82,9 @@ class PlayerManager @Inject constructor(
         },
     )
 
+    // Widevine/PlayReady লাইসেন্স অনুরোধও একই header (UA, Referer) পায়
+    private val drmProvider = AppDrmProvider(dataSourceFactory)
+
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
@@ -81,7 +93,7 @@ class PlayerManager @Inject constructor(
     private var retryJob: Job? = null
     private var restoredForMediaId: String? = null
     private var currentItem: MediaItem? = null
-    private var hlsHintApplied = false
+    private var hintIndex = 0
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -146,7 +158,10 @@ class PlayerManager @Inject constructor(
         val forPlaybackMs = minOf(1_000, minMs)
         val afterRebufferMs = minOf(2_000, minMs)
         return ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(dataSourceFactory)
+                    .setDrmSessionManagerProvider(drmProvider),
+            )
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(minMs, maxMs, forPlaybackMs, afterRebufferMs)
@@ -215,14 +230,13 @@ class PlayerManager @Inject constructor(
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
         networkRetries = 0
-        hlsHintApplied = false
+        hintIndex = 0
         restoredForMediaId = null
 
         val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
-        
+
         val drmScheme = rawHeaders.entries.firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
             ?: channel.drmScheme
-
         val drmLicense = rawHeaders.entries.firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
             ?: channel.drmLicense
 
@@ -244,85 +258,98 @@ class PlayerManager @Inject constructor(
             )
         }
 
-        try {
-            val itemBuilder = MediaItem.Builder()
-                .setUri(rawUrl)
-                .setMediaId(channel.id.toString())
+        val item = try {
+            buildMediaItem(channel.id.toString(), rawUrl, cleanHeaders, drmScheme, drmLicense)
+        } catch (e: DrmSetupException) {
+            Log.e(TAG, "DRM setup failed: ${e.message}")
+            fail(e.message ?: "DRM setup failed")
+            return
+        } catch (e: Throwable) {
+            Log.e(TAG, "Playback start failed: ${e.message}", e)
+            fail("Playback failed: ${e.message}")
+            return
+        }
 
-            // DRM চেক এবং সেটআপ
-            if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
-                val scheme = drmScheme.lowercase()
-                val licenseClean = drmLicense.substringBefore('|').trim()
-                
-                val uuid = when {
-                    scheme.contains("widevine") -> C.WIDEVINE_UUID
-                    scheme.contains("playready") -> C.PLAYREADY_UUID
-                    scheme.contains("clearkey") -> C.CLEARKEY_UUID
-                    else -> null
-                }
+        currentItem = item
+        player.setMediaItem(item)
+        player.prepare()
+        player.playWhenReady = true
+    }
 
-                if (uuid != null) {
-                    if (MediaDrm.isCryptoSchemeSupported(uuid)) {
-                        
-                        if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
-                            // ClearKey raw key format (kid:key)
-                            val parts = licenseClean.split(":")
-                            if (parts.size == 2 && parts[0].length == 32 && parts[1].length == 32) {
-                                val kidB64 = hexToBase64Url(parts[0])
-                                val keyB64 = hexToBase64Url(parts[1])
-                                if (kidB64.isNotEmpty() && keyB64.isNotEmpty()) {
-                                    val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
-                                    Log.d("PlayerManager", "ClearKey JSON: $jsonResponse")
-                                    
-                                    val dataUri = "data:application/json;base64," + Base64.encodeToString(jsonResponse.toByteArray(), Base64.NO_WRAP)
-                                    
-                                    val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                                        .setLicenseUri(dataUri)
-                                        .setMultiSession(true)
-                                        .build()
-                                    itemBuilder.setDrmConfiguration(drmConfig)
-                                }
-                            } else {
-                                Log.e("PlayerManager", "Invalid ClearKey format: $licenseClean")
-                            }
-                        } else {
-                            // URL based DRM (Widevine, PlayReady, ClearKey URL)
-                            val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
-                                .setLicenseUri(licenseClean)
-                                .setMultiSession(true)
-                                .build()
-                            itemBuilder.setDrmConfiguration(drmConfig)
-                        }
-                    } else {
-                        Log.e("PlayerManager", "Device does not support DRM scheme: $scheme")
-                        _state.update { it.copy(error = "This device does not support $scheme DRM.", isBuffering = false) }
-                        return
-                    }
-                }
+    /** URL, ধরনের ইঙ্গিত ও (থাকলে) DRM নিয়ে MediaItem বানায়। DRM ভুল হলে [DrmSetupException]। */
+    private fun buildMediaItem(
+        mediaId: String,
+        url: String,
+        headers: Map<String, String>,
+        drmScheme: String?,
+        drmLicense: String?,
+    ): MediaItem {
+        val builder = MediaItem.Builder().setUri(url).setMediaId(mediaId)
+        guessMimeType(url)?.let { builder.setMimeType(it) }
+
+        if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
+            val scheme = drmScheme.lowercase()
+            val uuid = when {
+                scheme.contains("widevine") -> C.WIDEVINE_UUID
+                scheme.contains("playready") -> C.PLAYREADY_UUID
+                scheme.contains("clearkey") -> C.CLEARKEY_UUID
+                else -> null
+            } ?: throw DrmSetupException("Unknown DRM type: $drmScheme")
+
+            if (!MediaDrm.isCryptoSchemeSupported(uuid)) {
+                throw DrmSetupException("This device does not support $drmScheme DRM.")
             }
 
-            val item = itemBuilder.build()
-            currentItem = item
-            player.setMediaItem(item)
-            player.prepare()
-            player.playWhenReady = true
-            
-        } catch (e: Throwable) {
-            Log.e("PlayerManager", "Playback start failed: ${e.message}", e)
-            _state.update { it.copy(error = "Playback failed: ${e.message}", isBuffering = false) }
+            val license = drmLicense.substringBefore('|').trim()
+            val isUrl = license.startsWith("http://", ignoreCase = true) ||
+                license.startsWith("https://", ignoreCase = true)
+
+            if (uuid == C.CLEARKEY_UUID && !isUrl) {
+                // কী সরাসরি দেওয়া: নেটওয়ার্ক ছাড়াই (data: URI কাজ করে না)
+                val json = ClearKeys.toLicenseJson(license)
+                    ?: throw DrmSetupException("Invalid ClearKey. Use kid:key (32 hex characters each).")
+                drmProvider.setClearKeys(mediaId, json)
+                builder.setDrmConfiguration(
+                    MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                        .setMultiSession(true)
+                        .build(),
+                )
+            } else {
+                builder.setDrmConfiguration(
+                    MediaItem.DrmConfiguration.Builder(uuid)
+                        .setLicenseUri(license)
+                        .setLicenseRequestHeaders(headers)
+                        .setMultiSession(true)
+                        .build(),
+                )
+            }
+        }
+        return builder.build()
+    }
+
+    /** URL দেখেই DASH/SmoothStreaming বোঝা গেলে ইঙ্গিত। HLS ও বাকিদের ExoPlayer নিজে চেনে। */
+    private fun guessMimeType(url: String): String? {
+        val lower = url.lowercase()
+        val path = lower.substringBefore('?').substringBefore('#')
+        return when {
+            path.endsWith(".mpd") || "format=mpd" in lower || "type=mpd" in lower -> MimeTypes.APPLICATION_MPD
+            path.endsWith(".ism") || ".ism/manifest" in path -> MimeTypes.APPLICATION_SS
+            else -> null
         }
     }
 
-    /**
-     * Phase 2: Catchup (Archive) প্রোগ্রাম প্লে করার জন্য।
-     */
+    private fun fail(message: String) {
+        _state.update { it.copy(error = message, isBuffering = false) }
+    }
+
+    /** Catchup (Archive) প্রোগ্রাম প্লে করার জন্য। */
     fun playCatchup(channel: ChannelEntity, catchupUrl: String) {
         if (catchupUrl.isBlank()) return
 
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
         networkRetries = 0
-        hlsHintApplied = false
+        hintIndex = 0
         restoredForMediaId = null
 
         val (rawUrl, rawHeaders) = splitHeaders(catchupUrl)
@@ -345,18 +372,19 @@ class PlayerManager @Inject constructor(
         }
 
         try {
-            val item = MediaItem.Builder()
+            val builder = MediaItem.Builder()
                 .setUri(rawUrl)
                 .setMediaId(channel.id.toString())
-                .build()
+            guessMimeType(rawUrl)?.let { builder.setMimeType(it) }
+            val item = builder.build()
 
             currentItem = item
             player.setMediaItem(item)
             player.prepare()
             player.playWhenReady = true
         } catch (e: Throwable) {
-            Log.e("PlayerManager", "Catchup start failed: ${e.message}", e)
-            _state.update { it.copy(error = "Catchup failed: ${e.message}", isBuffering = false) }
+            Log.e(TAG, "Catchup start failed: ${e.message}", e)
+            fail("Catchup failed: ${e.message}")
         }
     }
 
@@ -402,6 +430,8 @@ class PlayerManager @Inject constructor(
     fun clearError() { _state.update { it.copy(error = null) } }
 
     private fun handleError(error: PlaybackException) {
+        // ত্রুটির আসল নাম ও কারণ লগে (adb logcat -s PlayerManager)
+        Log.e(TAG, "Player error ${error.errorCodeName}: ${error.cause?.message}", error)
         retryJob?.cancel()
 
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
@@ -410,15 +440,26 @@ class PlayerManager @Inject constructor(
             return
         }
 
+        // URL থেকে ধরন বোঝা যায়নি: HLS → DASH → SmoothStreaming ক্রমে চেষ্টা
         val item = currentItem
-        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED &&
-            !hlsHintApplied && item != null
-        ) {
-            hlsHintApplied = true
-            val hinted = item.buildUpon().setMimeType(MimeTypes.APPLICATION_M3U8).build()
-            currentItem = hinted
-            player.setMediaItem(hinted)
-            player.prepare()
+        val formatGuessWrong = error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED
+        if (formatGuessWrong && item != null) {
+            val tried = item.localConfiguration?.mimeType
+            while (hintIndex < FORMAT_HINTS.size && FORMAT_HINTS[hintIndex] == tried) hintIndex++
+            if (hintIndex < FORMAT_HINTS.size) {
+                val hinted = item.buildUpon().setMimeType(FORMAT_HINTS[hintIndex++]).build()
+                currentItem = hinted
+                player.setMediaItem(hinted)
+                player.prepare()
+                return
+            }
+        }
+
+        // DRM ত্রুটি আবার চেষ্টা করলে সারে না
+        if (error.errorCode in 6000..6999) {
+            _state.update { it.copy(error = describe(error), isBuffering = false) }
             return
         }
 
@@ -460,10 +501,10 @@ class PlayerManager @Inject constructor(
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                 "Can't reach the stream. Check your connection."
             error.errorCode == PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED ->
-                "DRM Error: Could not acquire license."
-            error.errorCode == PlaybackException.ERROR_CODE_DRM_UNSPECIFIED ->
-                "DRM Error: Unsupported DRM or invalid configuration."
-            else -> "Playback failed"
+                "DRM error: could not get the license."
+            error.errorCode in 6000..6999 ->
+                "DRM error (${error.errorCodeName})"
+            else -> "Playback failed (${error.errorCodeName})"
         }
     }
 
@@ -596,14 +637,5 @@ class PlayerManager @Inject constructor(
             }
         }
         player.trackSelectionParameters = builder.build()
-    }
-
-    private fun hexToBase64Url(hex: String): String {
-        return try {
-            val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-            Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-        } catch (e: Exception) {
-            ""
-        }
     }
 }
