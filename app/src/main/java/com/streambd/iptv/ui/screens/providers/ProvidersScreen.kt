@@ -8,10 +8,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -102,7 +104,7 @@ fun ProvidersScreen(
     if (isSyncing) {
         Dialog(onDismissRequest = { }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(12.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(8.dp)) {
                     Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Accent)
                         Spacer(Modifier.height(16.dp))
@@ -141,15 +143,16 @@ fun ProvidersScreen(
     }
 }
 
+// প্রিমিয়াম Add M3U বাটন
 @Composable
 private fun PremiumAddButton(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(8.dp)
     
     Row(
         Modifier
             .clip(shape)
-            .background(if (focused) Accent.copy(alpha = 0.15f) else Surface1)
+            .background(if (focused) Accent else Surface1)
             .border(1.dp, if (focused) Accent else Divider, shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -159,15 +162,15 @@ private fun PremiumAddButton(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.Add,
             contentDescription = "Add",
-            tint = if (focused) Accent else TextPrimary,
+            tint = if (focused) Color.Black else Accent,
             modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.width(8.dp))
         Text(
             "Add M3U",
-            color = if (focused) Accent else TextPrimary,
+            color = if (focused) Color.Black else Accent,
             fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -175,7 +178,7 @@ private fun PremiumAddButton(onClick: () -> Unit) {
 @Composable
 private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(8.dp)
 
     Row(
         Modifier
@@ -202,7 +205,7 @@ private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
     }
 }
 
-// সম্পূর্ণ নতুন, কমপ্যাক্ট এবং প্রিমিয়াম ডায়ালগ (কোনো স্ক্রল ছাড়াই)
+// নতুন ছোট এবং বক্স-শেপ ডায়ালগ (কিবোর্ড সমস্যা সমাধানসহ)
 @Composable
 private fun AddProviderDialog(
     onDismiss: () -> Unit,
@@ -224,21 +227,24 @@ private fun AddProviderDialog(
         Box(
             Modifier
                 .fillMaxSize()
+                .imePadding() // কিবোর্ড ওপেন হলে ডায়ালগ উপরে তুলে ধরবে
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 Modifier
-                    .width(400.dp) // ফিক্সড সাইজ, যাতে মোবাইল ও টিভি দুই জায়গায় ফিট হয়
+                    .fillMaxWidth(0.9f) // মোবাইলে স্ক্রিনের ৯০% জায়গা নেবে
+                    .widthIn(max = 340.dp) // ট্যাবে বা বড় স্ক্রিনে সর্বোচ্চ ৩৪০ ডিপি হবে
                     .wrapContentHeight()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(4.dp)) // বক্স শেপ
                     .background(Panel)
+                    .border(1.dp, Divider, RoundedCornerShape(4.dp))
                     .pointerInput(Unit) { detectTapGestures { } }
-                    .padding(24.dp)
+                    .padding(20.dp)
             ) {
-                Text("Add M3U Provider", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(20.dp))
+                Text("Add M3U Provider", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(16.dp))
                 
                 Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                 PremiumTextField(
@@ -266,7 +272,7 @@ private fun AddProviderDialog(
                     }
                 )
                 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(24.dp))
                 
                 Row(
                     Modifier.fillMaxWidth(),
@@ -296,7 +302,6 @@ private fun AddProviderDialog(
     }
 }
 
-// কাস্টম ডায়ালগ বাটন (TrackSelectionDialog এর মতো)
 @Composable
 private fun DialogTextButton(
     label: String,
@@ -305,7 +310,7 @@ private fun DialogTextButton(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(4.dp)
     
     Text(
         text = label,
@@ -322,7 +327,6 @@ private fun DialogTextButton(
     )
 }
 
-// কাস্টম ইনপুট ফিল্ড
 @Composable
 private fun PremiumTextField(
     value: String,
@@ -335,12 +339,12 @@ private fun PremiumTextField(
     onDone: (() -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(4.dp) // বক্স শেপ
 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(52.dp) // নিশ্চিত করা হয়েছে যেন ফিল্ড বড় হয়ে না যায়
+            .height(48.dp) // ছোট এবং কম্প্যাক্ট সাইজ
             .clip(shape)
             .background(Surface1)
             .border(
@@ -350,18 +354,18 @@ private fun PremiumTextField(
             )
             .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused }
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         if (value.isEmpty()) {
-            Text(placeholder, color = TextMuted.copy(alpha = 0.6f), fontSize = 15.sp)
+            Text(placeholder, color = TextMuted.copy(alpha = 0.6f), fontSize = 14.sp)
         }
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
             cursorBrush = SolidColor(Accent),
-            textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
+            textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = KeyboardActions(
                 onNext = { onNext?.invoke() },
