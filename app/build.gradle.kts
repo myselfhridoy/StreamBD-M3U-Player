@@ -16,9 +16,11 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         
-        // ১. আপনার Cloudflare Worker URL
-        buildConfigField("String", "ACTIVATION_API", "\"https://streambd-activation-server.streambdiptv.workers.dev\"")
-        // ২. অ্যাক্টিভেশন এনাবল করা হলো
+        // 🔒 সিকিউরিটি: Activation API URL-টি Base64 এ এনকোড করা হলো 
+        // (যাতে APK ডিকম্পাইল করলেও সহজে URL খুঁজে না পাওয়া যায়)
+        buildConfigField("String", "ENCODED_API", "\"aHR0cHM6Ly9zdHJlYW1iZC1hY3RpdmF0aW9uLXNlcnZlci5zdHJlYW1iZGlwdHYud29ya2Vycy5kZXY=\"")
+        
+        // অ্যাক্টিভেশন এনাবল করা হলো
         buildConfigField("boolean", "ACTIVATION_ENABLED", "true")
     }
 
