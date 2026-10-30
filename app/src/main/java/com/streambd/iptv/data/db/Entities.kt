@@ -10,6 +10,7 @@ data class GroupEntity(
     val name: String,
     val order: Int,
     val kind: String,   // "LIVE" | "MOVIE" | "SERIES" | "RADIO"
+    val providerId: Long = 0L // নতুন: 0 = সার্ভার, 1+ = ইউজারের নিজের প্লেলিস্ট
 )
 
 @Entity(
@@ -28,7 +29,6 @@ data class ChannelEntity(
     val isFavorite: Boolean = false,
     val isLocked: Boolean = false,
     
-    // নতুন ডেটাবেস কলাম
     val catchupType: String? = null,
     val catchupDays: Int = 0,
     val catchupSource: String? = null,
@@ -45,16 +45,15 @@ data class ChannelEntity(
     val serieId: String? = null,
     val serieTitle: String? = null,
     
-    // নতুন: সার্ভারের কন্টেন্ট নাকি ইউজারের নিজের কন্টেন্ট তা বোঝার জন্য
     val isPremium: Boolean = false,
+    val providerId: Long = 0L // নতুন: সার্ভার নাকি ইউজারের প্লেলিস্ট
 )
 
-// নতুন: ইউজারের নিজের প্লেলিস্ট সেভ করার টেবিল
 @Entity(tableName = "providers")
 data class ProviderEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val url: String,
-    val type: String = "M3U", // ভবিষ্যতে "XTREAM" ইত্যাদির জন্য
+    val type: String = "M3U",
     val createdAt: Long = System.currentTimeMillis()
 )
