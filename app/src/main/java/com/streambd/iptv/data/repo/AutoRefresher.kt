@@ -3,6 +3,7 @@ package com.streambd.iptv.data.repo
 import android.util.Log
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.db.ProviderDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,6 +24,7 @@ private const val TAG = "AutoRefresher"
 class AutoRefresher @Inject constructor(
     private val sync: PlaylistSync,
     private val activation: ActivationRepository,
+    private val providerDao: ProviderDao, // নতুন: ইউজারের প্লেলিস্ট পাওয়ার জন্য
 ) {
     private companion object {
         const val FIRST_DELAY_MS = 2_000L
@@ -76,9 +78,6 @@ class AutoRefresher @Inject constructor(
             stop()
             return
         }
-        
-        // নতুন চেক: প্লেলিস্ট লিস্ট খালি কিনা
-        if (active.playlists.isEmpty()) return
 
         val atEntry = !entryRefreshDone
         entryRefreshDone = true
@@ -93,15 +92,37 @@ class AutoRefresher @Inject constructor(
         try {
             if (atEntry) _isRefreshing.value = true
 
-            // নতুন: লিস্ট পাস করা হচ্ছে
-            val result = sync.syncAll(
-                playlists = active.playlists,
-                preferDiscovered = activation.isLocal(active),
-            )
-            val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
-            if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
-                activation.updateEpgUrl(result.epgUrl)
+            // ১. সার্ভারের প্লেলিস্ট আপডেট (যদি থাকে)
+            if (active.playlists.isNotEmpty()) {
+                try {
+                    val result = sync.syncAll(
+                        playlists = active.playlists,
+                        preferDiscovered = activation.isLocal(active),
+                        isPremium = true
+                    )
+                    val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
+                    if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
+                        activation.updateEpgUrl(result.epgUrl)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Server playlists sync failed: ${e.message}")
+                }
             }
+
+            // ২. ইউজারের নিজের প্লেলিস্টগুলো আপডেট
+            try {
+                val userProviders = providerDao.getAll()
+                for (p in userProviders) {
+                    try {
+                        sync.syncPlaylist(p.url, providerId = p.id)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "User playlist ${p.name} sync failed: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch user providers: ${e.message}")
+            }
+
         } finally {
             if (atEntry) _isRefreshing.value = false
         }
