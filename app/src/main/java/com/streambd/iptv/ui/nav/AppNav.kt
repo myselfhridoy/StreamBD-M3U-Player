@@ -5,12 +5,19 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.streambd.iptv.data.activation.ActivationRepository
+import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.ui.screens.HomeMenuScreen
 import com.streambd.iptv.ui.screens.activation.ActivationScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
@@ -19,6 +26,8 @@ import com.streambd.iptv.ui.screens.search.SearchScreen
 import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
 import com.streambd.iptv.ui.screens.vod.VodScreen
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 object Routes {
     const val SPLASH = "splash"
@@ -36,9 +45,35 @@ object Routes {
     const val ACTIVATION = "activation"
 }
 
+// নতুন: গ্লোবাল অ্যাক্টিভেশন স্টেট মনিটর করার জন্য ViewModel
+@HiltViewModel
+class AppNavViewModel @Inject constructor(
+    val activationRepository: ActivationRepository
+) : ViewModel()
+
 @Composable
 fun AppNav() {
     val nav = rememberNavController()
+    val navViewModel: AppNavViewModel = hiltViewModel()
+    
+    // গ্লোবাল অ্যাক্টিভেশন স্টেট
+    val activationState by navViewModel.activationRepository.state.collectAsStateWithLifecycle()
+
+    // যদি হঠাৎ করে অ্যাক্টিভেশন রিভোক বা এক্সপায়ার হয়ে যায়, তবে সরাসরি Activation স্ক্রিনে পাঠানো হবে
+    LaunchedEffect(activationState) {
+        val state = activationState
+        val currentRoute = nav.currentBackStackEntry?.destination?.route
+        val isExpired = (state is ActivationState.Active) && navViewModel.activationRepository.isExpired(state)
+
+        if ((state is ActivationState.NotActivated || isExpired) && 
+            currentRoute != Routes.ACTIVATION && 
+            currentRoute != Routes.SPLASH) {
+            
+            nav.navigate(Routes.ACTIVATION) {
+                popUpTo(0) { inclusive = true } // পুরো নেভিগেশন স্ট্যাক মুছে ফেলা হবে
+            }
+        }
+    }
 
     NavHost(
         navController = nav, 
