@@ -161,7 +161,7 @@ object M3uParser {
             attrs[m.groupValues[1].lowercase()] = value.trim()
         }
 
-        return Pending(
+        val pending = Pending(
             name = display.ifBlank { attrs["tvg-name"].orEmpty() },
             logo = attrs["tvg-logo"]?.takeIf { it.isNotBlank() },
             groupTitle = attrs["group-title"]?.takeIf { it.isNotBlank() },
@@ -186,6 +186,12 @@ object M3uParser {
             tmdbId = attrs["tvg-tmdb"]?.takeIf { it.isNotBlank() },
             seekPreview = attrs["seek_preview"]?.takeIf { it.isNotBlank() },
         )
+        
+        // নতুন ফিক্স: tvg-rec এবং catchup-enable পার্স করা
+        pending.tvgRec = attrs["tvg-rec"]?.toIntOrNull() ?: 0
+        pending.catchupEnable = attrs["catchup-enable"] == "1" || attrs["catchup-enable"]?.toBoolean() == true
+        
+        return pending
     }
 
     private fun separatorIndex(line: String): Int {
@@ -234,6 +240,15 @@ object M3uParser {
         when (key) {
             "inputstream.adaptive.license_type" -> p.drmScheme = value
             "inputstream.adaptive.license_key" -> p.drmLicense = value
+            // নতুন ফিক্স: drm_legacy হ্যান্ডলিং
+            "inputstream.adaptive.drm_legacy" -> {
+                // "org.w3.clearkey|KID:KEY" বা "com.widevine.alpha|https://..."
+                val bar = value.indexOf('|')
+                if (bar > 0) {
+                    p.drmScheme = value.substring(0, bar).trim()
+                    p.drmLicense = value.substring(bar + 1).trim()
+                }
+            }
         }
     }
 
@@ -299,10 +314,5 @@ object M3uParser {
         var drmLicense: String? = null
         var tvgRec: Int = 0
         var catchupEnable: Boolean = false
-        
-        // এখানে catchup-enable এবং tvg-rec চেক
-        init {
-            // Pending তৈরি হওয়ার সময় এগুলো সরাসরি এক্সট্রাক্ট করা যাবে না, তাই parseExtInf-এ করতে হবে
-        }
     }
 }
