@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.activation.PlaylistData
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -75,11 +76,16 @@ class ActivationViewModel @Inject constructor(
         _error.value = null
         viewModelScope.launch {
             try {
-                // এখানে নতুন লজিক বসানো হয়েছে
-                val synced = sync.syncPlaylist(playlist)
-                val finalEpgUrl = sync.chooseEpg(epg, synced.epgUrls, preferDiscovered = epg.isBlank())
+                // নতুন লজিক: PlaylistData তৈরি করে syncAll-এ পাঠানো হচ্ছে
+                val playlistData = PlaylistData(name = "Local Playlist", m3uUrl = playlist, epgUrl = epg)
                 
-                _success.value = repo.activateLocally(playlist, finalEpgUrl)
+                val result = sync.syncAll(
+                    playlists = listOf(playlistData),
+                    preferDiscovered = epg.isBlank()
+                )
+                
+                // সিঙ্ক থেকে পাওয়া EPG URL দিয়ে লোকাল অ্যাক্টিভেশন সেভ করা হচ্ছে
+                _success.value = repo.activateLocally(playlist, result.epgUrl)
             } catch (e: SyncException) {
                 _error.value = e.message
             } catch (e: CancellationException) {
