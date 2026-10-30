@@ -117,6 +117,7 @@ fun LiveScreen(
                             playing = channel.id == playingId,
                             locked = channel.isLocked,
                             favorite = channel.isFavorite,
+                            isPremium = channel.isPremium, // নতুন: প্রিমিয়াম আইকন দেখানোর জন্য
                             onLongClick = { dialogs.openActions(channel.id) },
                         ) { vm.requestPlay(channel) }
                     }
