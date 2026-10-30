@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit // নতুন
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,7 +56,8 @@ fun ProvidersScreen(
     val providers by vm.providers.collectAsStateWithLifecycle()
     val isSyncing by vm.isSyncing.collectAsStateWithLifecycle()
 
-    var showAddDialog by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
+    var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) } // নতুন
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
     
     Column(
@@ -75,11 +77,14 @@ fun ProvidersScreen(
             Text(
                 "My Providers",
                 color = TextPrimary,
-                fontSize = 24.sp, // সাইজ কিছুটা কমানো হয়েছে
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
             
-            PremiumAddButton(onClick = { showAddDialog = true })
+            PremiumAddButton(onClick = { 
+                providerToEdit = null // নতুন অ্যাড করার জন্য null
+                showDialog = true 
+            })
         }
 
         if (providers.isEmpty() && !isSyncing) {
@@ -92,7 +97,6 @@ fun ProvidersScreen(
                 }
             }
         } else {
-            // গ্রিড সাইজ ছোট করা হয়েছে (minSize = 160.dp)
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 160.dp), 
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -100,7 +104,14 @@ fun ProvidersScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 items(providers, key = { it.id }) { provider ->
-                    ProviderGridCard(provider, onDelete = { providerToDelete = provider })
+                    ProviderGridCard(
+                        provider = provider,
+                        onEdit = { 
+                            providerToEdit = provider
+                            showDialog = true
+                        },
+                        onDelete = { providerToDelete = provider }
+                    )
                 }
             }
         }
@@ -120,13 +131,18 @@ fun ProvidersScreen(
         }
     }
 
-    if (showAddDialog) {
-        AddProviderDialog(
-            onDismiss = { showAddDialog = false },
-            onAdd = { name, url ->
-                vm.addProvider(name, url) { success, _ ->
-                    if (success) {
-                        showAddDialog = false
+    if (showDialog) {
+        ProviderDialog(
+            initialProvider = providerToEdit, // যদি এডিট হয়, তবে ডেটা পাস হবে
+            onDismiss = { showDialog = false },
+            onSave = { name, url ->
+                if (providerToEdit == null) {
+                    vm.addProvider(name, url) { success, _ ->
+                        if (success) showDialog = false
+                    }
+                } else {
+                    vm.updateProvider(providerToEdit!!, name, url) { success, _ ->
+                        if (success) showDialog = false
                     }
                 }
             }
@@ -160,30 +176,34 @@ private fun PremiumAddButton(onClick: () -> Unit) {
             .border(1.dp, if (focused) Accent else Divider, shape)
             .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp), // প্যাডিং কমানো
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
             contentDescription = "Add",
             tint = if (focused) Color.Black else Accent,
-            modifier = Modifier.size(18.dp) // আইকন সাইজ ছোট
+            modifier = Modifier.size(18.dp)
         )
         Spacer(Modifier.width(6.dp))
         Text(
             "Add M3U",
             color = if (focused) Color.Black else Accent,
-            fontSize = 13.sp, // ফন্ট সাইজ ছোট
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold
         )
     }
 }
 
-// আরও ছোট এবং কমপ্যাক্ট গ্রিড কার্ড
+// আপডেটেড কার্ড: Edit এবং Delete বাটন
 @Composable
-private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
+private fun ProviderGridCard(
+    provider: ProviderEntity, 
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp) // রাউন্ডেড কমিয়ে ৮ করা হলো
+    val shape = RoundedCornerShape(8.dp)
 
     Column(
         Modifier
@@ -193,9 +213,8 @@ private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
             .border(2.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
             .focusable()
-            .padding(10.dp) // প্যাডিং ১৬ থেকে ১০ করা হলো
+            .padding(10.dp)
     ) {
-        // উপরে: আইকন ও ডিলিট বাটন
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -205,29 +224,43 @@ private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
                 Icons.Filled.PlaylistPlay, 
                 contentDescription = null, 
                 tint = if (focused) Accent else TextPrimary, 
-                modifier = Modifier.size(28.dp) // আইকন ৪০ থেকে ২৮
+                modifier = Modifier.size(28.dp)
             )
             
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(24.dp) // বাটনের সাইজ ছোট
-            ) {
-                Icon(
-                    Icons.Filled.Delete, 
-                    contentDescription = "Delete", 
-                    tint = Danger,
-                    modifier = Modifier.size(18.dp) // ডিলিট আইকন ২২ থেকে ১৮
-                )
+            // নতুন: এডিট এবং ডিলিট বাটনের রো
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Edit, 
+                        contentDescription = "Edit", 
+                        tint = TextMuted, // প্রিমিয়াম লুক
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Delete, 
+                        contentDescription = "Delete", 
+                        tint = Danger,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
         
-        Spacer(Modifier.height(10.dp)) // স্পেসিং ১৬ থেকে ১০
+        Spacer(Modifier.height(10.dp))
         
-        // নিচে: নাম এবং লিংক
         Text(
             provider.name, 
             color = TextPrimary, 
-            fontSize = 14.sp, // ফন্ট ১৬ থেকে ১৪
+            fontSize = 14.sp, 
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -236,26 +269,28 @@ private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
         Text(
             provider.url, 
             color = TextMuted, 
-            fontSize = 11.sp, // ফন্ট ১২ থেকে ১১
+            fontSize = 11.sp, 
             maxLines = 2, 
             overflow = TextOverflow.Ellipsis,
-            lineHeight = 14.sp // লাইন স্পেসিং কমানো
+            lineHeight = 14.sp
         )
     }
 }
 
+// অ্যাড এবং এডিট উভয়ের জন্য কমন ডায়ালগ
 @Composable
-private fun AddProviderDialog(
+private fun ProviderDialog(
+    initialProvider: ProviderEntity?,
     onDismiss: () -> Unit,
-    onAdd: (String, String) -> Unit
+    onSave: (String, String) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialProvider?.name ?: "") }
+    var url by remember { mutableStateOf(initialProvider?.url ?: "") }
     
     val nameFocus = remember { FocusRequester() }
     val urlFocus = remember { FocusRequester() }
     val cancelFocus = remember { FocusRequester() }
-    val addFocus = remember { FocusRequester() }
+    val saveFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
     Dialog(
@@ -285,7 +320,13 @@ private fun AddProviderDialog(
                     .pointerInput(Unit) { detectTapGestures { } }
                     .padding(16.dp)
             ) {
-                Text("Add M3U Provider", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                // টাইটেল পরিবর্তন হবে অ্যাড নাকি এডিট তার উপর ভিত্তি করে
+                Text(
+                    if (initialProvider == null) "Add M3U Provider" else "Edit M3U Provider", 
+                    color = TextPrimary, 
+                    fontSize = 16.sp, 
+                    fontWeight = FontWeight.SemiBold
+                )
                 Spacer(Modifier.height(12.dp))
                 
                 Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
@@ -310,7 +351,7 @@ private fun AddProviderDialog(
                     imeAction = ImeAction.Done,
                     onDone = { 
                         focusManager.clearFocus()
-                        addFocus.requestFocus() 
+                        saveFocus.requestFocus() 
                     }
                 )
                 
@@ -329,10 +370,10 @@ private fun AddProviderDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     DialogTextButton(
-                        label = "ADD", 
+                        label = if (initialProvider == null) "ADD" else "SAVE", // বাটনের নাম পরিবর্তন
                         color = Accent, 
-                        modifier = Modifier.focusRequester(addFocus),
-                        onClick = { onAdd(name, url) }
+                        modifier = Modifier.focusRequester(saveFocus),
+                        onClick = { onSave(name, url) }
                     )
                 }
             }
