@@ -63,6 +63,10 @@ interface ProviderDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(provider: ProviderEntity): Long
 
+    // নতুন: এডিট করার জন্য @Update মেথড যুক্ত করা হলো
+    @Update
+    suspend fun update(provider: ProviderEntity)
+
     @Query("DELETE FROM providers WHERE id = :id")
     suspend fun deleteById(id: Long)
 
