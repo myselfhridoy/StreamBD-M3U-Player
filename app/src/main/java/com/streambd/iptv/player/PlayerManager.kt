@@ -19,7 +19,6 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.settings.SettingsStore
@@ -266,7 +265,7 @@ class PlayerManager @Inject constructor(
                     if (MediaDrm.isCryptoSchemeSupported(uuid)) {
                         
                         if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
-                            // ClearKey raw key format (kid:key) -> LocalMediaDrmCallback
+                            // ClearKey raw key format (kid:key)
                             val parts = licenseClean.split(":")
                             if (parts.size == 2 && parts[0].length == 32 && parts[1].length == 32) {
                                 val kidB64 = hexToBase64Url(parts[0])
@@ -275,11 +274,11 @@ class PlayerManager @Inject constructor(
                                     val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
                                     Log.d("PlayerManager", "ClearKey JSON: $jsonResponse")
                                     
-                                    val callback = LocalMediaDrmCallback(jsonResponse.toByteArray())
+                                    val dataUri = "data:application/json;base64," + Base64.encodeToString(jsonResponse.toByteArray(), Base64.NO_WRAP)
                                     
                                     val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                                        .setMediaDrmCallback(callback)
-                                        .setMultiSession(true) // লাইভ স্ট্রিমে কী রোটেশনের জন্য
+                                        .setLicenseUri(dataUri)
+                                        .setMultiSession(true)
                                         .build()
                                     itemBuilder.setDrmConfiguration(drmConfig)
                                 }
@@ -287,7 +286,7 @@ class PlayerManager @Inject constructor(
                                 Log.e("PlayerManager", "Invalid ClearKey format: $licenseClean")
                             }
                         } else {
-                            // URL based DRM
+                            // URL based DRM (Widevine, PlayReady, ClearKey URL)
                             val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
                                 .setLicenseUri(licenseClean)
                                 .setMultiSession(true)
@@ -316,7 +315,6 @@ class PlayerManager @Inject constructor(
 
     /**
      * Phase 2: Catchup (Archive) প্রোগ্রাম প্লে করার জন্য।
-     * [ChannelEntity] এর বদলে সরাসরি URL নেয়, যাতে EPG থেকে জেনারেট করা পুরনো প্রোগ্রামের লিংক চালানো যায়।
      */
     fun playCatchup(channel: ChannelEntity, catchupUrl: String) {
         if (catchupUrl.isBlank()) return
@@ -600,7 +598,6 @@ class PlayerManager @Inject constructor(
         player.trackSelectionParameters = builder.build()
     }
 
-    // Hex থেকে Base64-URL-safe কনভার্টার (ClearKey-এর জন্য)
     private fun hexToBase64Url(hex: String): String {
         return try {
             val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
