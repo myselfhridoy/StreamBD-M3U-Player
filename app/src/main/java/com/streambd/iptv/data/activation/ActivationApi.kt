@@ -1,5 +1,7 @@
 package com.streambd.iptv.data.activation
 
+import android.os.Build
+import android.util.Base64
 import android.util.Log
 import com.streambd.iptv.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -38,14 +40,30 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
+    // 🔒 Base64 এনকোড করা URL ডিকোড করার ফাংশন
+    private fun getBaseUrl(): String {
+        return try {
+            val decoded = Base64.decode(BuildConfig.ENCODED_API, Base64.DEFAULT)
+            String(decoded, Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to decode API URL", e)
+            ""
+        }
+    }
+
     suspend fun activate(code: String, deviceId: String): ActivationResponse =
         withContext(Dispatchers.IO) {
+            // ডিভাইসের আসল নাম বের করা (Unknown Device ফিক্স)
+            val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+
             val payload = JSONObject()
                 .put("code", code)
                 .put("deviceId", deviceId)
+                .put("deviceName", deviceName) // সার্ভারে ডিভাইসের নাম পাঠানো হচ্ছে
                 .toString()
+
             val request = Request.Builder()
-                .url("${BuildConfig.ACTIVATION_API.trimEnd('/')}/activate")
+                .url("${getBaseUrl().trimEnd('/')}/activate")
                 .post(payload.toRequestBody(jsonType))
                 .header("Accept", "application/json")
                 .build()
