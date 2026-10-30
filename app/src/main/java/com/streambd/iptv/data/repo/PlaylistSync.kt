@@ -54,9 +54,6 @@ class PlaylistSync @Inject constructor(
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
     private val playlistLock = Mutex()
 
-    /** 
-     * ডাউনলোড ও পার্স করার হেল্পার ফাংশন (ডেটাবেসে সেভ করে না, শুধু মেমোরিতে দেয়)
-     */
     private suspend fun fetchPlaylistData(rootUrl: String): Pair<List<ParsedChannel>, List<String>> {
         val allChannels = mutableListOf<ParsedChannel>()
         val allEpgUrls = mutableSetOf<String>()
@@ -84,27 +81,21 @@ class PlaylistSync @Inject constructor(
         return Pair(allChannels, allEpgUrls.toList())
     }
 
-    /** 
-     * একক প্লেলিস্ট সিঙ্ক (ইউজারের নিজের প্লেলিস্টের জন্য)
-     */
-    suspend fun syncPlaylist(url: String, isPremium: Boolean = false): SyncedPlaylist = playlistLock.withLock {
+    // নতুন: providerId যুক্ত হলো
+    suspend fun syncPlaylist(url: String, providerId: Long = 0L): SyncedPlaylist = playlistLock.withLock {
         val (channelsList, epgs) = fetchPlaylistData(url)
         if (channelsList.isEmpty()) throw SyncException("No channels found.")
         
-        // নতুন: isPremium প্যারামিটার পাস করা হচ্ছে
-        val count = channels.import(channelsList, isPremium)
+        val count = channels.import(channelsList, isPremium = false, providerId = providerId)
         
         prefs.edit().putLong(KEY_PLAYLIST_OK, System.currentTimeMillis()).apply()
         SyncedPlaylist(count, epgs)
     }
 
-    /** 
-     * একসাথে একাধিক প্লেলিস্ট সিঙ্ক (সার্ভারের প্লেলিস্টের জন্য)
-     */
     suspend fun syncAll(
         playlists: List<PlaylistData>, 
         preferDiscovered: Boolean,
-        isPremium: Boolean = true // নতুন: সার্ভারের ডেটা ডিফল্টভাবে প্রিমিয়াম
+        isPremium: Boolean = true
     ): SyncResult = playlistLock.withLock {
         if (playlists.isEmpty()) throw SyncException("No playlists to sync.")
 
@@ -112,7 +103,6 @@ class PlaylistSync @Inject constructor(
         val allDiscoveredEpgs = mutableSetOf<String>()
         val allExplicitEpgs = mutableSetOf<String>()
 
-        // ১. সব প্লেলিস্ট ডাউনলোড ও পার্স করা (ডেটাবেস clear হবে না)
         for (p in playlists) {
             try {
                 val (chList, epgs) = fetchPlaylistData(p.m3uUrl)
@@ -124,14 +114,10 @@ class PlaylistSync @Inject constructor(
             }
         }
 
-        if (allChannels.isEmpty()) {
-            throw SyncException("No channels found in any of the assigned playlists.")
-        }
+        if (allChannels.isEmpty()) throw SyncException("No channels found in any of the assigned playlists.")
 
-        // ২. সব চ্যানেল একবারে ডেটাবেসে সেভ করা
         val count = try {
-            // নতুন: isPremium প্যারামিটার পাস করা হচ্ছে
-            channels.import(allChannels, isPremium)
+            channels.import(allChannels, isPremium, providerId = 0L) // সার্ভার ডেটার providerId = 0
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -140,7 +126,6 @@ class PlaylistSync @Inject constructor(
 
         prefs.edit().putLong(KEY_PLAYLIST_OK, System.currentTimeMillis()).apply()
 
-        // ৩. EPG সিঙ্ক করা
         val finalEpgs = if (preferDiscovered || allExplicitEpgs.isEmpty()) {
             allExplicitEpgs + allDiscoveredEpgs
         } else {
@@ -148,9 +133,7 @@ class PlaylistSync @Inject constructor(
         }
         val effectiveEpgStr = finalEpgs.joinToString("\n")
         
-        if (effectiveEpgStr.isBlank()) {
-            return SyncResult(count, 0, null, "")
-        }
+        if (effectiveEpgStr.isBlank()) return SyncResult(count, 0, null, "")
 
         return try {
             SyncResult(count, syncEpg(effectiveEpgStr), null, effectiveEpgStr)
