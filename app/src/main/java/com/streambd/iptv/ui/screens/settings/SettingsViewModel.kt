@@ -1,10 +1,12 @@
 package com.streambd.iptv.ui.screens.settings
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
@@ -25,6 +27,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
+private const val TAG = "SettingsVM"
+
 sealed interface RefreshState {
     data object Idle : RefreshState
     data object Running : RefreshState
@@ -39,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val activation: ActivationRepository,
     private val epg: EpgRepository,
     private val sync: PlaylistSync,
+    private val providerDao: ProviderDao, // নতুন: ইউজারের প্লেলিস্ট পেতে
     @ApplicationContext private val ctx: Context,
 ) : ViewModel() {
 
@@ -76,38 +81,69 @@ class SettingsViewModel @Inject constructor(
     fun setPin(pin: String) = viewModelScope.launch { settings.setPin(pin) }
 
     /**
-     * সংরক্ষিত লিংক থেকে প্লেলিস্ট ও EPG আবার আনে। Favorite/lock বজায় থাকে।
-     * প্লেলিস্ট ব্যর্থ হলে পুরনো চ্যানেল যেমন ছিল তেমনই থাকে।
+     * সংরক্ষিত লিংক থেকে প্লেলিস্ট ও EPG আবার আনে। (সার্ভার + ইউজারের সব প্লেলিস্ট)
      */
     fun refreshPlaylist() {
         if (_refresh.value is RefreshState.Running) return
         viewModelScope.launch {
+            _refresh.value = RefreshState.Running
+            
+            var totalChannels = 0
+            var totalPrograms = 0
+            var epgError: String? = null
+            var hasError = false
+
             val active = activation.current() as? ActivationState.Active
             
-            // নতুন চেক: প্লেলিস্ট লিস্ট খালি কিনা
-            if (active == null || active.playlists.isEmpty()) {
-                _refresh.value = RefreshState.Failed("No playlists are saved for this activation.")
-                return@launch
-            }
-            
-            _refresh.value = RefreshState.Running
-            _refresh.value = try {
-                // নতুন: একাধিক প্লেলিস্টের জন্য syncAll কল
-                val result = sync.syncAll(
-                    playlists = active.playlists,
-                    preferDiscovered = activation.isLocal(active),
-                )
-                
-                // EPG আপডেট চেক (প্রথম প্লেলিস্টের EPG এর সাথে তুলনা)
-                val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
-                if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
-                    activation.updateEpgUrl(result.epgUrl)
+            // ১. সার্ভারের প্লেলিস্ট আপডেট করা (যদি থাকে)
+            if (active != null && active.playlists.isNotEmpty()) {
+                try {
+                    val result = sync.syncAll(
+                        playlists = active.playlists,
+                        preferDiscovered = activation.isLocal(active),
+                        isPremium = true
+                    )
+                    totalChannels += result.channels
+                    totalPrograms += result.programs
+                    if (result.epgError != null) epgError = result.epgError
+                    
+                    val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
+                    if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
+                        activation.updateEpgUrl(result.epgUrl)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Server playlists sync failed: ${e.message}")
+                    hasError = true
                 }
-                
-                loadLastUpdateTime()
-                RefreshState.Done(result.channels, result.programs, result.epgError)
-            } catch (e: SyncException) {
-                RefreshState.Failed(e.message ?: "Refresh failed")
+            }
+
+            // ২. ইউজারের নিজের সব প্লেলিস্ট আপডেট করা
+            try {
+                val userProviders = providerDao.getAll()
+                for (p in userProviders) {
+                    try {
+                        // isPremium = false এবং 해당 providerId দিয়ে সিঙ্ক
+                        val synced = sync.syncPlaylist(p.url, providerId = p.id)
+                        totalChannels += synced.channels
+                    } catch (e: Exception) {
+                        Log.w(TAG, "User playlist ${p.name} sync failed: ${e.message}")
+                        hasError = true
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch user providers: ${e.message}")
+                hasError = true
+            }
+
+            loadLastUpdateTime()
+
+            // রেজাল্ট চেক
+            if (totalChannels == 0 && hasError) {
+                _refresh.value = RefreshState.Failed("Could not refresh playlists. Check your connection.")
+            } else if (totalChannels == 0 && !hasError) {
+                _refresh.value = RefreshState.Failed("No channels found to refresh.")
+            } else {
+                _refresh.value = RefreshState.Done(totalChannels, totalPrograms, epgError)
             }
         }
     }
