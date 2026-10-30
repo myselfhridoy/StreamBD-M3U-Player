@@ -43,7 +43,7 @@ class ActivationRepository @Inject constructor(
             store.saveActive(
                 code = response.code,
                 expiresAt = response.expiresAt,
-                playlists = response.playlists, // নতুন: লিস্ট সেভ
+                playlists = response.playlists,
             )
             Result.success(
                 ActivationState.Active(
@@ -56,7 +56,6 @@ class ActivationRepository @Inject constructor(
             throw e
         } catch (e: ActivationRejectedException) {
             Log.w(TAG, "activate rejected: ${e.reason} (HTTP ${e.httpCode})")
-            // নতুন: সার্ভার থেকে যদি বলা হয় লোকাল স্টেট ক্লিয়ার করতে, তবে ক্লিয়ার করা হবে
             if (e.shouldClearLocalState) {
                 store.clear()
             }
@@ -107,11 +106,13 @@ class ActivationRepository @Inject constructor(
 
         store.touchLastCheck()
         try {
-            val response = api.activate(active.code, store.deviceId())
+            // ★ নতুন: activate-এর বদলে validate কল করা হচ্ছে
+            val response = api.validate(active.code, store.deviceId())
+            
             store.saveActive(
                 response.code,
                 response.expiresAt,
-                response.playlists, // নতুন: লিস্ট সেভ
+                response.playlists,
             )
         } catch (e: CancellationException) {
             throw e
