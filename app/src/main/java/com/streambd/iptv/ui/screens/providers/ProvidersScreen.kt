@@ -44,7 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.theme.*
-import kotlinx.coroutines.delay // নতুন ইমপোর্ট
+import kotlinx.coroutines.delay
 
 @Composable
 fun ProvidersScreen(
@@ -154,7 +154,7 @@ private fun PremiumAddButton(onClick: () -> Unit) {
             .clip(shape)
             .background(if (focused) Accent else Surface1)
             .border(1.dp, if (focused) Accent else Divider, shape)
-            .onFocusChanged { focused = it.hasFocus } // এখানেও hasFocus করা হলো
+            .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -205,6 +205,7 @@ private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
     }
 }
 
+// কমপ্যাক্ট এবং প্রিমিয়াম ডায়ালগ
 @Composable
 private fun AddProviderDialog(
     onDismiss: () -> Unit,
@@ -223,13 +224,13 @@ private fun AddProviderDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false // ★ ১. imePadding কাজ করার জন্য মূল ফিক্স
+            decorFitsSystemWindows = false 
         )
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .imePadding() // কিবোর্ড ওপেন হলে ডায়ালগ উপরে তুলবে
+                .imePadding() 
                 .navigationBarsPadding()
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
                 .padding(16.dp),
@@ -237,19 +238,19 @@ private fun AddProviderDialog(
         ) {
             Column(
                 Modifier
-                    .widthIn(max = 340.dp) // ★ ২. আগে widthIn (max constraint)
-                    .fillMaxWidth() // তারপর fillMaxWidth (constraint এর ভেতরে থাকবে)
-                    .verticalScroll(rememberScrollState()) // ★ ৩. জায়গা কম হলে clip হবে না, scroll হবে
+                    .widthIn(max = 340.dp)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .clip(RoundedCornerShape(4.dp))
                     .background(Panel)
                     .border(1.dp, Divider, RoundedCornerShape(4.dp))
                     .pointerInput(Unit) { detectTapGestures { } }
-                    .padding(20.dp)
+                    .padding(16.dp) // প্যাডিং কমানো হয়েছে (২০ থেকে ১৬)
             ) {
-                Text("Add M3U Provider", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(16.dp))
+                Text("Add M3U Provider", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(12.dp)) // স্পেসিং কমানো হয়েছে
                 
-                Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                 PremiumTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -259,9 +260,9 @@ private fun AddProviderDialog(
                     onNext = { urlFocus.requestFocus() }
                 )
                 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp)) // স্পেসিং কমানো হয়েছে
                 
-                Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                 PremiumTextField(
                     value = url,
                     onValueChange = { url = it },
@@ -275,7 +276,7 @@ private fun AddProviderDialog(
                     }
                 )
                 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(20.dp)) // স্পেসিং কমানো হয়েছে
                 
                 Row(
                     Modifier.fillMaxWidth(),
@@ -288,7 +289,7 @@ private fun AddProviderDialog(
                         modifier = Modifier.focusRequester(cancelFocus),
                         onClick = onDismiss
                     )
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                     DialogTextButton(
                         label = "ADD", 
                         color = Accent, 
@@ -301,7 +302,7 @@ private fun AddProviderDialog(
     }
     
     LaunchedEffect(Unit) {
-        delay(100) // ★ ৪. Dialog window তৈরি হওয়ার আগে focus fail করছিল, তাই ১০০ms delay
+        delay(100) 
         runCatching { nameFocus.requestFocus() }
     }
 }
@@ -319,7 +320,7 @@ private fun DialogTextButton(
     Text(
         text = label,
         color = color,
-        fontSize = 14.sp,
+        fontSize = 13.sp, // ফন্ট সাইজ কিছুটা কমানো হয়েছে
         fontWeight = FontWeight.Bold,
         modifier = modifier
             .clip(shape)
@@ -327,7 +328,7 @@ private fun DialogTextButton(
             .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp), // বাটনের সাইজ ছোট করা হয়েছে
     )
 }
 
@@ -348,7 +349,7 @@ private fun PremiumTextField(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(42.dp) // উচ্চতা কমানো হয়েছে (৪৮ থেকে ৪২)
             .clip(shape)
             .background(Surface1)
             .border(
@@ -357,7 +358,7 @@ private fun PremiumTextField(
                 shape = shape
             )
             .focusRequester(focusRequester)
-            .onFocusChanged { isFocused = it.hasFocus } // ★ ৫. isFocused এর বদলে hasFocus
+            .onFocusChanged { isFocused = it.hasFocus }
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
