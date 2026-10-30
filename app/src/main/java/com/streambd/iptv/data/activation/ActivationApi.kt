@@ -51,7 +51,11 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
         }
     }
 
-    suspend fun activate(code: String, deviceId: String): ActivationResponse =
+    // নতুন: activate এবং validate দুটোই এই কমন ফাংশনটি কল করবে
+    suspend fun activate(code: String, deviceId: String) = call("activate", code, deviceId)
+    suspend fun validate(code: String, deviceId: String) = call("validate", code, deviceId)
+
+    private suspend fun call(path: String, code: String, deviceId: String): ActivationResponse =
         withContext(Dispatchers.IO) {
             // ডিভাইসের আসল নাম বের করা (Unknown Device ফিক্স)
             val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
@@ -63,7 +67,8 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
                 .toString()
 
             val request = Request.Builder()
-                .url("${getBaseUrl().trimEnd('/')}/activate")
+                // নতুন: path ভেরিয়েবল ব্যবহার করা হলো (activate অথবা validate)
+                .url("${getBaseUrl().trimEnd('/')}/$path")
                 .post(payload.toRequestBody(jsonType))
                 .header("Accept", "application/json")
                 .build()
@@ -90,7 +95,8 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
                         resp.code == 403 -> {
                             val m = message.lowercase()
                             when {
-                                "revoked" in m || "expired" in m || "suspended" in m -> true
+                                // নতুন: "not activated" চেক যুক্ত করা হলো
+                                "revoked" in m || "expired" in m || "suspended" in m || "not activated" in m -> true
                                 else -> false
                             }
                         }
