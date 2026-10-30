@@ -58,6 +58,8 @@ class ChannelRepository @Inject constructor(
             channels.clearByProvider(providerId)
             groups.clearByProvider(providerId)
         }
+        // ★ নতুন: ডিলিট করার পর নম্বর রি-অ্যাসাইন করা
+        renumber()
     }
 
     suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L): Int {
@@ -80,7 +82,25 @@ class ChannelRepository @Inject constructor(
                 channels.upsert(chunk.map { it.copy(isFavorite = it.id in favorites, isLocked = it.id in locked) })
             }
         }
+        
+        // ★ নতুন: ইমপোর্ট শেষে নম্বর রি-অ্যাসাইন করা
+        renumber()
+        
         return rows.channels.size
+    }
+
+    /** সব provider মিলিয়ে প্রতিটা kind এ নম্বর ১, ২, ৩… করে দেয় (provider ক্রম ধরে)। */
+    suspend fun renumber() {
+        db.withTransaction {
+            for (kind in ChannelKind.values()) {
+                val list = channels.listByKindOrdered(kind.name)
+                val changed = list.mapIndexedNotNull { i, c ->
+                    val num = i + 1
+                    if (c.number != num) c.copy(number = num) else null
+                }
+                changed.chunked(2_000).forEach { channels.upsert(it) }
+            }
+        }
     }
 
     private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
