@@ -18,7 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit // নতুন
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,8 +57,9 @@ fun ProvidersScreen(
     val isSyncing by vm.isSyncing.collectAsStateWithLifecycle()
 
     var showDialog by remember { mutableStateOf(false) }
-    var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) } // নতুন
+    var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) }
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
+    var addError by remember { mutableStateOf<String?>(null) } // নতুন: এরর স্টেট
     
     Column(
         Modifier
@@ -82,7 +83,8 @@ fun ProvidersScreen(
             )
             
             PremiumAddButton(onClick = { 
-                providerToEdit = null // নতুন অ্যাড করার জন্য null
+                providerToEdit = null 
+                addError = null // ডায়ালগ ওপেন হলে আগের এরর ক্লিয়ার
                 showDialog = true 
             })
         }
@@ -108,6 +110,7 @@ fun ProvidersScreen(
                         provider = provider,
                         onEdit = { 
                             providerToEdit = provider
+                            addError = null // এডিট ওপেন হলে এরর ক্লিয়ার
                             showDialog = true
                         },
                         onDelete = { providerToDelete = provider }
@@ -133,16 +136,29 @@ fun ProvidersScreen(
 
     if (showDialog) {
         ProviderDialog(
-            initialProvider = providerToEdit, // যদি এডিট হয়, তবে ডেটা পাস হবে
-            onDismiss = { showDialog = false },
+            initialProvider = providerToEdit,
+            error = addError, // নতুন: এরর পাস করা হচ্ছে
+            onDismiss = { 
+                showDialog = false 
+                addError = null // ডায়ালগ বন্ধ হলে এরর ক্লিয়ার
+            },
             onSave = { name, url ->
+                addError = null // সাবমিট করার সময় এরর ক্লিয়ার
                 if (providerToEdit == null) {
-                    vm.addProvider(name, url) { success, _ ->
-                        if (success) showDialog = false
+                    vm.addProvider(name, url) { success, msg ->
+                        if (success) {
+                            showDialog = false
+                        } else {
+                            addError = msg // ফেইল করলে এরর সেট
+                        }
                     }
                 } else {
-                    vm.updateProvider(providerToEdit!!, name, url) { success, _ ->
-                        if (success) showDialog = false
+                    vm.updateProvider(providerToEdit!!, name, url) { success, msg ->
+                        if (success) {
+                            showDialog = false
+                        } else {
+                            addError = msg
+                        }
                     }
                 }
             }
@@ -195,7 +211,6 @@ private fun PremiumAddButton(onClick: () -> Unit) {
     }
 }
 
-// আপডেটেড কার্ড: Edit এবং Delete বাটন
 @Composable
 private fun ProviderGridCard(
     provider: ProviderEntity, 
@@ -227,7 +242,6 @@ private fun ProviderGridCard(
                 modifier = Modifier.size(28.dp)
             )
             
-            // নতুন: এডিট এবং ডিলিট বাটনের রো
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = onEdit,
@@ -236,7 +250,7 @@ private fun ProviderGridCard(
                     Icon(
                         Icons.Filled.Edit, 
                         contentDescription = "Edit", 
-                        tint = TextMuted, // প্রিমিয়াম লুক
+                        tint = TextMuted,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -277,10 +291,10 @@ private fun ProviderGridCard(
     }
 }
 
-// অ্যাড এবং এডিট উভয়ের জন্য কমন ডায়ালগ
 @Composable
 private fun ProviderDialog(
     initialProvider: ProviderEntity?,
+    error: String?, // নতুন: এরর প্যারামিটার
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit
 ) {
@@ -320,7 +334,6 @@ private fun ProviderDialog(
                     .pointerInput(Unit) { detectTapGestures { } }
                     .padding(16.dp)
             ) {
-                // টাইটেল পরিবর্তন হবে অ্যাড নাকি এডিট তার উপর ভিত্তি করে
                 Text(
                     if (initialProvider == null) "Add M3U Provider" else "Edit M3U Provider", 
                     color = TextPrimary, 
@@ -355,6 +368,17 @@ private fun ProviderDialog(
                     }
                 )
                 
+                // নতুন: এরর মেসেজ দেখানোর লজিক
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        it, 
+                        color = Danger, 
+                        fontSize = 12.sp, 
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
                 Spacer(Modifier.height(20.dp))
                 
                 Row(
@@ -370,7 +394,7 @@ private fun ProviderDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     DialogTextButton(
-                        label = if (initialProvider == null) "ADD" else "SAVE", // বাটনের নাম পরিবর্তন
+                        label = if (initialProvider == null) "ADD" else "SAVE",
                         color = Accent, 
                         modifier = Modifier.focusRequester(saveFocus),
                         onClick = { onSave(name, url) }
