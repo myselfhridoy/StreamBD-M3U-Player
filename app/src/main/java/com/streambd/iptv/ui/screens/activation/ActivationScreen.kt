@@ -168,7 +168,7 @@ private fun ActivationForm(
             value = code,
             onValueChange = onCodeChange,
             placeholder = "Activation code",
-            keyboardType = KeyboardType.Text,
+            keyboardType = KeyboardType.Number, // ★ নতুন: নিউমেরিক কিবোর্ড
             height = fieldHeight,
             focusRequester = fieldFocus,
             onSubmit = onSubmit
@@ -178,7 +178,7 @@ private fun ActivationForm(
             value = playlistUrl,
             onValueChange = onPlaylistChange,
             placeholder = "Enter your M3U playlist link...",
-            keyboardType = KeyboardType.Uri,
+            keyboardType = KeyboardType.Uri, // লোকাল মোডের জন্য URL কিবোর্ড
             height = fieldHeight,
             focusRequester = fieldFocus,
             onSubmit = onSubmit
