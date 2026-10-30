@@ -85,27 +85,34 @@ class PlaylistSync @Inject constructor(
     }
 
     /** 
-     * একক প্লেলিস্ট সিঙ্ক (যদি কখনো আলাদাভাবে ডাকার দরকার হয়)
+     * একক প্লেলিস্ট সিঙ্ক (ইউজারের নিজের প্লেলিস্টের জন্য)
      */
-    suspend fun syncPlaylist(url: String): SyncedPlaylist = playlistLock.withLock {
+    suspend fun syncPlaylist(url: String, isPremium: Boolean = false): SyncedPlaylist = playlistLock.withLock {
         val (channelsList, epgs) = fetchPlaylistData(url)
         if (channelsList.isEmpty()) throw SyncException("No channels found.")
-        val count = channels.import(channelsList)
+        
+        // নতুন: isPremium প্যারামিটার পাস করা হচ্ছে
+        val count = channels.import(channelsList, isPremium)
+        
         prefs.edit().putLong(KEY_PLAYLIST_OK, System.currentTimeMillis()).apply()
         SyncedPlaylist(count, epgs)
     }
 
     /** 
-     * নতুন: একসাথে একাধিক প্লেলিস্ট সিঙ্ক 
+     * একসাথে একাধিক প্লেলিস্ট সিঙ্ক (সার্ভারের প্লেলিস্টের জন্য)
      */
-    suspend fun syncAll(playlists: List<PlaylistData>, preferDiscovered: Boolean): SyncResult = playlistLock.withLock {
+    suspend fun syncAll(
+        playlists: List<PlaylistData>, 
+        preferDiscovered: Boolean,
+        isPremium: Boolean = true // নতুন: সার্ভারের ডেটা ডিফল্টভাবে প্রিমিয়াম
+    ): SyncResult = playlistLock.withLock {
         if (playlists.isEmpty()) throw SyncException("No playlists to sync.")
 
         val allChannels = mutableListOf<ParsedChannel>()
         val allDiscoveredEpgs = mutableSetOf<String>()
         val allExplicitEpgs = mutableSetOf<String>()
 
-        // ১. সব প্লেলিস্ট ডাউনলোড ও পার্স করা (ডেট demandbase clear হবে না)
+        // ১. সব প্লেলিস্ট ডাউনলোড ও পার্স করা (ডেটাবেস clear হবে না)
         for (p in playlists) {
             try {
                 val (chList, epgs) = fetchPlaylistData(p.m3uUrl)
@@ -114,7 +121,6 @@ class PlaylistSync @Inject constructor(
                 if (p.epgUrl.isNotBlank()) allExplicitEpgs.add(p.epgUrl)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to sync playlist ${p.name}: ${e.message}")
-                // যদি সব প্লেলিস্ট ফেইল করে, তবে নিচে allChannels.isEmpty() চেক হবে
             }
         }
 
@@ -124,7 +130,8 @@ class PlaylistSync @Inject constructor(
 
         // ২. সব চ্যানেল একবারে ডেটাবেসে সেভ করা
         val count = try {
-            channels.import(allChannels)
+            // নতুন: isPremium প্যারামিটার পাস করা হচ্ছে
+            channels.import(allChannels, isPremium)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
