@@ -128,6 +128,9 @@ fun VodScreen(
                                 emptyText = "No episodes found.",
                                 modifier = Modifier.weight(1f),
                             ) { episode, rowModifier ->
+                                // নতুন: এপিসোডের ক্ষেত্রে allItems থেকে প্রিমিয়াম চেক করা হচ্ছে
+                                val isPrem = allItems.firstOrNull { it.id == episode.id }?.isPremium == true
+                                
                                 PanelRow(
                                     title = episode.displayName,
                                     modifier = rowModifier,
@@ -135,6 +138,7 @@ fun VodScreen(
                                     playing = episode.id == playingId,
                                     locked = episode.isLocked,
                                     favorite = episode.isFavorite,
+                                    isPremium = isPrem, // নতুন
                                     onLongClick = { dialogs.openActions(episode.id) },
                                 ) {
                                     allItems.firstOrNull { it.id == episode.id }?.let(::pick)
@@ -149,6 +153,7 @@ fun VodScreen(
                             resetKey = selected,
                             emptyText = if (groups.isEmpty()) "No series in your playlist." else "No series in this group.",
                         ) { group, rowModifier ->
+                            // সিরিজ গ্রুপের ক্ষেত্রে বাদ দেওয়া হলো, কারণ এখানে সরাসরি প্রিমিয়াম ফ্ল্যাগ নেই
                             PanelRow(
                                 title = group.name,
                                 modifier = rowModifier,
@@ -176,6 +181,7 @@ fun VodScreen(
                                 playing = item.id == playingId,
                                 locked = item.isLocked,
                                 favorite = item.isFavorite,
+                                isPremium = item.isPremium, // নতুন: মুভির ক্ষেত্রে প্রিমিয়াম চেক
                                 onLongClick = { dialogs.openActions(item.id) },
                             ) { pick(item) }
                         }
