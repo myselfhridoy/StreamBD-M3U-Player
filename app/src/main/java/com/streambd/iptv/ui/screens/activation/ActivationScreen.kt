@@ -14,6 +14,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,32 +49,39 @@ fun ActivationScreen(
     val success by vm.success.collectAsStateWithLifecycle()
 
     val serverMode = BuildConfig.ACTIVATION_ENABLED
+    var playlistUrl by rememberSaveable { mutableStateOf("") }
     val fieldFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     
-    // ল্যান্ডস্কেপ ফোনে উল্লম্ব লেআউট ধরে না, তাই পাশাপাশি
+    // ল্যান্ডস্কেপ ফোনে (কিবোর্ড খোলা অবস্থায় আরও কম) উল্লম্ব লেআউট ধরে না, তাই পাশাপাশি
     val compact = LocalConfiguration.current.screenHeightDp < 460
 
     fun submit() {
         if (busy) return
         focusManager.clearFocus()
-        if (serverMode && code.isNotBlank()) {
-            vm.activate()
+        if (serverMode) {
+            if (code.isNotBlank()) vm.activate()
+        } else if (playlistUrl.isNotBlank()) {
+            vm.activateWithPlaylistUrl(playlistUrl, "")
         }
     }
 
     val form: @Composable ColumnScope.() -> Unit = {
         ActivationForm(
+            serverMode = serverMode,
             code = code,
+            playlistUrl = playlistUrl,
             busy = busy,
             error = error,
             compact = compact,
             fieldFocus = fieldFocus,
             onCodeChange = vm::setCode,
+            onPlaylistChange = { playlistUrl = it },
             onSubmit = ::submit,
         )
     }
 
+    // safeDrawing কিবোর্ডের জায়গাও ধরে, তাই কিবোর্ড খুললে Box ছোট হয়
     Box(
         Modifier
             .fillMaxSize()
@@ -134,34 +142,48 @@ private fun Logo(titleSize: TextUnit, subSize: TextUnit) {
 
 @Composable
 private fun ActivationForm(
+    serverMode: Boolean,
     code: String,
+    playlistUrl: String,
     busy: Boolean,
     error: String?,
     compact: Boolean,
     fieldFocus: FocusRequester,
     onCodeChange: (String) -> Unit,
+    onPlaylistChange: (String) -> Unit,
     onSubmit: () -> Unit,
 ) {
     val fieldHeight = if (compact) 46.dp else 52.dp
     val gap = if (compact) 10.dp else 16.dp
 
-    Text(
-        "Enter the activation code you received with your subscription.",
-        color = TextPrimary,
-        fontSize = if (compact) 13.sp else 14.sp,
-    )
-    
-    Spacer(Modifier.height(gap))
-    
-    // নতুন প্রিমিয়াম ইনপুট ফিল্ড
-    PremiumInputField(
-        value = code,
-        onValueChange = onCodeChange,
-        placeholder = "Activation code",
-        focusRequester = fieldFocus,
-        height = fieldHeight,
-        onSubmit = onSubmit
-    )
+    if (serverMode) {
+        Text(
+            "Enter the activation code you received with your subscription.",
+            color = TextPrimary,
+            fontSize = if (compact) 13.sp else 14.sp,
+        )
+        Spacer(Modifier.height(gap))
+        
+        PremiumInputField(
+            value = code,
+            onValueChange = onCodeChange,
+            placeholder = "Activation code",
+            keyboardType = KeyboardType.Text,
+            height = fieldHeight,
+            focusRequester = fieldFocus,
+            onSubmit = onSubmit
+        )
+    } else {
+        PremiumInputField(
+            value = playlistUrl,
+            onValueChange = onPlaylistChange,
+            placeholder = "Enter your M3U playlist link...",
+            keyboardType = KeyboardType.Uri,
+            height = fieldHeight,
+            focusRequester = fieldFocus,
+            onSubmit = onSubmit
+        )
+    }
 
     error?.let {
         Spacer(Modifier.height(6.dp))
@@ -173,7 +195,7 @@ private fun ActivationForm(
     // প্রিমিয়াম সলিড অ্যাকশন বাটন
     Button(
         onClick = onSubmit,
-        enabled = code.isNotBlank() && !busy,
+        enabled = (if (serverMode) code.isNotBlank() else playlistUrl.isNotBlank()) && !busy,
         colors = ButtonDefaults.buttonColors(
             containerColor = Accent,
             contentColor = Color.Black,
@@ -188,7 +210,11 @@ private fun ActivationForm(
         if (busy) {
             CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
         } else {
-            Text("Activate", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                if (serverMode) "Activate" else "Save & Continue", 
+                fontWeight = FontWeight.Bold, 
+                fontSize = 16.sp
+            )
         }
     }
 }
@@ -199,8 +225,9 @@ private fun PremiumInputField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
-    focusRequester: FocusRequester,
+    keyboardType: KeyboardType,
     height: Dp,
+    focusRequester: FocusRequester,
     onSubmit: () -> Unit,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -231,7 +258,7 @@ private fun PremiumInputField(
             singleLine = true,
             cursorBrush = SolidColor(Accent),
             textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onSubmit() }),
             modifier = Modifier.fillMaxWidth()
         )
