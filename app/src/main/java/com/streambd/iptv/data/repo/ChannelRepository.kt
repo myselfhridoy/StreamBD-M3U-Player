@@ -24,23 +24,16 @@ class ChannelRepository @Inject constructor(
     private val groups: GroupDao,
 ) {
     fun liveChannels(): Flow<List<ChannelEntity>> = channels.observeByKind(ChannelKind.LIVE.name)
-    fun liveChannelsIn(groupId: Long): Flow<List<ChannelEntity>> =
-        channels.observeByKindAndGroup(ChannelKind.LIVE.name, groupId)
+    fun liveChannelsIn(groupId: Long): Flow<List<ChannelEntity>> = channels.observeByKindAndGroup(ChannelKind.LIVE.name, groupId)
     fun liveGroups(): Flow<List<GroupEntity>> = groups.observeByKind(ChannelKind.LIVE.name)
 
-    fun byKind(kind: ChannelKind): Flow<List<ChannelEntity>> =
-        channels.observeByKind(kind.name)
-
-    fun byKindIn(kind: ChannelKind, groupId: Long): Flow<List<ChannelEntity>> =
-        channels.observeByKindAndGroup(kind.name, groupId)
-
-    fun groupsByKind(kind: ChannelKind): Flow<List<GroupEntity>> =
-        groups.observeByKind(kind.name)
+    fun byKind(kind: ChannelKind): Flow<List<ChannelEntity>> = channels.observeByKind(kind.name)
+    fun byKindIn(kind: ChannelKind, groupId: Long): Flow<List<ChannelEntity>> = channels.observeByKindAndGroup(kind.name, groupId)
+    fun groupsByKind(kind: ChannelKind): Flow<List<GroupEntity>> = groups.observeByKind(kind.name)
 
     fun searchLive(query: String): Flow<List<ChannelEntity>> {
         val trimmed = query.trim()
-        return if (trimmed.isBlank()) flowOf(emptyList())
-        else channels.searchByKind(ChannelKind.LIVE.name, trimmed, limit = 300)
+        return if (trimmed.isBlank()) flowOf(emptyList()) else channels.searchByKind(ChannelKind.LIVE.name, trimmed, limit = 300)
     }
 
     fun searchAll(query: String): Flow<List<ChannelEntity>> {
@@ -49,9 +42,7 @@ class ChannelRepository @Inject constructor(
     }
 
     suspend fun hasContent(): Boolean = channels.count() > 0
-
     suspend fun tvgIds(): Set<String> = channels.tvgIds().toHashSet()
-
     suspend fun setFavorite(channelId: Long, fav: Boolean) = channels.setFavorite(channelId, fav)
     suspend fun setLocked(channelId: Long, locked: Boolean) = channels.setLocked(channelId, locked)
 
@@ -62,25 +53,31 @@ class ChannelRepository @Inject constructor(
         }
     }
 
-    // নতুন: isPremium প্যারামিটার যুক্ত করা হলো
-    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false): Int {
+    suspend fun clearProviderData(providerId: Long) {
+        db.withTransaction {
+            channels.clearByProvider(providerId)
+            groups.clearByProvider(providerId)
+        }
+    }
+
+    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L): Int {
         if (parsedChannels.isEmpty()) return 0
 
         val rows = withContext(Dispatchers.Default) {
-            buildRows(parsedChannels, isPremium)
+            buildRows(parsedChannels, isPremium, providerId)
         }
 
         db.withTransaction {
             val favorites = channels.favoriteIds().toHashSet()
             val locked = channels.lockedIds().toHashSet()
 
-            channels.clear()
-            groups.clear()
+            // পুরো ডেটাবেস ক্লিয়ার না করে, শুধু এই নির্দিষ্ট প্রোভাইডারের ডেটা ক্লিয়ার করা হচ্ছে
+            channels.clearByProvider(providerId)
+            groups.clearByProvider(providerId)
+            
             groups.upsert(rows.groups)
             rows.channels.chunked(2_000).forEach { chunk ->
-                channels.upsert(
-                    chunk.map { it.copy(isFavorite = it.id in favorites, isLocked = it.id in locked) },
-                )
+                channels.upsert(chunk.map { it.copy(isFavorite = it.id in favorites, isLocked = it.id in locked) })
             }
         }
         return rows.channels.size
@@ -88,8 +85,7 @@ class ChannelRepository @Inject constructor(
 
     private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
 
-    // নতুন: isPremium প্যারামিটার
-    private fun buildRows(parsed: List<ParsedChannel>, isPremium: Boolean): ImportRows {
+    private fun buildRows(parsed: List<ParsedChannel>, isPremium: Boolean, providerId: Long): ImportRows {
         val groupRows = LinkedHashMap<Long, GroupEntity>()
         val numbers = HashMap<ChannelKind, Int>()
         val occurrences = HashMap<String, Int>()
@@ -97,15 +93,11 @@ class ChannelRepository @Inject constructor(
         val channelRows = ArrayList<ChannelEntity>(parsed.size)
 
         for (p in parsed) {
-            val groupKey = "${p.kind.name}|${p.groupTitle.lowercase()}"
+            // providerId যুক্ত করা হলো যাতে গ্রুপ আইডি ক্ল্যাশ না করে
+            val groupKey = "$providerId|${p.kind.name}|${p.groupTitle.lowercase()}"
             val gid = stableId("G|$groupKey")
             if (gid !in groupRows) {
-                groupRows[gid] = GroupEntity(
-                    id = gid,
-                    name = p.groupTitle,
-                    order = groupRows.size,
-                    kind = p.kind.name,
-                )
+                groupRows[gid] = GroupEntity(id = gid, name = p.groupTitle, order = groupRows.size, kind = p.kind.name, providerId = providerId)
             }
 
             val number = (numbers[p.kind] ?: 0) + 1
@@ -119,31 +111,12 @@ class ChannelRepository @Inject constructor(
             while (!usedIds.add(id)) id = if (id == Long.MAX_VALUE) 1L else id + 1
 
             channelRows += ChannelEntity(
-                id = id,
-                number = number,
-                name = p.name,
-                logoUrl = p.logoUrl,
-                streamUrl = p.streamUrl,
-                groupId = gid,
-                tvgId = p.tvgId?.takeIf { it.isNotBlank() } ?: epgNameKey(p.name),
-                kind = p.kind.name,
-
-                catchupType = p.catchupType,
-                catchupDays = p.catchupDays,
-                catchupSource = p.catchupSource,
-                catchupEnable = p.catchupEnable,
-                tvgShift = p.tvgShift,
-                parentCode = p.parentCode,
-                adult = p.adult,
-                audioTrack = p.audioTrack,
-                videoTrack = p.videoTrack,
-                drmScheme = p.drmScheme,
-                drmLicense = p.drmLicense,
-                season = p.season,
-                episode = p.episode,
-                serieId = p.serieId,
-                serieTitle = p.serieTitle,
-                isPremium = isPremium, // নতুন: ডেটাবেসে সেভ হচ্ছে
+                id = id, number = number, name = p.name, logoUrl = p.logoUrl, streamUrl = p.streamUrl,
+                groupId = gid, tvgId = p.tvgId?.takeIf { it.isNotBlank() } ?: epgNameKey(p.name), kind = p.kind.name,
+                catchupType = p.catchupType, catchupDays = p.catchupDays, catchupSource = p.catchupSource, catchupEnable = p.catchupEnable,
+                tvgShift = p.tvgShift, parentCode = p.parentCode, adult = p.adult, audioTrack = p.audioTrack, videoTrack = p.videoTrack,
+                drmScheme = p.drmScheme, drmLicense = p.drmLicense, season = p.season, episode = p.episode, serieId = p.serieId, serieTitle = p.serieTitle,
+                isPremium = isPremium, providerId = providerId
             )
         }
         return ImportRows(groupRows.values.toList(), channelRows)
