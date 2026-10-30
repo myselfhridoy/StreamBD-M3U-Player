@@ -6,8 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -91,12 +92,15 @@ fun ProvidersScreen(
                 }
             }
         } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            // নতুন গ্রিড লেআউট
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 240.dp), // মিনিমাম ২৪০ ডিপি চওড়া
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(providers, key = { it.id }) { provider ->
-                    ProviderCard(provider, onDelete = { providerToDelete = provider })
+                    ProviderGridCard(provider, onDelete = { providerToDelete = provider })
                 }
             }
         }
@@ -175,37 +179,71 @@ private fun PremiumAddButton(onClick: () -> Unit) {
     }
 }
 
+// গ্রিডের জন্য নতুন কার্ড ডিজাইন
 @Composable
-private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
+private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(12.dp)
 
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(if (focused) Surface1 else Panel)
             .border(2.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .focusable() // D-pad দিয়ে পুরো কার্ডে ফোকাস করার জন্য
+            .padding(16.dp)
     ) {
-        Icon(Icons.Filled.PlaylistPlay, contentDescription = null, tint = Accent, modifier = Modifier.size(32.dp))
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(provider.name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(provider.url, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(
-            onClick = onDelete,
-            modifier = Modifier.focusable()
+        // উপরে: আইকন ও ডিলিট বাটন
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Danger)
+            Icon(
+                Icons.Filled.PlaylistPlay, 
+                contentDescription = null, 
+                tint = if (focused) Accent else TextPrimary, 
+                modifier = Modifier.size(40.dp)
+            )
+            
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Delete, 
+                    contentDescription = "Delete", 
+                    tint = Danger,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
+        
+        Spacer(Modifier.height(16.dp))
+        
+        // নিচে: নাম এবং লিংক
+        Text(
+            provider.name, 
+            color = TextPrimary, 
+            fontSize = 16.sp, 
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            provider.url, 
+            color = TextMuted, 
+            fontSize = 12.sp, 
+            maxLines = 2, 
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 16.sp
+        )
     }
 }
 
-// কমপ্যাক্ট এবং প্রিমিয়াম ডায়ালগ
 @Composable
 private fun AddProviderDialog(
     onDismiss: () -> Unit,
@@ -245,10 +283,10 @@ private fun AddProviderDialog(
                     .background(Panel)
                     .border(1.dp, Divider, RoundedCornerShape(4.dp))
                     .pointerInput(Unit) { detectTapGestures { } }
-                    .padding(16.dp) // প্যাডিং কমানো হয়েছে (২০ থেকে ১৬)
+                    .padding(16.dp)
             ) {
                 Text("Add M3U Provider", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(12.dp)) // স্পেসিং কমানো হয়েছে
+                Spacer(Modifier.height(12.dp))
                 
                 Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                 PremiumTextField(
@@ -260,7 +298,7 @@ private fun AddProviderDialog(
                     onNext = { urlFocus.requestFocus() }
                 )
                 
-                Spacer(Modifier.height(12.dp)) // স্পেসিং কমানো হয়েছে
+                Spacer(Modifier.height(12.dp))
                 
                 Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                 PremiumTextField(
@@ -276,7 +314,7 @@ private fun AddProviderDialog(
                     }
                 )
                 
-                Spacer(Modifier.height(20.dp)) // স্পেসিং কমানো হয়েছে
+                Spacer(Modifier.height(20.dp))
                 
                 Row(
                     Modifier.fillMaxWidth(),
@@ -320,7 +358,7 @@ private fun DialogTextButton(
     Text(
         text = label,
         color = color,
-        fontSize = 13.sp, // ফন্ট সাইজ কিছুটা কমানো হয়েছে
+        fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
         modifier = modifier
             .clip(shape)
@@ -328,7 +366,7 @@ private fun DialogTextButton(
             .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp), // বাটনের সাইজ ছোট করা হয়েছে
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
 
@@ -349,7 +387,7 @@ private fun PremiumTextField(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(42.dp) // উচ্চতা কমানো হয়েছে (৪৮ থেকে ৪২)
+            .height(42.dp)
             .clip(shape)
             .background(Surface1)
             .border(
