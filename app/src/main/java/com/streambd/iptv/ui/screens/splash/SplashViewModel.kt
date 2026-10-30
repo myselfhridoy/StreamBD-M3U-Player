@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 sealed interface SplashNav {
     data object ToActivation : SplashNav
@@ -73,7 +74,10 @@ class SplashViewModel @Inject constructor(
         _status.value = "Starting…"
         delay(700L)
 
-        val state = activation.current()
+        // ────────────────────────────────────────────────────────────
+        // ১. লোকাল activation চেক — কোনো state নেই বা মেয়াদ শেষ হলে সরাসরি Activation
+        // ────────────────────────────────────────────────────────────
+        var state: ActivationState = activation.current()
         if (state !is ActivationState.Active) {
             _nav.value = SplashNav.ToActivation
             return
@@ -84,9 +88,43 @@ class SplashViewModel @Inject constructor(
             return
         }
 
+        // ────────────────────────────────────────────────────────────
+        // ২. Server revalidation — playlist ডাউনলোডের *আগে*।
+        //    কারণ: revoked হলে playlist নামিয়ে কোনো লাভ নেই।
+        //    বেশিরভাগ cold start-এ intervalOn() false ফেরায় → নেটওয়ার্ক কল হয় না → দ্রুত।
+        //    শুধু ৬ ঘণ্টা / ১ ঘণ্টা (trial) পার হলে আসল নেটওয়ার্ক কল হয়।
+        // ────────────────────────────────────────────────────────────
+        _status.value = "Checking subscription…"
+        try {
+            activation.revalidateIfNeeded()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // নেটওয়ার্ক সমস্যা — পুরনো state রাখি, AutoRefresher পরে retry করবে
+            Log.w(TAG, "revalidate failed (continuing with local state): ${e.message}", e)
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // ৩. revalidation-এ state মুছে গেলে (revoked/suspended/expired) → Activation
+        //    এছাড়া playlistUrl/epgUrl server-এ বদলালে সেটাও এখানে পড়া হয়
+        // ────────────────────────────────────────────────────────────
+        state = activation.current()
+        if (state !is ActivationState.Active) {
+            Log.i(TAG, "activation cleared after revalidation → Activation screen")
+            _nav.value = SplashNav.ToActivation
+            return
+        }
+        if (activation.isExpired(state)) {
+            activation.clear()
+            _nav.value = SplashNav.ToActivation
+            return
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // ৪. Playlist download (শুধু চ্যানেল না থাকলে)
+        // ────────────────────────────────────────────────────────────
         var epgUrl = state.epgUrl
 
-        // চ্যানেল না থাকলে প্লেলিস্ট আনতেই হবে, ব্যর্থ হলে এগোনো যাবে না
         if (!repo.hasContent()) {
             if (state.playlistUrl.isBlank()) {
                 _failure.value = SplashFailure("No playlist link is saved for this activation.")
@@ -103,7 +141,9 @@ class SplashViewModel @Inject constructor(
             }
         }
 
-        // EPG ব্যর্থ হলে অ্যাপ চালু হবে, শুধু Guide ফাঁকা থাকবে
+        // ────────────────────────────────────────────────────────────
+        // ৫. EPG sync (ব্যর্থ হলেও এগোবে — শুধু Guide ফাঁকা থাকবে)
+        // ────────────────────────────────────────────────────────────
         if (epgUrl.isNotBlank() && sync.isEpgDue()) {
             _status.value = "Updating TV guide…"
             try {
@@ -113,9 +153,9 @@ class SplashViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch { runCatching { activation.revalidateIfNeeded() } }
-
-        // বুট থেকে খুললে শেষ দেখা লাইভ চ্যানেলে সরাসরি
+        // ────────────────────────────────────────────────────────────
+        // ৬. Navigate
+        // ────────────────────────────────────────────────────────────
         val resumeId = if (launchState.consumeBoot()) settings.lastLiveChannel() else -1L
         _nav.value = if (resumeId > 0L && repo.hasContent()) {
             SplashNav.ToLive(resumeId)
