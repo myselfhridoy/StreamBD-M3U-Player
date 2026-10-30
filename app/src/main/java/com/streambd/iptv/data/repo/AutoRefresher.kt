@@ -19,12 +19,6 @@ import kotlin.coroutines.cancellation.CancellationException
 
 private const val TAG = "AutoRefresher"
 
-/**
- * অ্যাপ সামনে থাকলে প্লেলিস্ট ও EPG নিজে নিজে হালনাগাদ রাখে।
- *
- * **নতুন:** একই ১৫-মিনিটের tick-এ activation-ও revalidate করে। এটাই টিভিতে
- * দিনের পর দিন চলা সেশনে revoked/suspended/expired কোড ধরতে পারে — restart ছাড়াই।
- */
 @Singleton
 class AutoRefresher @Inject constructor(
     private val sync: PlaylistSync,
@@ -68,8 +62,6 @@ class AutoRefresher @Inject constructor(
     }
 
     private suspend fun tick() {
-        // ১. Activation revalidate — নিজেই intervalOn() দিয়ে throttled।
-        //    Revoked/suspended/expired হলে ActivationRepository ভেতরেই store.clear() করে।
         try {
             activation.revalidateIfNeeded()
         } catch (e: CancellationException) {
@@ -78,18 +70,16 @@ class AutoRefresher @Inject constructor(
             Log.w(TAG, "revalidate failed: ${e.message}", e)
         }
 
-        // ২. Revalidate-এ activation মুছে গেলে লুপ নিজেই থামিয়ে দেয়।
-        //    MainActivity.onStart() এ start() আবার ডাকলে job?.isActive == false দেখে
-        //    নতুন করে চালু হবে না — ইউজারকে re-activate করতে হবে। এটাই সঠিক।
         val active = activation.current() as? ActivationState.Active
         if (active == null) {
             Log.i(TAG, "activation cleared during revalidate — stopping refresh loop")
             stop()
             return
         }
-        if (active.playlistUrl.isBlank()) return
+        
+        // নতুন চেক: প্লেলিস্ট লিস্ট খালি কিনা
+        if (active.playlists.isEmpty()) return
 
-        // ৩. Playlist + EPG sync (আগের মতোই)
         val atEntry = !entryRefreshDone
         entryRefreshDone = true
 
@@ -103,12 +93,15 @@ class AutoRefresher @Inject constructor(
         try {
             if (atEntry) _isRefreshing.value = true
 
+            // নতুন: লিস্ট পাস করা হচ্ছে
             val result = sync.syncAll(
-                playlistUrl = active.playlistUrl,
-                epgUrl = active.epgUrl,
+                playlists = active.playlists,
                 preferDiscovered = activation.isLocal(active),
             )
-            if (result.epgUrl != active.epgUrl) activation.updateEpgUrl(result.epgUrl)
+            val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
+            if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
+                activation.updateEpgUrl(result.epgUrl)
+            }
         } finally {
             if (atEntry) _isRefreshing.value = false
         }
