@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +26,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -33,11 +35,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.db.ProviderEntity
-import com.streambd.iptv.ui.components.AppDialog
-import com.streambd.iptv.ui.components.AppDialogButton
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.theme.*
 
@@ -73,15 +75,7 @@ fun ProvidersScreen(
                 fontWeight = FontWeight.Bold
             )
             
-            Button(
-                onClick = { showAddDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add", tint = Color.Black)
-                Spacer(Modifier.width(8.dp))
-                Text("Add M3U", color = Color.Black, fontWeight = FontWeight.Bold)
-            }
+            PremiumAddButton(onClick = { showAddDialog = true })
         }
 
         if (providers.isEmpty() && !isSyncing) {
@@ -105,13 +99,16 @@ fun ProvidersScreen(
         }
     }
 
-    // নতুন প্রিমিয়াম লোডিং ডায়ালগ
     if (isSyncing) {
-        AppDialog(onDismiss = { }, width = 320.dp) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = Accent)
-                Spacer(Modifier.height(16.dp))
-                Text("Downloading channels...", color = TextPrimary, fontSize = 16.sp)
+        Dialog(onDismissRequest = { }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(12.dp)) {
+                    Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Accent)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Downloading channels...", color = TextPrimary, fontSize = 16.sp)
+                    }
+                }
             }
         }
     }
@@ -140,6 +137,37 @@ fun ProvidersScreen(
                 vm.deleteProvider(provider)
                 providerToDelete = null
             }
+        )
+    }
+}
+
+@Composable
+private fun PremiumAddButton(onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    
+    Row(
+        Modifier
+            .clip(shape)
+            .background(if (focused) Accent.copy(alpha = 0.15f) else Surface1)
+            .border(1.dp, if (focused) Accent else Divider, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Add,
+            contentDescription = "Add",
+            tint = if (focused) Accent else TextPrimary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Add M3U",
+            color = if (focused) Accent else TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }
@@ -174,7 +202,7 @@ private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
     }
 }
 
-// নতুন প্রিমিয়াম এবং থিম-কনসিস্টেন্ট ডায়ালগ
+// সম্পূর্ণ নতুন, কমপ্যাক্ট এবং প্রিমিয়াম ডায়ালগ (কোনো স্ক্রল ছাড়াই)
 @Composable
 private fun AddProviderDialog(
     onDismiss: () -> Unit,
@@ -189,70 +217,112 @@ private fun AddProviderDialog(
     val addFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
-    AppDialog(onDismiss = onDismiss, width = 420.dp) {
-        Column(Modifier.padding(24.dp)) {
-            Text("Add M3U Provider", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(16.dp))
-            
-            // Provider Name ফিল্ড
-            Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
-            PremiumTextField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = "e.g. My IPTV",
-                focusRequester = nameFocus,
-                imeAction = ImeAction.Next,
-                onNext = { urlFocus.requestFocus() }
-            )
-            
-            Spacer(Modifier.height(16.dp))
-            
-            // URL ফিল্ড
-            Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
-            PremiumTextField(
-                value = url,
-                onValueChange = { url = it },
-                placeholder = "http://example.com/list.m3u",
-                focusRequester = urlFocus,
-                keyboardType = KeyboardType.Uri,
-                imeAction = ImeAction.Done,
-                onDone = { 
-                    focusManager.clearFocus()
-                    addFocus.requestFocus() 
-                }
-            )
-            
-            Spacer(Modifier.height(24.dp))
-            
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                Modifier
+                    .width(400.dp) // ফিক্সড সাইজ, যাতে মোবাইল ও টিভি দুই জায়গায় ফিট হয়
+                    .wrapContentHeight()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Panel)
+                    .pointerInput(Unit) { detectTapGestures { } }
+                    .padding(24.dp)
             ) {
-                AppDialogButton(
-                    label = "CANCEL", 
-                    color = TextMuted, 
-                    modifier = Modifier.focusRequester(cancelFocus),
-                    onClick = onDismiss
+                Text("Add M3U Provider", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(20.dp))
+                
+                Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                PremiumTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = "e.g. My IPTV",
+                    focusRequester = nameFocus,
+                    imeAction = ImeAction.Next,
+                    onNext = { urlFocus.requestFocus() }
                 )
-                Spacer(Modifier.width(16.dp))
-                AppDialogButton(
-                    label = "ADD", 
-                    color = Accent, 
-                    modifier = Modifier.focusRequester(addFocus),
-                    onClick = { onAdd(name, url) }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                PremiumTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    placeholder = "http://example.com/list.m3u",
+                    focusRequester = urlFocus,
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                    onDone = { 
+                        focusManager.clearFocus()
+                        addFocus.requestFocus() 
+                    }
                 )
+                
+                Spacer(Modifier.height(32.dp))
+                
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DialogTextButton(
+                        label = "CANCEL", 
+                        color = TextMuted, 
+                        modifier = Modifier.focusRequester(cancelFocus),
+                        onClick = onDismiss
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    DialogTextButton(
+                        label = "ADD", 
+                        color = Accent, 
+                        modifier = Modifier.focusRequester(addFocus),
+                        onClick = { onAdd(name, url) }
+                    )
+                }
             }
         }
     }
     
-    // টিভি রিমোট দিয়ে ফোকাস হ্যান্ডেল করা
     LaunchedEffect(Unit) {
         runCatching { nameFocus.requestFocus() }
     }
 }
 
-// কাস্টম ইনপুট ফিল্ড যা অ্যাপের থিমের সাথে মিশে যায়
+// কাস্টম ডায়ালগ বাটন (TrackSelectionDialog এর মতো)
+@Composable
+private fun DialogTextButton(
+    label: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+    
+    Text(
+        text = label,
+        color = color,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+            .clip(shape)
+            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+            .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    )
+}
+
+// কাস্টম ইনপুট ফিল্ড
 @Composable
 private fun PremiumTextField(
     value: String,
@@ -270,7 +340,7 @@ private fun PremiumTextField(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(52.dp) // নিশ্চিত করা হয়েছে যেন ফিল্ড বড় হয়ে না যায়
             .clip(shape)
             .background(Surface1)
             .border(
