@@ -44,4 +44,17 @@ data class ChannelEntity(
     val episode: Int? = null,
     val serieId: String? = null,
     val serieTitle: String? = null,
+    
+    // নতুন: সার্ভারের কন্টেন্ট নাকি ইউজারের নিজের কন্টেন্ট তা বোঝার জন্য
+    val isPremium: Boolean = false,
+)
+
+// নতুন: ইউজারের নিজের প্লেলিস্ট সেভ করার টেবিল
+@Entity(tableName = "providers")
+data class ProviderEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val url: String,
+    val type: String = "M3U", // ভবিষ্যতে "XTREAM" ইত্যাদির জন্য
+    val createdAt: Long = System.currentTimeMillis()
 )
