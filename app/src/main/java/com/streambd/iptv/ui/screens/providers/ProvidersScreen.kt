@@ -68,14 +68,14 @@ fun ProvidersScreen(
     ) {
         // Header
         Row(
-            Modifier.fillMaxWidth().padding(bottom = 24.dp),
+            Modifier.fillMaxWidth().padding(bottom = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 "My Providers",
                 color = TextPrimary,
-                fontSize = 26.sp,
+                fontSize = 24.sp, // সাইজ কিছুটা কমানো হয়েছে
                 fontWeight = FontWeight.Bold
             )
             
@@ -92,11 +92,11 @@ fun ProvidersScreen(
                 }
             }
         } else {
-            // নতুন গ্রিড লেআউট
+            // গ্রিড সাইজ ছোট করা হয়েছে (minSize = 160.dp)
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 240.dp), // মিনিমাম ২৪০ ডিপি চওড়া
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                columns = GridCells.Adaptive(minSize = 160.dp), 
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(providers, key = { it.id }) { provider ->
@@ -160,30 +160,30 @@ private fun PremiumAddButton(onClick: () -> Unit) {
             .border(1.dp, if (focused) Accent else Divider, shape)
             .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp), // প্যাডিং কমানো
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
             contentDescription = "Add",
             tint = if (focused) Color.Black else Accent,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(18.dp) // আইকন সাইজ ছোট
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         Text(
             "Add M3U",
             color = if (focused) Color.Black else Accent,
-            fontSize = 14.sp,
+            fontSize = 13.sp, // ফন্ট সাইজ ছোট
             fontWeight = FontWeight.Bold
         )
     }
 }
 
-// গ্রিডের জন্য নতুন কার্ড ডিজাইন
+// আরও ছোট এবং কমপ্যাক্ট গ্রিড কার্ড
 @Composable
 private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(8.dp) // রাউন্ডেড কমিয়ে ৮ করা হলো
 
     Column(
         Modifier
@@ -192,8 +192,8 @@ private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
             .background(if (focused) Surface1 else Panel)
             .border(2.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
-            .focusable() // D-pad দিয়ে পুরো কার্ডে ফোকাস করার জন্য
-            .padding(16.dp)
+            .focusable()
+            .padding(10.dp) // প্যাডিং ১৬ থেকে ১০ করা হলো
     ) {
         // উপরে: আইকন ও ডিলিট বাটন
         Row(
@@ -205,41 +205,41 @@ private fun ProviderGridCard(provider: ProviderEntity, onDelete: () -> Unit) {
                 Icons.Filled.PlaylistPlay, 
                 contentDescription = null, 
                 tint = if (focused) Accent else TextPrimary, 
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(28.dp) // আইকন ৪০ থেকে ২৮
             )
             
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(24.dp) // বাটনের সাইজ ছোট
             ) {
                 Icon(
                     Icons.Filled.Delete, 
                     contentDescription = "Delete", 
                     tint = Danger,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(18.dp) // ডিলিট আইকন ২২ থেকে ১৮
                 )
             }
         }
         
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(10.dp)) // স্পেসিং ১৬ থেকে ১০
         
         // নিচে: নাম এবং লিংক
         Text(
             provider.name, 
             color = TextPrimary, 
-            fontSize = 16.sp, 
+            fontSize = 14.sp, // ফন্ট ১৬ থেকে ১৪
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             provider.url, 
             color = TextMuted, 
-            fontSize = 12.sp, 
+            fontSize = 11.sp, // ফন্ট ১২ থেকে ১১
             maxLines = 2, 
             overflow = TextOverflow.Ellipsis,
-            lineHeight = 16.sp
+            lineHeight = 14.sp // লাইন স্পেসিং কমানো
         )
     }
 }
