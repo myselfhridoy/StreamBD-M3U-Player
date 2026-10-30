@@ -22,8 +22,8 @@ import kotlin.coroutines.cancellation.CancellationException
 class ActivationViewModel @Inject constructor(
     private val repo: ActivationRepository,
     private val sync: PlaylistSync,
-    private val channelRepo: ChannelRepository, // নতুন: পুরোনো প্লেলিস্ট মুছতে
-    private val epgRepo: EpgRepository,         // নতুন: পুরোনো EPG মুছতে
+    private val channelRepo: ChannelRepository,
+    private val epgRepo: EpgRepository,
 ) : ViewModel() {
 
     private val _code = MutableStateFlow("")
@@ -39,7 +39,6 @@ class ActivationViewModel @Inject constructor(
     val success: StateFlow<ActivationState.Active?> = _success.asStateFlow()
 
     fun setCode(raw: String) {
-        // নতুন: শুধুমাত্র সংখ্যা (Digit) নেবে এবং সর্বোচ্চ ১২ ডিজিট পর্যন্ত
         _code.value = raw.filter(Char::isDigit).take(12)
         _error.value = null
     }
@@ -57,10 +56,11 @@ class ActivationViewModel @Inject constructor(
             try {
                 repo.activate(activationCode)
                     .onSuccess { active ->
-                        // অ্যাক্টিভেশন সফল হলে আগের প্লেলিস্ট ও EPG ডেটা মুছে ফেলা হবে
+                        // নতুন: অ্যাক্টিভেশন সফল হলে শুধুমাত্র সার্ভারের (providerId = 0L) পুরোনো প্লেলিস্ট মুছবে
+                        // ইউজারের নিজের প্লেলিস্টগুলো ডেটাবেসে থেকে যাবে।
                         try {
-                            channelRepo.clearAll()
-                            epgRepo.clear()
+                            channelRepo.clearProviderData(0L) // আগে ছিল clearAll()
+                            epgRepo.clear() 
                         } catch (e: Exception) {
                             // ডেটা ক্লিয়ার করতে সমস্যা হলেও অ্যাক্টিভেশন সফল থাকবে
                         }
@@ -76,7 +76,6 @@ class ActivationViewModel @Inject constructor(
 
     /**
      * লোকাল সেটআপ: আগে লিংক নামিয়ে যাচাই ও ইমপোর্ট করে, তারপর সেভ করে।
-     * তাই ভুল লিংক এখানেই ধরা পড়ে, Splash পর্যন্ত গড়ায় না।
      */
     fun activateWithPlaylistUrl(playlistUrl: String, epgUrl: String) {
         if (_busy.value) return
@@ -91,7 +90,6 @@ class ActivationViewModel @Inject constructor(
         _error.value = null
         viewModelScope.launch {
             try {
-                // নতুন লজিক: PlaylistData তৈরি করে syncAll-এ পাঠানো হচ্ছে
                 val playlistData = PlaylistData(name = "Local Playlist", m3uUrl = playlist, epgUrl = epg)
                 
                 val result = sync.syncAll(
@@ -99,15 +97,12 @@ class ActivationViewModel @Inject constructor(
                     preferDiscovered = epg.isBlank()
                 )
 
-                // লোকাল অ্যাক্টিভেশনে সিঙ্ক থেকে পাওয়া EPG URL সেভ করার আগে
-                // আগের EPG ডেটা ক্লিয়ার করে দেওয়া হচ্ছে (চ্যানেল syncAll নিজেই ক্লিয়ার করে)
                 try {
                     epgRepo.clear()
                 } catch (e: Exception) {
                     // ইগনোর
                 }
 
-                // সিঙ্ক থেকে পাওয়া EPG URL দিয়ে লোকাল অ্যাক্টিভেশন সেভ করা হচ্ছে
                 _success.value = repo.activateLocally(playlist, result.epgUrl)
             } catch (e: SyncException) {
                 _error.value = e.message
