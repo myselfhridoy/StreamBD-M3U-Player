@@ -55,7 +55,6 @@ class SettingsViewModel @Inject constructor(
     private val _refresh = MutableStateFlow<RefreshState>(RefreshState.Idle)
     val refreshState: StateFlow<RefreshState> = _refresh.asStateFlow()
 
-    // নতুন: শেষ আপডেটের সময় (টাইমস্ট্যাম্প)
     private val _lastUpdateTime = MutableStateFlow(0L)
     val lastUpdateTime: StateFlow<Long> = _lastUpdateTime.asStateFlow()
 
@@ -84,22 +83,28 @@ class SettingsViewModel @Inject constructor(
         if (_refresh.value is RefreshState.Running) return
         viewModelScope.launch {
             val active = activation.current() as? ActivationState.Active
-            if (active == null || active.playlistUrl.isBlank()) {
-                _refresh.value = RefreshState.Failed("No playlist link is saved.")
+            
+            // নতুন চেক: প্লেলিস্ট লিস্ট খালি কিনা
+            if (active == null || active.playlists.isEmpty()) {
+                _refresh.value = RefreshState.Failed("No playlists are saved for this activation.")
                 return@launch
             }
+            
             _refresh.value = RefreshState.Running
             _refresh.value = try {
+                // নতুন: একাধিক প্লেলিস্টের জন্য syncAll কল
                 val result = sync.syncAll(
-                    playlistUrl = active.playlistUrl,
-                    epgUrl = active.epgUrl,
+                    playlists = active.playlists,
                     preferDiscovered = activation.isLocal(active),
                 )
-                if (result.epgUrl != active.epgUrl) activation.updateEpgUrl(result.epgUrl)
                 
-                // নতুন: রিফ্রেশ সফল হলে শেষ আপডেটের সময় আপডেট করে নিন
+                // EPG আপডেট চেক (প্রথম প্লেলিস্টের EPG এর সাথে তুলনা)
+                val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
+                if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
+                    activation.updateEpgUrl(result.epgUrl)
+                }
+                
                 loadLastUpdateTime()
-                
                 RefreshState.Done(result.channels, result.programs, result.epgError)
             } catch (e: SyncException) {
                 RefreshState.Failed(e.message ?: "Refresh failed")
@@ -127,7 +132,7 @@ class SettingsViewModel @Inject constructor(
         activation.clear()
         settings.clearAll()
         sync.clearState()
-        _lastUpdateTime.value = 0L // নতুন: অ্যাপ রিসেট হলে সময় রিসেট করে দিন
+        _lastUpdateTime.value = 0L
         onDone()
     }
 }
