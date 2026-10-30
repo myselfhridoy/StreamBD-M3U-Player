@@ -33,6 +33,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.streambd.iptv.data.activation.ActivationRepository
+import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.repo.AutoRefresher
 import com.streambd.iptv.player.ChannelJumpController
 import com.streambd.iptv.player.PlayerManager
@@ -60,6 +62,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var launchState: LaunchState
     @Inject lateinit var autoRefresher: AutoRefresher
     @Inject lateinit var volumeController: VolumeController
+    @Inject lateinit var activationRepository: ActivationRepository // নতুন: অ্যাক্টিভেশন স্টেট মনিটর করার জন্য
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -120,6 +123,16 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         autoRefresher.start()
+
+        // নতুন: অ্যাপ রান হওয়ার সময় অ্যাক্টিভেশন স্টেট চেক
+        // (যদি ব্যাকগ্রাউন্ডে কোড Revoke হয়ে যায়, তবে পরবর্তী স্টার্টে Splash এ রিডাইরেক্ট করবে)
+        lifecycleScope.launch {
+            val state = activationRepository.current()
+            if (state !is ActivationState.Active || activationRepository.isExpired(state)) {
+                // অ্যাক্টিভেশন না থাকলে ব্যাকগ্রাউন্ড রিফ্রেশার বন্ধ করে দেওয়া
+                autoRefresher.stop()
+            }
+        }
     }
 
     override fun onStop() {
