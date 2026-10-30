@@ -56,6 +56,10 @@ class ActivationRepository @Inject constructor(
             throw e
         } catch (e: ActivationRejectedException) {
             Log.w(TAG, "activate rejected: ${e.reason} (HTTP ${e.httpCode})")
+            // নতুন: সার্ভার থেকে যদি বলা হয় লোকাল স্টেট ক্লিয়ার করতে, তবে ক্লিয়ার করা হবে
+            if (e.shouldClearLocalState) {
+                store.clear()
+            }
             Result.failure(IllegalStateException(e.reason, e))
         } catch (e: ActivationNetworkException) {
             Log.w(TAG, "activate network error: ${e.message}", e)
