@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -34,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.ProgramEntity
+import com.streambd.iptv.ui.player.FullscreenPlayer
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -55,10 +58,11 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     val programs by vm.programsByTvg.collectAsStateWithLifecycle()
     val selected by vm.selectedGroup.collectAsStateWithLifecycle()
     val hourOffset by vm.hourOffsetFlow.collectAsStateWithLifecycle()
+    val playerState by vm.playerState.collectAsStateWithLifecycle() // নতুন
+    
     var showGroupDialog by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     
-    // নতুন স্টেট
     var pickedChannel by remember { mutableStateOf<ChannelEntity?>(null) }
     var pickedProgram by remember { mutableStateOf<ProgramEntity?>(null) }
 
@@ -84,7 +88,6 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
     val windowEnd = windowStart + SLOT_COUNT * SLOT_MS
     val horizontalScroll = rememberScrollState()
 
-    // হেডারের জন্য চ্যানেল ও প্রোগ্রাম লজিক
     val headerChannel = pickedChannel ?: channels.firstOrNull()
     val headerProgram = pickedProgram ?: headerChannel?.tvgId
         ?.let { programs[it] }.orEmpty()
@@ -92,65 +95,90 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
 
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
 
-    Column(Modifier.fillMaxSize().background(BgDark)) {
-        InfoHeader(
-            channel = headerChannel,
-            program = headerProgram,
-            noGuideData = programs.isEmpty(),
-            windowStart = windowStart,
-            windowEnd = windowEnd,
-            shiftMs = shiftMs,
-        )
-        ControlsRow(
-            label = vm.groupLabel(selected, groups),
-            dateLabel = formatDate(windowStart),
-            onOpenGroups = { showGroupDialog = true },
-            onLeft = { vm.shiftWindowBy(-1) },
-            onRight = { vm.shiftWindowBy(1) },
-            onToday = vm::resetWindow,
-        )
+    Box(Modifier.fillMaxSize().background(BgDark)) {
+        Column(Modifier.fillMaxSize()) {
+            InfoHeader(
+                channel = headerChannel,
+                program = headerProgram,
+                noGuideData = programs.isEmpty(),
+                windowStart = windowStart,
+                windowEnd = windowEnd,
+                shiftMs = shiftMs,
+            )
+            ControlsRow(
+                label = vm.groupLabel(selected, groups),
+                dateLabel = formatDate(windowStart),
+                onOpenGroups = { showGroupDialog = true },
+                onLeft = { vm.shiftWindowBy(-1) },
+                onRight = { vm.shiftWindowBy(1) },
+                onToday = vm::resetWindow,
+            )
 
-        Row(Modifier.fillMaxWidth().height(30.dp).background(TopBar)) {
-            Spacer(Modifier.width(CHANNEL_COL_WIDTH))
-            Box(Modifier.fillMaxHeight().horizontalScroll(horizontalScroll)) {
-                TimelineRuler(windowStart, SLOT_COUNT, shiftMs)
+            Row(Modifier.fillMaxWidth().height(30.dp).background(TopBar)) {
+                Spacer(Modifier.width(CHANNEL_COL_WIDTH))
+                Box(Modifier.fillMaxHeight().horizontalScroll(horizontalScroll)) {
+                    TimelineRuler(windowStart, SLOT_COUNT, shiftMs)
+                }
+            }
+
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = bottomInset),
+            ) {
+                items(channels, key = { it.id }) { channel ->
+                    Row(Modifier.fillMaxWidth().height(ROW_HEIGHT)) {
+                        ChannelCell(
+                            channel = channel,
+                            onFocus = {
+                                pickedChannel = channel
+                                pickedProgram = null
+                            }
+                        )
+                        Box(Modifier.fillMaxHeight().weight(1f).horizontalScroll(horizontalScroll)) {
+                            ProgramStrip(
+                                channel = channel, // চ্যানেল পাস করা হলো
+                                programs = channel.tvgId?.let { programs[it] }.orEmpty(),
+                                windowStart = windowStart,
+                                shiftMs = shiftMs,
+                                now = now,
+                                onPick = { program ->
+                                    pickedChannel = channel
+                                    pickedProgram = program
+                                },
+                                onPlayCatchup = { program ->
+                                    vm.playCatchup(channel, program)
+                                },
+                            )
+                        }
+                    }
+                }
+                if (channels.isEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                            Text("No channels in this group", color = TextMuted)
+                        }
+                    }
+                }
             }
         }
 
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = bottomInset),
-        ) {
-            items(channels, key = { it.id }) { channel ->
-                Row(Modifier.fillMaxWidth().height(ROW_HEIGHT)) {
-                    ChannelCell(
-                        channel = channel,
-                        onFocus = {
-                            pickedChannel = channel
-                            pickedProgram = null
-                        }
-                    )
-                    Box(Modifier.fillMaxHeight().weight(1f).horizontalScroll(horizontalScroll)) {
-                        ProgramStrip(
-                            programs = channel.tvgId?.let { programs[it] }.orEmpty(),
-                            windowStart = windowStart,
-                            shiftMs = shiftMs,
-                            now = now,
-                            onPick = { program ->
-                                pickedChannel = channel
-                                pickedProgram = program
-                            },
-                        )
-                    }
-                }
-            }
-            if (channels.isEmpty()) {
-                item {
-                    Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-                        Text("No channels in this group", color = TextMuted)
-                    }
-                }
-            }
+        // নতুন: Catchup প্লে করার জন্য ফুলস্ক্রিন ওভারলে
+        if (playerState.isFullscreen && playerState.current != null) {
+            FullscreenPlayer(
+                player = vm.player.player,
+                state = playerState,
+                isFavorite = false,
+                isLocked = false,
+                kindLabel = "ARCHIVE",
+                groupName = playerState.current?.groupTitle ?: "",
+                showNumber = false,
+                onExit = { vm.closeFullscreen() },
+                onTogglePlay = { vm.togglePlayPause() },
+                onToggleFavorite = {},
+                onToggleLock = {},
+                onOpenTracks = {},
+                onOpenSettings = {},
+            )
         }
     }
 
@@ -341,11 +369,13 @@ private fun ChannelCell(
 
 @Composable
 private fun ProgramStrip(
+    channel: ChannelEntity, // নতুন
     programs: List<ProgramEntity>,
     windowStart: Long,
     shiftMs: Long,
     now: Long,
     onPick: (ProgramEntity) -> Unit,
+    onPlayCatchup: (ProgramEntity) -> Unit,
 ) {
     val density = LocalDensity.current
     val slotWidthPx = with(density) { SLOT_WIDTH.toPx() }
@@ -362,15 +392,21 @@ private fun ProgramStrip(
             val clippedWidth = clippedRight - clippedLeft
             if (clippedWidth <= 1f) return@forEach
 
+            // Catchup সাপোর্ট চেক
+            val isPast = adjustedEnd < now
+            val isCatchupAvailable = isPast && channel.catchupEnable && !channel.catchupSource.isNullOrBlank()
+
             ProgramCell(
                 program = program,
                 isCurrent = now >= adjustedStart && now < adjustedEnd,
+                isCatchupAvailable = isCatchupAvailable,
                 modifier = Modifier
                     .offset(x = with(density) { clippedLeft.toDp() })
                     .width(with(density) { clippedWidth.toDp() })
                     .fillMaxHeight()
                     .padding(vertical = 6.dp, horizontal = 2.dp),
                 onPick = { onPick(program) },
+                onPlayCatchup = { onPlayCatchup(program) },
             )
         }
 
@@ -392,8 +428,10 @@ private fun ProgramStrip(
 private fun ProgramCell(
     program: ProgramEntity,
     isCurrent: Boolean,
+    isCatchupAvailable: Boolean,
     modifier: Modifier,
     onPick: () -> Unit,
+    onPlayCatchup: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(4.dp)
@@ -410,11 +448,45 @@ private fun ProgramCell(
                 focused = it.isFocused
                 if (it.isFocused) onPick()
             }
-            .clickable(onClick = onPick)
+            .clickable {
+                if (isCatchupAvailable) {
+                    onPlayCatchup()
+                } else {
+                    onPick()
+                }
+            }
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(program.title, color = TextPrimary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                program.title,
+                color = TextPrimary,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            // ক্যাচআপ সাপোর্ট থাকলে প্লে আইকন দেখাবে
+            if (isCatchupAvailable) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Accent)
+                        .padding(2.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Play Catchup",
+                        tint = Color.Black,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
