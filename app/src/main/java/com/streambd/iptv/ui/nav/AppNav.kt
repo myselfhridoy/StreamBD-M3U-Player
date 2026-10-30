@@ -18,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.ui.screens.HomeMenuScreen
 import com.streambd.iptv.ui.screens.activation.ActivationScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
@@ -45,10 +46,10 @@ object Routes {
     const val ACTIVATION = "activation"
 }
 
-// নতুন: গ্লোবাল অ্যাক্টিভেশন স্টেট মনিটর করার জন্য ViewModel
 @HiltViewModel
 class AppNavViewModel @Inject constructor(
-    val activationRepository: ActivationRepository
+    val activationRepository: ActivationRepository,
+    val playerManager: PlayerManager // নতুন: প্লেয়ার বন্ধ করার জন্য
 ) : ViewModel()
 
 @Composable
@@ -56,10 +57,9 @@ fun AppNav() {
     val nav = rememberNavController()
     val navViewModel: AppNavViewModel = hiltViewModel()
     
-    // গ্লোবাল অ্যাক্টিভেশন স্টেট
     val activationState by navViewModel.activationRepository.state.collectAsStateWithLifecycle()
 
-    // যদি হঠাৎ করে অ্যাক্টিভেশন রিভোক বা এক্সপায়ার হয়ে যায়, তবে সরাসরি Activation স্ক্রিনে পাঠানো হবে
+    // গ্লোবাল চেক: অ্যাক্টিভেশন না থাকলে বা এক্সপায়ার হলে সরাসরি Activation স্ক্রিনে পাঠাবে
     LaunchedEffect(activationState) {
         val state = activationState
         val currentRoute = nav.currentBackStackEntry?.destination?.route
@@ -68,6 +68,9 @@ fun AppNav() {
         if ((state is ActivationState.NotActivated || isExpired) && 
             currentRoute != Routes.ACTIVATION && 
             currentRoute != Routes.SPLASH) {
+            
+            // নতুন: Activation স্ক্রিনে যাওয়ার আগে চলমান প্লেয়ার বন্ধ করে দেওয়া
+            navViewModel.playerManager.stopAndClear()
             
             nav.navigate(Routes.ACTIVATION) {
                 popUpTo(0) { inclusive = true } // পুরো নেভিগেশন স্ট্যাক মুছে ফেলা হবে
@@ -78,7 +81,6 @@ fun AppNav() {
     NavHost(
         navController = nav, 
         startDestination = Routes.SPLASH,
-        // ট্রানজিশন স্মুথ করার জন্য কাস্টম ফেড অ্যানিমেশন
         enterTransition = { fadeIn(animationSpec = tween(250)) },
         exitTransition = { fadeOut(animationSpec = tween(250)) },
         popEnterTransition = { fadeIn(animationSpec = tween(250)) },
