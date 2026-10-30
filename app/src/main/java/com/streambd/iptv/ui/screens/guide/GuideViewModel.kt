@@ -9,6 +9,9 @@ import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.settings.AppSettings
 import com.streambd.iptv.data.settings.SettingsStore
+import com.streambd.iptv.data.util.CatchupUrlBuilder
+import com.streambd.iptv.player.PlayerManager
+import com.streambd.iptv.player.PlayerUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +34,8 @@ val GROUP_ALL: Long? = null
 class GuideViewModel @Inject constructor(
     private val channels: ChannelRepository,
     private val epg: EpgRepository,
-    settings: SettingsStore,
+    private val settings: SettingsStore,
+    private val playerManager: PlayerManager, // নতুন ইনজেক্ট
 ) : ViewModel() {
 
     val settingsFlow: StateFlow<AppSettings> =
@@ -76,6 +80,10 @@ class GuideViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    // নতুন: প্লেয়ার স্টেট
+    val playerState: StateFlow<PlayerUiState> = playerManager.state
+    val player get() = playerManager
+
     fun selectGroup(id: Long?) {
         selectedGroupId.value = id
     }
@@ -93,4 +101,25 @@ class GuideViewModel @Inject constructor(
         GROUP_FAVORITES -> "Favorites"
         else -> groups.firstOrNull { it.id == groupId }?.name ?: "All Channels"
     }
+
+    // নতুন: Catchup Play ফাংশন
+    fun playCatchup(channel: ChannelEntity, program: ProgramEntity) {
+        val source = channel.catchupSource
+        if (source.isNullOrBlank()) return
+
+        // Catchup URL তৈরি
+        val url = CatchupUrlBuilder.build(
+            sourceTemplate = source,
+            startMs = program.start,
+            endMs = program.end,
+        )
+
+        if (url.isNotBlank()) {
+            playerManager.playCatchup(channel, url)
+            playerManager.setFullscreen(true)
+        }
+    }
+
+    fun closeFullscreen() = playerManager.setFullscreen(false)
+    fun togglePlayPause() = playerManager.togglePlayPause()
 }
