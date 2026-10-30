@@ -15,6 +15,7 @@ data class ParsedChannel(
     val kind: ChannelKind,
     
     // নতুন ফিল্ড
+    val isNestedPlaylist: Boolean = false, // নেস্টেড প্লেলিস্ট ডিটেকশনের জন্য
     val catchupType: String? = null,
     val catchupDays: Int = 0,
     val catchupSource: String? = null,
@@ -114,13 +115,18 @@ object M3uParser {
                     // tvg-rec বা catchup-enable চেক
                     val isCatchupEnabled = p.catchupEnable || cType != null || p.tvgRec > 0
 
+                    // নেস্টেড প্লেলিস্ট চেক
+                    val isPlaylist = p.tvgType?.lowercase() == "playlist" || 
+                                     p.tvgType?.lowercase() == "content-type=playlist"
+
                     out += ParsedChannel(
                         name = name,
                         logoUrl = p.logo,
                         groupTitle = group,
                         tvgId = p.tvgId,
                         streamUrl = withHeaders(line, p.headers),
-                        kind = classify(p.tvgType, group, name, line),
+                        kind = if (isPlaylist) ChannelKind.LIVE else classify(p.tvgType, group, name, line),
+                        isNestedPlaylist = isPlaylist,
                         
                         catchupType = cType,
                         catchupSource = cSource,
@@ -166,7 +172,8 @@ object M3uParser {
             logo = attrs["tvg-logo"]?.takeIf { it.isNotBlank() },
             groupTitle = attrs["group-title"]?.takeIf { it.isNotBlank() },
             tvgId = attrs["tvg-id"]?.takeIf { it.isNotBlank() },
-            tvgType = (attrs["tvg-type"] ?: attrs["type"])?.takeIf { it.isNotBlank() },
+            // content-type যুক্ত করা হলো
+            tvgType = (attrs["tvg-type"] ?: attrs["type"] ?: attrs["content-type"])?.takeIf { it.isNotBlank() },
             
             catchupType = (attrs["catchup-type"] ?: attrs["catchup"])?.takeIf { it.isNotBlank() },
             catchupSource = attrs["catchup-source"]?.takeIf { it.isNotBlank() },
@@ -187,7 +194,7 @@ object M3uParser {
             seekPreview = attrs["seek_preview"]?.takeIf { it.isNotBlank() },
         )
         
-        // নতুন ফিক্স: tvg-rec এবং catchup-enable পার্স করা
+        // tvg-rec এবং catchup-enable পার্স করা
         pending.tvgRec = attrs["tvg-rec"]?.toIntOrNull() ?: 0
         pending.catchupEnable = attrs["catchup-enable"] == "1" || attrs["catchup-enable"]?.toBoolean() == true
         
@@ -240,7 +247,7 @@ object M3uParser {
         when (key) {
             "inputstream.adaptive.license_type" -> p.drmScheme = value
             "inputstream.adaptive.license_key" -> p.drmLicense = value
-            // নতুন ফিক্স: drm_legacy হ্যান্ডলিং
+            // drm_legacy হ্যান্ডলিং
             "inputstream.adaptive.drm_legacy" -> {
                 // "org.w3.clearkey|KID:KEY" বা "com.widevine.alpha|https://..."
                 val bar = value.indexOf('|')
