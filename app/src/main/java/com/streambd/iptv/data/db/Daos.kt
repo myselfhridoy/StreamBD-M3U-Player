@@ -67,3 +67,22 @@ interface GroupDao {
 
     @Query("DELETE FROM groups") suspend fun clear()
 }
+
+// নতুন: ইউজারের প্লেলিস্ট (Providers) ম্যানেজ করার Dao
+@Dao
+interface ProviderDao {
+    @Query("SELECT * FROM providers ORDER BY createdAt DESC")
+    fun observeAll(): Flow<List<ProviderEntity>>
+
+    @Query("SELECT * FROM providers ORDER BY createdAt DESC")
+    suspend fun getAll(): List<ProviderEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(provider: ProviderEntity): Long
+
+    @Query("DELETE FROM providers WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM providers") 
+    suspend fun clear()
+}
