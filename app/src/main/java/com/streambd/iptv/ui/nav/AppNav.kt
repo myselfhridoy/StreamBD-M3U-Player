@@ -1,6 +1,9 @@
 package com.streambd.iptv.ui.nav
 
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
@@ -37,7 +40,15 @@ object Routes {
 fun AppNav() {
     val nav = rememberNavController()
 
-    NavHost(navController = nav, startDestination = Routes.SPLASH) {
+    NavHost(
+        navController = nav, 
+        startDestination = Routes.SPLASH,
+        // ট্রানজিশন স্মুথ করার জন্য কাস্টম ফেড অ্যানিমেশন
+        enterTransition = { fadeIn(animationSpec = tween(250)) },
+        exitTransition = { fadeOut(animationSpec = tween(250)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(250)) },
+        popExitTransition = { fadeOut(animationSpec = tween(250)) }
+    ) {
         composable(Routes.SPLASH) {
             SplashScreen(
                 onToActivation = {
