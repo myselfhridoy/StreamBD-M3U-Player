@@ -136,7 +136,7 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
                         )
                         Box(Modifier.fillMaxHeight().weight(1f).horizontalScroll(horizontalScroll)) {
                             ProgramStrip(
-                                channel = channel, // চ্যানেল পাস করা হলো
+                                channel = channel,
                                 programs = channel.tvgId?.let { programs[it] }.orEmpty(),
                                 windowStart = windowStart,
                                 shiftMs = shiftMs,
@@ -164,13 +164,16 @@ fun GuideScreen(onBack: () -> Unit, vm: GuideViewModel = hiltViewModel()) {
 
         // নতুন: Catchup প্লে করার জন্য ফুলস্ক্রিন ওভারলে
         if (playerState.isFullscreen && playerState.current != null) {
+            // ChannelEntity-তে groupTitle নেই, তাই groups লিস্ট থেকে নাম বের করা হচ্ছে
+            val currentGroupName = groups.firstOrNull { it.id == playerState.current?.groupId }?.name ?: "Archive"
+            
             FullscreenPlayer(
                 player = vm.player.player,
                 state = playerState,
                 isFavorite = false,
                 isLocked = false,
                 kindLabel = "ARCHIVE",
-                groupName = playerState.current?.groupTitle ?: "",
+                groupName = currentGroupName, // ফিক্স করা হলো
                 showNumber = false,
                 onExit = { vm.closeFullscreen() },
                 onTogglePlay = { vm.togglePlayPause() },
@@ -369,7 +372,7 @@ private fun ChannelCell(
 
 @Composable
 private fun ProgramStrip(
-    channel: ChannelEntity, // নতুন
+    channel: ChannelEntity,
     programs: List<ProgramEntity>,
     windowStart: Long,
     shiftMs: Long,
@@ -467,7 +470,6 @@ private fun ProgramCell(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            // ক্যাচআপ সাপোর্ট থাকলে প্লে আইকন দেখাবে
             if (isCatchupAvailable) {
                 Spacer(Modifier.width(6.dp))
                 Box(
