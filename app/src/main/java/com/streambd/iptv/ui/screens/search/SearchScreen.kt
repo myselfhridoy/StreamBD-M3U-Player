@@ -6,12 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -127,12 +129,36 @@ private fun SearchResultRow(channel: ChannelEntity, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("%02d".format(channel.number), color = TextMuted, fontSize = 16.sp, modifier = Modifier.width(36.dp))
-        AsyncImage(
-            model = channel.logoUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
-        )
+        
+        // নতুন: লোগোর সাথে প্রিমিয়াম আইকন যুক্ত করা হলো
+        Box(
+            modifier = Modifier.size(48.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = channel.logoUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)),
+            )
+            if (channel.isPremium) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 2.dp, y = 2.dp)
+                        .background(Color.Black, CircleShape)
+                        .padding(1.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.WorkspacePremium,
+                        contentDescription = "Premium",
+                        tint = Color(0xFFFFD700), // Gold Color
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+        
         Spacer(Modifier.width(12.dp))
         Text(
             channel.name,
