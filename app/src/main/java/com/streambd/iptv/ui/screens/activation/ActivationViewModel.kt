@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.activation.PlaylistData
+import com.streambd.iptv.data.epg.EpgRepository
+import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +22,8 @@ import kotlin.coroutines.cancellation.CancellationException
 class ActivationViewModel @Inject constructor(
     private val repo: ActivationRepository,
     private val sync: PlaylistSync,
+    private val channelRepo: ChannelRepository, // নতুন: পুরোনো প্লেলিস্ট মুছতে
+    private val epgRepo: EpgRepository,         // নতুন: পুরোনো EPG মুছতে
 ) : ViewModel() {
 
     private val _code = MutableStateFlow("")
@@ -51,7 +55,17 @@ class ActivationViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 repo.activate(activationCode)
-                    .onSuccess { _success.value = it }
+                    .onSuccess { active ->
+                        // অ্যাক্টিভেশন সফল হলে আগের প্লেলিস্ট ও EPG ডেটা মুছে ফেলা হবে
+                        try {
+                            channelRepo.clearAll()
+                            epgRepo.clear()
+                        } catch (e: Exception) {
+                            // ডেটা ক্লিয়ার করতে সমস্যা হলেও অ্যাক্টিভেশন সফল থাকবে
+                        }
+                        
+                        _success.value = active
+                    }
                     .onFailure { _error.value = it.message ?: "Activation failed" }
             } finally {
                 _busy.value = false
@@ -83,7 +97,15 @@ class ActivationViewModel @Inject constructor(
                     playlists = listOf(playlistData),
                     preferDiscovered = epg.isBlank()
                 )
-                
+
+                // লোকাল অ্যাক্টিভেশনে সিঙ্ক থেকে পাওয়া EPG URL সেভ করার আগে
+                // আগের EPG ডেটা ক্লিয়ার করে দেওয়া হচ্ছে (চ্যানেল syncAll নিজেই ক্লিয়ার করে)
+                try {
+                    epgRepo.clear()
+                } catch (e: Exception) {
+                    // ইগনোর
+                }
+
                 // সিঙ্ক থেকে পাওয়া EPG URL দিয়ে লোকাল অ্যাক্টিভেশন সেভ করা হচ্ছে
                 _success.value = repo.activateLocally(playlist, result.epgUrl)
             } catch (e: SyncException) {
