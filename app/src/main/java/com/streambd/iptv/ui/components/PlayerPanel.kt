@@ -11,10 +11,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.WorkspacePremium // নতুন আইকন
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -127,7 +129,7 @@ private fun PanelTabItem(label: String, selected: Boolean, onClick: () -> Unit) 
     }
 }
 
-/** তালিকার এক সারি: ঐচ্ছিক নম্বর, লোগো, নাম, উপশিরোনাম, লক/ফেভারিট চিহ্ন। */
+/** তালিকার এক সারি: ঐচ্ছিক নম্বর, লোগো, নাম, উপশিরোনাম, লক/ফেভারিট চিহ্ন এবং প্রিমিয়াম ব্যাজ। */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PanelRow(
@@ -139,6 +141,7 @@ fun PanelRow(
     playing: Boolean = false,
     locked: Boolean = false,
     favorite: Boolean = false,
+    isPremium: Boolean = false, // নতুন: প্রিমিয়াম কন্টেন্ট চেনার জন্য
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -175,12 +178,36 @@ fun PanelRow(
         if (number != null) {
             Text(number, color = TextMuted, fontSize = 13.sp, modifier = Modifier.width(28.dp))
         }
-        AsyncImage(
-            model = logoUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(4.dp)),
-        )
+        
+        // নতুন: লোগোর সাথে প্রিমিয়াম আইকন ওভারলে করা হয়েছে
+        Box(
+            modifier = Modifier.size(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = logoUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)),
+            )
+            if (isPremium) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 2.dp, y = 2.dp)
+                        .background(Color.Black, CircleShape)
+                        .padding(1.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.WorkspacePremium,
+                        contentDescription = "Premium",
+                        tint = Color(0xFFFFD700), // Gold Color
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+        }
+        
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
