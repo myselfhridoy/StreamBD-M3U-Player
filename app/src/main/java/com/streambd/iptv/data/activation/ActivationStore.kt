@@ -1,6 +1,7 @@
 package com.streambd.iptv.data.activation
 
 import android.content.Context
+import android.provider.Settings // নতুন ইমপোর্ট
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -25,7 +26,7 @@ class ActivationStore @Inject constructor(@ApplicationContext private val ctx: C
     private object Keys {
         val CODE = stringPreferencesKey("code")
         val EXPIRES_AT = longPreferencesKey("expires_at")
-        val PLAYLISTS_JSON = stringPreferencesKey("playlists_json") // নতুন
+        val PLAYLISTS_JSON = stringPreferencesKey("playlists_json")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val LAST_CHECK = longPreferencesKey("last_check")
     }
@@ -93,10 +94,19 @@ class ActivationStore @Inject constructor(@ApplicationContext private val ctx: C
         prefs.edit { it[Keys.LAST_CHECK] = System.currentTimeMillis() }
     }
 
+    // নতুন: ANDROID_ID ব্যবহার করে ডিভাইস আইডি স্থায়ী করা
     suspend fun deviceId(): String {
         val existing = prefs.data.first()[Keys.DEVICE_ID]
         if (!existing.isNullOrBlank()) return existing
-        val newId = UUID.randomUUID().toString()
+
+        val androidId = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID)
+        val newId = if (!androidId.isNullOrBlank() && androidId != "9774d56d682e549c") {
+            androidId
+        } else {
+            // যদি কোনো কারণে Android ID না পাওয়া যায় বা বাগি আইডি হয়, তবে UUID ব্যবহার হবে
+            UUID.randomUUID().toString()
+        }
+
         prefs.edit { it[Keys.DEVICE_ID] = newId }
         return newId
     }
