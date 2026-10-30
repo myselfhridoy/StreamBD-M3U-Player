@@ -1,6 +1,7 @@
 package com.streambd.iptv.player
 
 import android.content.Context
+import android.media.MediaDrm
 import android.util.Base64
 import android.util.Log
 import androidx.media3.common.AudioAttributes
@@ -18,6 +19,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.settings.SettingsStore
@@ -219,14 +221,12 @@ class PlayerManager @Inject constructor(
 
         val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
         
-        // স্মার্ট কাস্ট এরর এড়াতে 헤ডার থেকে ভ্যালু বের করে val-এ রাখা হলো
         val drmScheme = rawHeaders.entries.firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
             ?: channel.drmScheme
 
         val drmLicense = rawHeaders.entries.firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
             ?: channel.drmLicense
 
-        // DRM প্যারামিটারগুলো HTTP হেডার থেকে বাদ দেওয়া
         val cleanHeaders = rawHeaders.filterKeys {
             !it.equals("drmScheme", ignoreCase = true) && !it.equals("drmLicense", ignoreCase = true)
         }
@@ -245,7 +245,6 @@ class PlayerManager @Inject constructor(
             )
         }
 
-        // নতুন: পুরো মিডিয়া আইটেম তৈরি ও প্লে করার কাজ ট্রাই-ক্যাচে রাখা হলো
         try {
             val itemBuilder = MediaItem.Builder()
                 .setUri(rawUrl)
@@ -255,38 +254,50 @@ class PlayerManager @Inject constructor(
             if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
                 val scheme = drmScheme.lowercase()
                 val licenseClean = drmLicense.substringBefore('|').trim()
+                
+                val uuid = when {
+                    scheme.contains("widevine") -> C.WIDEVINE_UUID
+                    scheme.contains("playready") -> C.PLAYREADY_UUID
+                    scheme.contains("clearkey") -> C.CLEARKEY_UUID
+                    else -> null
+                }
 
-                if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
-                    // ClearKey raw key format (kid:key)
-                    val parts = licenseClean.split(":")
-                    if (parts.size == 2 && parts[0].length == 32 && parts[1].length == 32) {
-                        val kidB64 = hexToBase64Url(parts[0])
-                        val keyB64 = hexToBase64Url(parts[1])
-                        if (kidB64.isNotEmpty() && keyB64.isNotEmpty()) {
-                            val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
-                            val dataUri = "data:application/json;base64," + Base64.encodeToString(jsonResponse.toByteArray(), Base64.NO_WRAP)
-                            
-                            val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                                .setLicenseUri(dataUri)
+                if (uuid != null) {
+                    if (MediaDrm.isCryptoSchemeSupported(uuid)) {
+                        
+                        if (scheme.contains("clearkey") && !licenseClean.startsWith("http://", ignoreCase = true) && !licenseClean.startsWith("https://", ignoreCase = true)) {
+                            // ClearKey raw key format (kid:key) -> LocalMediaDrmCallback
+                            val parts = licenseClean.split(":")
+                            if (parts.size == 2 && parts[0].length == 32 && parts[1].length == 32) {
+                                val kidB64 = hexToBase64Url(parts[0])
+                                val keyB64 = hexToBase64Url(parts[1])
+                                if (kidB64.isNotEmpty() && keyB64.isNotEmpty()) {
+                                    val jsonResponse = """{"keys":[{"kty":"oct","kid":"$kidB64","k":"$keyB64"}],"type":"temporary"}"""
+                                    Log.d("PlayerManager", "ClearKey JSON: $jsonResponse")
+                                    
+                                    val callback = LocalMediaDrmCallback(jsonResponse.toByteArray())
+                                    
+                                    val drmConfig = MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                                        .setMediaDrmCallback(callback)
+                                        .setMultiSession(true) // লাইভ স্ট্রিমে কী রোটেশনের জন্য
+                                        .build()
+                                    itemBuilder.setDrmConfiguration(drmConfig)
+                                }
+                            } else {
+                                Log.e("PlayerManager", "Invalid ClearKey format: $licenseClean")
+                            }
+                        } else {
+                            // URL based DRM
+                            val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
+                                .setLicenseUri(licenseClean)
+                                .setMultiSession(true)
                                 .build()
                             itemBuilder.setDrmConfiguration(drmConfig)
                         }
                     } else {
-                        Log.e("PlayerManager", "Invalid ClearKey format: $licenseClean")
-                    }
-                } else {
-                    // URL based DRM (Widevine, PlayReady, ClearKey URL)
-                    val uuid = when {
-                        scheme.contains("widevine") -> C.WIDEVINE_UUID
-                        scheme.contains("playready") -> C.PLAYREADY_UUID
-                        scheme.contains("clearkey") -> C.CLEARKEY_UUID
-                        else -> null
-                    }
-                    if (uuid != null) {
-                        val drmConfig = MediaItem.DrmConfiguration.Builder(uuid)
-                            .setLicenseUri(licenseClean)
-                            .build()
-                        itemBuilder.setDrmConfiguration(drmConfig)
+                        Log.e("PlayerManager", "Device does not support DRM scheme: $scheme")
+                        _state.update { it.copy(error = "This device does not support $scheme DRM.", isBuffering = false) }
+                        return
                     }
                 }
             }
@@ -297,9 +308,57 @@ class PlayerManager @Inject constructor(
             player.prepare()
             player.playWhenReady = true
             
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("PlayerManager", "Playback start failed: ${e.message}", e)
             _state.update { it.copy(error = "Playback failed: ${e.message}", isBuffering = false) }
+        }
+    }
+
+    /**
+     * Phase 2: Catchup (Archive) প্রোগ্রাম প্লে করার জন্য।
+     * [ChannelEntity] এর বদলে সরাসরি URL নেয়, যাতে EPG থেকে জেনারেট করা পুরনো প্রোগ্রামের লিংক চালানো যায়।
+     */
+    fun playCatchup(channel: ChannelEntity, catchupUrl: String) {
+        if (catchupUrl.isBlank()) return
+
+        retryJob?.cancel()
+        retriesLeft = MAX_RETRIES
+        networkRetries = 0
+        hlsHintApplied = false
+        restoredForMediaId = null
+
+        val (rawUrl, rawHeaders) = splitHeaders(catchupUrl)
+        val cleanHeaders = rawHeaders.filterKeys {
+            !it.equals("drmScheme", ignoreCase = true) && !it.equals("drmLicense", ignoreCase = true)
+        }
+        requestHeaders = cleanHeaders
+
+        _state.update {
+            it.copy(
+                current = channel,
+                isBuffering = true,
+                error = null,
+                position = 0L,
+                duration = 0L,
+                videoWidth = 0,
+                videoHeight = 0,
+                videoAspect = 0f,
+            )
+        }
+
+        try {
+            val item = MediaItem.Builder()
+                .setUri(rawUrl)
+                .setMediaId(channel.id.toString())
+                .build()
+
+            currentItem = item
+            player.setMediaItem(item)
+            player.prepare()
+            player.playWhenReady = true
+        } catch (e: Throwable) {
+            Log.e("PlayerManager", "Catchup start failed: ${e.message}", e)
+            _state.update { it.copy(error = "Catchup failed: ${e.message}", isBuffering = false) }
         }
     }
 
