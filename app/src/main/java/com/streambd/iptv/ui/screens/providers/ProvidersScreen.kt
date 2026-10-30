@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.theme.*
+import kotlinx.coroutines.delay // নতুন ইমপোর্ট
 
 @Composable
 fun ProvidersScreen(
@@ -143,7 +144,6 @@ fun ProvidersScreen(
     }
 }
 
-// প্রিমিয়াম Add M3U বাটন
 @Composable
 private fun PremiumAddButton(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
@@ -154,7 +154,7 @@ private fun PremiumAddButton(onClick: () -> Unit) {
             .clip(shape)
             .background(if (focused) Accent else Surface1)
             .border(1.dp, if (focused) Accent else Divider, shape)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.hasFocus } // এখানেও hasFocus করা হলো
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -186,7 +186,7 @@ private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
             .clip(shape)
             .background(if (focused) Surface1 else Panel)
             .border(2.dp, if (focused) Accent else Color.Transparent, shape)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.hasFocus }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -205,7 +205,6 @@ private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
     }
 }
 
-// নতুন ছোট এবং বক্স-শেপ ডায়ালগ (কিবোর্ড সমস্যা সমাধানসহ)
 @Composable
 private fun AddProviderDialog(
     onDismiss: () -> Unit,
@@ -222,22 +221,26 @@ private fun AddProviderDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false // ★ ১. imePadding কাজ করার জন্য মূল ফিক্স
+        )
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .imePadding() // কিবোর্ড ওপেন হলে ডায়ালগ উপরে তুলে ধরবে
+                .imePadding() // কিবোর্ড ওপেন হলে ডায়ালগ উপরে তুলবে
+                .navigationBarsPadding()
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 Modifier
-                    .fillMaxWidth(0.9f) // মোবাইলে স্ক্রিনের ৯০% জায়গা নেবে
-                    .widthIn(max = 340.dp) // ট্যাবে বা বড় স্ক্রিনে সর্বোচ্চ ৩৪০ ডিপি হবে
-                    .wrapContentHeight()
-                    .clip(RoundedCornerShape(4.dp)) // বক্স শেপ
+                    .widthIn(max = 340.dp) // ★ ২. আগে widthIn (max constraint)
+                    .fillMaxWidth() // তারপর fillMaxWidth (constraint এর ভেতরে থাকবে)
+                    .verticalScroll(rememberScrollState()) // ★ ৩. জায়গা কম হলে clip হবে না, scroll হবে
+                    .clip(RoundedCornerShape(4.dp))
                     .background(Panel)
                     .border(1.dp, Divider, RoundedCornerShape(4.dp))
                     .pointerInput(Unit) { detectTapGestures { } }
@@ -298,6 +301,7 @@ private fun AddProviderDialog(
     }
     
     LaunchedEffect(Unit) {
+        delay(100) // ★ ৪. Dialog window তৈরি হওয়ার আগে focus fail করছিল, তাই ১০০ms delay
         runCatching { nameFocus.requestFocus() }
     }
 }
@@ -321,7 +325,7 @@ private fun DialogTextButton(
             .clip(shape)
             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
             .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     )
@@ -339,12 +343,12 @@ private fun PremiumTextField(
     onDone: (() -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(4.dp) // বক্স শেপ
+    val shape = RoundedCornerShape(4.dp)
 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(48.dp) // ছোট এবং কম্প্যাক্ট সাইজ
+            .height(48.dp)
             .clip(shape)
             .background(Surface1)
             .border(
@@ -353,7 +357,7 @@ private fun PremiumTextField(
                 shape = shape
             )
             .focusRequester(focusRequester)
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged { isFocused = it.hasFocus } // ★ ৫. isFocused এর বদলে hasFocus
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
