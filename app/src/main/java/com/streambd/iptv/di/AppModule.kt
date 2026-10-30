@@ -6,6 +6,7 @@ import com.streambd.iptv.data.db.AppDatabase
 import com.streambd.iptv.data.db.ChannelDao
 import com.streambd.iptv.data.db.EpgDao
 import com.streambd.iptv.data.db.GroupDao
+import com.streambd.iptv.data.db.ProviderDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -27,6 +28,7 @@ object AppModule {
     @Provides fun provideChannelDao(db: AppDatabase): ChannelDao = db.channels()
     @Provides fun provideGroupDao(db: AppDatabase): GroupDao = db.groups()
     @Provides fun provideEpgDao(db: AppDatabase): EpgDao = db.epg()
+    @Provides fun provideProviderDao(db: AppDatabase): ProviderDao = db.providers() // নতুন
 
     @Provides @Singleton
     fun provideOkHttp(): OkHttpClient = OkHttpClient.Builder()
