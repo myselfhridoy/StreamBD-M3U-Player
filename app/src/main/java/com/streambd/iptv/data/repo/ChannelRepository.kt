@@ -62,11 +62,12 @@ class ChannelRepository @Inject constructor(
         }
     }
 
-    suspend fun import(parsedChannels: List<ParsedChannel>): Int {
+    // নতুন: isPremium প্যারামিটার যুক্ত করা হলো
+    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false): Int {
         if (parsedChannels.isEmpty()) return 0
 
         val rows = withContext(Dispatchers.Default) {
-            buildRows(parsedChannels)
+            buildRows(parsedChannels, isPremium)
         }
 
         db.withTransaction {
@@ -87,7 +88,8 @@ class ChannelRepository @Inject constructor(
 
     private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
 
-    private fun buildRows(parsed: List<ParsedChannel>): ImportRows {
+    // নতুন: isPremium প্যারামিটার
+    private fun buildRows(parsed: List<ParsedChannel>, isPremium: Boolean): ImportRows {
         val groupRows = LinkedHashMap<Long, GroupEntity>()
         val numbers = HashMap<ChannelKind, Int>()
         val occurrences = HashMap<String, Int>()
@@ -141,6 +143,7 @@ class ChannelRepository @Inject constructor(
                 episode = p.episode,
                 serieId = p.serieId,
                 serieTitle = p.serieTitle,
+                isPremium = isPremium, // নতুন: ডেটাবেসে সেভ হচ্ছে
             )
         }
         return ImportRows(groupRows.values.toList(), channelRows)
