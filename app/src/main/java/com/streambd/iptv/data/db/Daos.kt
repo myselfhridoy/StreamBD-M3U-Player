@@ -11,25 +11,10 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE kind = :kind AND groupId = :gid ORDER BY number")
     fun observeByKindAndGroup(kind: String, gid: Long): Flow<List<ChannelEntity>>
 
-    @Query(
-        """
-        SELECT * FROM channels
-        WHERE kind = :kind
-            AND name LIKE '%' || :q || '%' COLLATE NOCASE
-        ORDER BY number
-        LIMIT :limit
-        """,
-    )
+    @Query("SELECT * FROM channels WHERE kind = :kind AND name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY number LIMIT :limit")
     fun searchByKind(kind: String, q: String, limit: Int = 300): Flow<List<ChannelEntity>>
 
-    @Query(
-        """
-        SELECT * FROM channels
-        WHERE name LIKE '%' || :q || '%' COLLATE NOCASE
-        ORDER BY kind, number
-        LIMIT 300
-        """,
-    )
+    @Query("SELECT * FROM channels WHERE name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY kind, number LIMIT 300")
     fun searchAll(q: String): Flow<List<ChannelEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -41,19 +26,17 @@ interface ChannelDao {
     @Query("UPDATE channels SET isLocked = :locked WHERE id = :id")
     suspend fun setLocked(id: Long, locked: Boolean)
 
-    /** Re-import-এর আগে favorite/lock সংরক্ষণের জন্য। */
     @Query("SELECT id FROM channels WHERE isFavorite = 1")
     suspend fun favoriteIds(): List<Long>
 
     @Query("SELECT id FROM channels WHERE isLocked = 1")
     suspend fun lockedIds(): List<Long>
 
-    /** EPG ইমপোর্টে শুধু দরকারি চ্যানেল রাখার জন্য। */
     @Query("SELECT DISTINCT tvgId FROM channels WHERE tvgId IS NOT NULL AND tvgId != ''")
     suspend fun tvgIds(): List<String>
 
     @Query("DELETE FROM channels") suspend fun clear()
-
+    @Query("DELETE FROM channels WHERE providerId = :providerId") suspend fun clearByProvider(providerId: Long)
     @Query("SELECT COUNT(*) FROM channels") suspend fun count(): Int
 }
 
@@ -66,9 +49,9 @@ interface GroupDao {
     suspend fun upsert(items: List<GroupEntity>)
 
     @Query("DELETE FROM groups") suspend fun clear()
+    @Query("DELETE FROM groups WHERE providerId = :providerId") suspend fun clearByProvider(providerId: Long)
 }
 
-// নতুন: ইউজারের প্লেলিস্ট (Providers) ম্যানেজ করার Dao
 @Dao
 interface ProviderDao {
     @Query("SELECT * FROM providers ORDER BY createdAt DESC")
