@@ -45,8 +45,19 @@ class ProvidersViewModel @Inject constructor(
             var providerId = 0L
             try {
                 providerId = providerDao.insert(ProviderEntity(name = name.trim(), url = url.trim()))
-                sync.syncPlaylist(url.trim(), providerId = providerId)
-                onResult(true, null)
+                val synced = sync.syncPlaylist(url.trim(), providerId = providerId)
+                
+                // নতুন: হেডারে পাওয়া EPG ডাউনলোড করা
+                val epgMsg = if (synced.epgUrls.isEmpty()) {
+                    "Playlist added (${synced.channels} channels), but it has no EPG link."
+                } else try {
+                    val n = sync.syncEpg(synced.epgUrls.joinToString("\n"))
+                    "Added ${synced.channels} channels and $n guide entries."
+                } catch (e: SyncException) {
+                    "Added ${synced.channels} channels. TV guide error: ${e.message}"
+                }
+                
+                onResult(true, epgMsg)
             } catch (e: Exception) {
                 // সিঙ্ক ফেইল করলে ডেটাবেস থেকে ভাঙা প্রোভাইডারটি মুছে ফেলা হবে
                 if (providerId > 0L) {
@@ -83,10 +94,21 @@ class ProvidersViewModel @Inject constructor(
                 
                 if (provider.url != newUrl.trim()) {
                     channelRepo.clearProviderData(provider.id)
-                    sync.syncPlaylist(newUrl.trim(), providerId = provider.id)
+                    val synced = sync.syncPlaylist(newUrl.trim(), providerId = provider.id)
+                    
+                    // নতুন: এডিট করার সময়ও EPG ডাউনলোড হবে
+                    val epgMsg = if (synced.epgUrls.isEmpty()) {
+                        "Playlist updated (${synced.channels} channels). No EPG link found."
+                    } else try {
+                        val n = sync.syncEpg(synced.epgUrls.joinToString("\n"))
+                        "Updated ${synced.channels} channels and $n guide entries."
+                    } catch (e: SyncException) {
+                        "Updated ${synced.channels} channels. TV guide error: ${e.message}"
+                    }
+                    onResult(true, epgMsg)
+                } else {
+                    onResult(true, "Provider name updated.")
                 }
-                
-                onResult(true, null)
             } catch (e: Exception) {
                 onResult(false, (e as? SyncException)?.message ?: e.message ?: "Unknown error")
             } finally {
