@@ -29,7 +29,7 @@ class ProvidersViewModel @Inject constructor(
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
-    // নতুন: URL ভ্যালিডেশন এবং সিঙ্ক ফেইল করলে ডেটাবেস থেকে ডিলিট করার লজিক
+    // নতুন প্লেলিস্ট অ্যাড করার ফাংশন
     fun addProvider(name: String, url: String, onResult: (Boolean, String?) -> Unit) {
         if (name.isBlank() || url.isBlank()) { 
             onResult(false, "Name and URL are required")
@@ -47,17 +47,17 @@ class ProvidersViewModel @Inject constructor(
                 providerId = providerDao.insert(ProviderEntity(name = name.trim(), url = url.trim()))
                 val synced = sync.syncPlaylist(url.trim(), providerId = providerId)
                 
-                // নতুন: হেডারে পাওয়া EPG ডাউনলোড করা
-                val epgMsg = if (synced.epgUrls.isEmpty()) {
-                    "Playlist added (${synced.channels} channels), but it has no EPG link."
+                // নতুন: EPG ডাউনলোড এবং মেসেজ তৈরি
+                val msg = if (synced.epgUrls.isEmpty()) {
+                    "Added ${synced.channels} channels. No EPG link in playlist."
                 } else try {
                     val n = sync.syncEpg(synced.epgUrls.joinToString("\n"))
-                    "Added ${synced.channels} channels and $n guide entries."
+                    "Added ${synced.channels} channels, $n guide entries."
                 } catch (e: SyncException) {
-                    "Added ${synced.channels} channels. TV guide error: ${e.message}"
+                    "Added ${synced.channels} channels. TV guide: ${e.message}"
                 }
                 
-                onResult(true, epgMsg)
+                onResult(true, msg)
             } catch (e: Exception) {
                 // সিঙ্ক ফেইল করলে ডেটাবেস থেকে ভাঙা প্রোভাইডারটি মুছে ফেলা হবে
                 if (providerId > 0L) {
@@ -96,16 +96,15 @@ class ProvidersViewModel @Inject constructor(
                     channelRepo.clearProviderData(provider.id)
                     val synced = sync.syncPlaylist(newUrl.trim(), providerId = provider.id)
                     
-                    // নতুন: এডিট করার সময়ও EPG ডাউনলোড হবে
-                    val epgMsg = if (synced.epgUrls.isEmpty()) {
-                        "Playlist updated (${synced.channels} channels). No EPG link found."
+                    val msg = if (synced.epgUrls.isEmpty()) {
+                        "Updated ${synced.channels} channels. No EPG link found."
                     } else try {
                         val n = sync.syncEpg(synced.epgUrls.joinToString("\n"))
-                        "Updated ${synced.channels} channels and $n guide entries."
+                        "Updated ${synced.channels} channels, $n guide entries."
                     } catch (e: SyncException) {
-                        "Updated ${synced.channels} channels. TV guide error: ${e.message}"
+                        "Updated ${synced.channels} channels. TV guide: ${e.message}"
                     }
-                    onResult(true, epgMsg)
+                    onResult(true, msg)
                 } else {
                     onResult(true, "Provider name updated.")
                 }
