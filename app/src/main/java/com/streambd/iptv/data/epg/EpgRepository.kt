@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.epg
 
+import com.streambd.iptv.BuildConfig
 import com.streambd.iptv.data.db.EpgDao
 import com.streambd.iptv.data.db.ProgramEntity
 import kotlinx.coroutines.Dispatchers
@@ -51,8 +52,6 @@ class EpgRepository @Inject constructor(
             var minStart = Long.MAX_VALUE
             var maxEnd = 0L
             val feedIds = LinkedHashSet<String>()
-            
-            // ★ নতুন: কোন আইডি কত তারিখের ডেটা দিচ্ছে তা ট্র্যাক করার জন্য
             val matched = LinkedHashMap<String, LongArray>() // id -> [minStart, maxEnd, count]
 
             val request = Request.Builder()
@@ -75,7 +74,6 @@ class EpgRepository @Inject constructor(
                             val idOk = filter == null || channel in filter
                             if (idOk) {
                                 idMatched++
-                                // ★ নতুন: ম্যাচ হওয়া আইডির ডেটা রেকর্ড করা
                                 val m = matched.getOrPut(channel) { longArrayOf(Long.MAX_VALUE, 0L, 0L) }
                                 if (start < m[0]) m[0] = start
                                 if (end > m[1]) m[1] = end
@@ -87,19 +85,30 @@ class EpgRepository @Inject constructor(
                 }
             }
 
-            val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-                .apply { timeZone = TimeZone.getTimeZone("UTC") }
-            fun d(t: Long) = if (t == Long.MAX_VALUE || t == 0L) "n/a" else fmt.format(java.util.Date(t))
-
-            // ★ নতুন: ডায়াগনস্টিক মেসেজ আপডেট
+            // ★ নতুন: Debug ও Release এর জন্য আলাদা মেসেজ
             lastDiag = if (programs.isEmpty()) {
-                val sample = matched.entries.take(8).joinToString("; ") {
-                    "${it.key}: ${d(it.value[0])}..${d(it.value[1])} (${it.value[2]})"
+                if (BuildConfig.DEBUG) {
+                    // Debug: পূর্ণ টেকনিক্যাল ডিটেইলস
+                    val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+                        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                    fun d(t: Long) = if (t == Long.MAX_VALUE || t == 0L) "n/a" 
+                                     else fmt.format(java.util.Date(t))
+                    
+                    val sample = matched.entries.take(8).joinToString("; ") {
+                        "${it.key}: ${d(it.value[0])}..${d(it.value[1])} (${it.value[2]})"
+                    }
+                    val sony = listOf("155", "128", "312", "470").joinToString(",") { id ->
+                        "$id in feed=${id in feedIds}, in app=${filter?.contains(id)}"
+                    }
+                    "[matched ${matched.size} ids: $sample | $sony | now ${d(now)} UTC]"
+                } else {
+                    // Release: ছোট ও ইউজার-ফ্রেন্ডলি মেসেজ
+                    if (idMatched > 0) {
+                        "Feed has $total programs. $idMatched matched your channels but no data for the current time. The guide feed may be outdated — try again later."
+                    } else {
+                        "Feed has $total programs but none match your channels. The EPG source may not cover this playlist."
+                    }
                 }
-                val sony = listOf("155", "128", "312", "470").joinToString(",") { id ->
-                    "$id in feed=${id in feedIds}, in app=${filter?.contains(id)}"
-                }
-                "[matched ${matched.size} ids: $sample | $sony | now ${d(now)} UTC]"
             } else ""
 
             programs.chunked(2000).forEach { dao.upsert(it) }
