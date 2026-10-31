@@ -81,7 +81,6 @@ class PlaylistSync @Inject constructor(
         return Pair(allChannels, allEpgUrls.toList())
     }
 
-    // নতুন: providerId যুক্ত হলো
     suspend fun syncPlaylist(url: String, providerId: Long = 0L): SyncedPlaylist = playlistLock.withLock {
         val (channelsList, epgs) = fetchPlaylistData(url)
         if (channelsList.isEmpty()) throw SyncException("No channels found.")
@@ -117,7 +116,7 @@ class PlaylistSync @Inject constructor(
         if (allChannels.isEmpty()) throw SyncException("No channels found in any of the assigned playlists.")
 
         val count = try {
-            channels.import(allChannels, isPremium, providerId = 0L) // সার্ভার ডেটার providerId = 0
+            channels.import(allChannels, isPremium, providerId = 0L)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -165,7 +164,10 @@ class PlaylistSync @Inject constructor(
             }
         }
 
-        if (total == 0) throw firstError ?: SyncException("The guide was downloaded, but no programmes matched.")
+        // ★ নতুন: এরর মেসেজের সাথে epg.lastDiag যুক্ত করা হলো
+        if (total == 0) throw firstError 
+            ?: SyncException("The guide was downloaded, but no programmes matched. ${epg.lastDiag}")
+            
         prefs.edit().putLong(KEY_EPG_OK, System.currentTimeMillis()).apply()
         return total
     }
