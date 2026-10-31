@@ -25,7 +25,6 @@ class EpgRepository @Inject constructor(
     private val dao: EpgDao,
     private val http: OkHttpClient,
 ) {
-    // ★ নতুন: ডায়াগনস্টিক মেসেজ রাখার জন্য
     @Volatile var lastDiag: String = ""
 
     fun observeWindow(tvgIds: List<String>, from: Long, to: Long): Flow<List<ProgramEntity>> {
@@ -39,9 +38,6 @@ class EpgRepository @Inject constructor(
     suspend fun hasContent(): Boolean = dao.count() > 0
     suspend fun clear() = dao.clear()
 
-    /**
-     * XMLTV (প্লেইন বা .gz) ডাউনলোড করে [এখন-৬ঘ, এখন+৪৮ঘ] জানালার প্রোগ্রাম সেভ করে।
-     */
     suspend fun importFromUrl(url: String, tvgIds: Set<String>? = null): Int =
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
@@ -50,17 +46,19 @@ class EpgRepository @Inject constructor(
             val filter = tvgIds?.takeIf { it.isNotEmpty() }
             val programs = ArrayList<ProgramEntity>(8192)
 
-            // ★ নতুন: ডায়াগনস্টিক ভেরিয়েবল
             var total = 0
             var idMatched = 0
             var minStart = Long.MAX_VALUE
             var maxEnd = 0L
             val feedIds = LinkedHashSet<String>()
+            
+            // ★ নতুন: কোন আইডি কত তারিখের ডেটা দিচ্ছে তা ট্র্যাক করার জন্য
+            val matched = LinkedHashMap<String, LongArray>() // id -> [minStart, maxEnd, count]
 
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", "StreamBD/1.0")
-                .header("Cache-Control", "no-cache") // ★ নতুন: ক্যাশ এড়াতে
+                .header("Cache-Control", "no-cache")
                 .build()
             http.newCall(request).execute().use { response ->
                 check(response.isSuccessful) { "HTTP ${response.code} for EPG feed" }
@@ -73,23 +71,35 @@ class EpgRepository @Inject constructor(
                             if (feedIds.size < 5000) feedIds.add(channel)
                             if (start < minStart) minStart = start
                             if (end > maxEnd) maxEnd = end
+                            
                             val idOk = filter == null || channel in filter
-                            if (idOk) idMatched++
+                            if (idOk) {
+                                idMatched++
+                                // ★ নতুন: ম্যাচ হওয়া আইডির ডেটা রেকর্ড করা
+                                val m = matched.getOrPut(channel) { longArrayOf(Long.MAX_VALUE, 0L, 0L) }
+                                if (start < m[0]) m[0] = start
+                                if (end > m[1]) m[1] = end
+                                m[2]++
+                            }
                             end >= from && start <= to && idOk
                         },
                     ) { program -> programs += program }
                 }
             }
 
-            // ★ নতুন: ডায়াগনস্টিক মেসেজ তৈরি
             val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
                 .apply { timeZone = TimeZone.getTimeZone("UTC") }
             fun d(t: Long) = if (t == Long.MAX_VALUE || t == 0L) "n/a" else fmt.format(java.util.Date(t))
 
+            // ★ নতুন: ডায়াগনস্টিক মেসেজ আপডেট
             lastDiag = if (programs.isEmpty()) {
-                "[feed: $total entries, ${feedIds.size} ids e.g. ${feedIds.take(5)}; " +
-                "dates ${d(minStart)} to ${d(maxEnd)} UTC; id matches: $idMatched; " +
-                "now ${d(now)} UTC; your ids e.g. ${filter?.take(5)}]"
+                val sample = matched.entries.take(8).joinToString("; ") {
+                    "${it.key}: ${d(it.value[0])}..${d(it.value[1])} (${it.value[2]})"
+                }
+                val sony = listOf("155", "128", "312", "470").joinToString(",") { id ->
+                    "$id in feed=${id in feedIds}, in app=${filter?.contains(id)}"
+                }
+                "[matched ${matched.size} ids: $sample | $sony | now ${d(now)} UTC]"
             } else ""
 
             programs.chunked(2000).forEach { dao.upsert(it) }
@@ -97,9 +107,6 @@ class EpgRepository @Inject constructor(
             programs.size
         }
 
-    /**
-     * এখন চলছে ও পরেরটা। shiftMinutes ধনাত্মক হলে প্রোগ্রাম সেই পরিমাণ পরে সরে।
-     */
     suspend fun nowNext(tvgId: String, shiftMinutes: Int = 0): NowNext? {
         if (tvgId.isBlank()) return null
         val now = System.currentTimeMillis()
