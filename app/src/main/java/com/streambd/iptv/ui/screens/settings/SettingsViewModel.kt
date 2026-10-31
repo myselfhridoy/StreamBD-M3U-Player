@@ -93,6 +93,14 @@ class SettingsViewModel @Inject constructor(
             var epgError: String? = null
             var hasError = false
 
+            // ★ নতুন: সার্ভার থেকে সর্বশেষ প্লেলিস্ট তালিকা আনুন
+            // force = true দেওয়ার কারণে ৬/১ ঘণ্টার টাইম লিমিট বাইপাস হবে
+            try {
+                activation.revalidateIfNeeded(force = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Force revalidate failed: ${e.message}")
+            }
+
             val active = activation.current() as? ActivationState.Active
             
             // ১. সার্ভারের প্লেলিস্ট আপডেট করা (যদি থাকে)
