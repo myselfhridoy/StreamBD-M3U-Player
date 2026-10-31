@@ -43,7 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val activation: ActivationRepository,
     private val epg: EpgRepository,
     private val sync: PlaylistSync,
-    private val providerDao: ProviderDao, // নতুন: ইউজারের প্লেলিস্ট পেতে
+    private val providerDao: ProviderDao,
     @ApplicationContext private val ctx: Context,
 ) : ViewModel() {
 
@@ -118,13 +118,16 @@ class SettingsViewModel @Inject constructor(
             }
 
             // ২. ইউজারের নিজের সব প্লেলিস্ট আপডেট করা
+            val providerEpgUrls = linkedSetOf<String>()
+            var providerChannels = 0
             try {
                 val userProviders = providerDao.getAll()
                 for (p in userProviders) {
                     try {
-                        // isPremium = false এবং 해당 providerId দিয়ে সিঙ্ক
                         val synced = sync.syncPlaylist(p.url, providerId = p.id)
                         totalChannels += synced.channels
+                        providerChannels += synced.channels
+                        providerEpgUrls.addAll(synced.epgUrls)
                     } catch (e: Exception) {
                         Log.w(TAG, "User playlist ${p.name} sync failed: ${e.message}")
                         hasError = true
@@ -133,6 +136,24 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch user providers: ${e.message}")
                 hasError = true
+            }
+
+            // ২.৫ সব চ্যানেল সেভ হওয়ার পর Providers-এর EPG একবার ডাউনলোড
+            if (providerChannels > 0) {
+                if (providerEpgUrls.isEmpty()) {
+                    if (epgError == null && totalPrograms == 0) {
+                        epgError = "Your provider playlist has no EPG link (x-tvg-url)."
+                    }
+                } else {
+                    try {
+                        totalPrograms += sync.syncEpg(providerEpgUrls.joinToString("\n"))
+                        epgError = null // এখন গাইড এসেছে
+                    } catch (e: SyncException) {
+                        epgError = e.message
+                    } catch (e: Exception) {
+                        epgError = e.message ?: "EPG download failed."
+                    }
+                }
             }
 
             loadLastUpdateTime()
