@@ -6,11 +6,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -29,6 +30,10 @@ import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
 import com.streambd.iptv.ui.screens.vod.VodScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
 object Routes {
@@ -52,16 +57,20 @@ object Routes {
 class AppNavViewModel @Inject constructor(
     val activationRepository: ActivationRepository,
     val playerManager: PlayerManager
-) : ViewModel()
+) : ViewModel() {
+    // ★ নতুন: Nullable StateFlow তৈরি করা হলো, যাতে initial = null দেওয়া যায়
+    val activationState: StateFlow<ActivationState?> = activationRepository.state
+        .map { it as ActivationState? }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+}
 
 @Composable
 fun AppNav() {
     val nav = rememberNavController()
     val navViewModel: AppNavViewModel = hiltViewModel()
     
-    // ★ নতুন ফিক্স: initial = null (DataStore থেকে আসল ভ্যালু আসা পর্যন্ত অপেক্ষা করবে)
-    val activationState by navViewModel.activationRepository.state
-        .collectAsState<ActivationState?>(initial = null)
+    // ★ নতুন: initial = null এর বদলে সরাসরি nullable StateFlow কালেক্ট করা হচ্ছে
+    val activationState by navViewModel.activationState.collectAsStateWithLifecycle()
 
     // গ্লোবাল চেক: অ্যাক্টিভেশন না থাকলে বা এক্সপায়ার হলে সরাসরি Activation স্ক্রিনে পাঠাবে
     LaunchedEffect(activationState) {
