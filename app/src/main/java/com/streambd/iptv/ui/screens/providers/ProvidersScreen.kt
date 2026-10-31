@@ -1,5 +1,6 @@
 package com.streambd.iptv.ui.screens.providers
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +32,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -55,11 +57,12 @@ fun ProvidersScreen(
 ) {
     val providers by vm.providers.collectAsStateWithLifecycle()
     val isSyncing by vm.isSyncing.collectAsStateWithLifecycle()
+    val context = LocalContext.current // নতুন: Toast এর জন্য
 
     var showDialog by remember { mutableStateOf(false) }
     var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) }
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
-    var addError by remember { mutableStateOf<String?>(null) } // নতুন: এরর স্টেট
+    var addError by remember { mutableStateOf<String?>(null) }
     
     Column(
         Modifier
@@ -84,7 +87,7 @@ fun ProvidersScreen(
             
             PremiumAddButton(onClick = { 
                 providerToEdit = null 
-                addError = null // ডায়ালগ ওপেন হলে আগের এরর ক্লিয়ার
+                addError = null 
                 showDialog = true 
             })
         }
@@ -110,7 +113,7 @@ fun ProvidersScreen(
                         provider = provider,
                         onEdit = { 
                             providerToEdit = provider
-                            addError = null // এডিট ওপেন হলে এরর ক্লিয়ার
+                            addError = null 
                             showDialog = true
                         },
                         onDelete = { providerToDelete = provider }
@@ -137,25 +140,32 @@ fun ProvidersScreen(
     if (showDialog) {
         ProviderDialog(
             initialProvider = providerToEdit,
-            error = addError, // নতুন: এরর পাস করা হচ্ছে
+            error = addError,
             onDismiss = { 
                 showDialog = false 
-                addError = null // ডায়ালগ বন্ধ হলে এরর ক্লিয়ার
+                addError = null
             },
             onSave = { name, url ->
-                addError = null // সাবমিট করার সময় এরর ক্লিয়ার
+                addError = null
                 if (providerToEdit == null) {
                     vm.addProvider(name, url) { success, msg ->
                         if (success) {
                             showDialog = false
+                            // নতুন: সাকসেস মেসেজ Toast-এ দেখানো হবে (EPG details সহ)
+                            if (!msg.isNullOrBlank()) {
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
                         } else {
-                            addError = msg // ফেইল করলে এরর সেট
+                            addError = msg
                         }
                     }
                 } else {
                     vm.updateProvider(providerToEdit!!, name, url) { success, msg ->
                         if (success) {
                             showDialog = false
+                            if (!msg.isNullOrBlank()) {
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
                         } else {
                             addError = msg
                         }
@@ -294,7 +304,7 @@ private fun ProviderGridCard(
 @Composable
 private fun ProviderDialog(
     initialProvider: ProviderEntity?,
-    error: String?, // নতুন: এরর প্যারামিটার
+    error: String?,
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit
 ) {
@@ -368,7 +378,6 @@ private fun ProviderDialog(
                     }
                 )
                 
-                // নতুন: এরর মেসেজ দেখানোর লজিক
                 error?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(
