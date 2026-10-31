@@ -23,7 +23,7 @@ import com.streambd.iptv.ui.screens.HomeMenuScreen
 import com.streambd.iptv.ui.screens.activation.ActivationScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
 import com.streambd.iptv.ui.screens.live.LiveScreen
-import com.streambd.iptv.ui.screens.providers.ProvidersScreen // নতুন ইমপোর্ট
+import com.streambd.iptv.ui.screens.providers.ProvidersScreen
 import com.streambd.iptv.ui.screens.search.SearchScreen
 import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
@@ -34,7 +34,7 @@ import javax.inject.Inject
 object Routes {
     const val SPLASH = "splash"
     const val HOME = "home"
-    const val PROVIDERS = "providers" // নতুন রুট
+    const val PROVIDERS = "providers"
     const val LIVE_BASE = "live"
     const val LIVE = "live?channelId={channelId}"
     fun live(channelId: Long = -1L) = "live?channelId=$channelId"
@@ -59,22 +59,24 @@ fun AppNav() {
     val nav = rememberNavController()
     val navViewModel: AppNavViewModel = hiltViewModel()
     
-    // collectAsStateWithLifecycle এর বদলে collectAsState ব্যবহার করা হলো (initialValue সহ)
-    val activationState by navViewModel.activationRepository.state.collectAsState(
-        initial = ActivationState.NotActivated
-    )
+    // ★ নতুন ফিক্স: initial = null (DataStore থেকে আসল ভ্যালু আসা পর্যন্ত অপেক্ষা করবে)
+    val activationState by navViewModel.activationRepository.state
+        .collectAsState<ActivationState?>(initial = null)
 
-    // গ্লোবাল চেক: অ্যাক্টিভেশন না থাকলে বা এক্সপায়ার হলে সরাসরি Activation স্ক্রিনে পাঠাবে
+    // গ্লোবাল চেক: অ্যাক্টিভেশন না থাকলে বা এক্সপায়ার হলে সরাসরি Activation স্ক্রিনে পাঠাবে
     LaunchedEffect(activationState) {
-        val state = activationState
+        // ★ নতুন: এখনো লোড হয়নি (null), তাই কিছুই করবে না
+        val state = activationState ?: return@LaunchedEffect
+        
         val currentRoute = nav.currentBackStackEntry?.destination?.route
-        val isExpired = (state is ActivationState.Active) && navViewModel.activationRepository.isExpired(state)
+        val isExpired = (state is ActivationState.Active) && 
+                        navViewModel.activationRepository.isExpired(state)
 
         if ((state is ActivationState.NotActivated || isExpired) && 
             currentRoute != Routes.ACTIVATION && 
             currentRoute != Routes.SPLASH) {
             
-            // চলমান প্লেয়ার বন্ধ করে দেওয়া
+            // চলমান প্লেয়ার বন্ধ করে দেওয়া
             navViewModel.playerManager.stopAndClear()
             
             nav.navigate(Routes.ACTIVATION) {
@@ -121,7 +123,6 @@ fun AppNav() {
             )
         }
         
-        // নতুন Providers স্ক্রিন
         composable(Routes.PROVIDERS) {
             ProvidersScreen(
                 onBack = { nav.popBackStack() }
