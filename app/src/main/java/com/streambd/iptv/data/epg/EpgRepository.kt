@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,6 +25,9 @@ class EpgRepository @Inject constructor(
     private val dao: EpgDao,
     private val http: OkHttpClient,
 ) {
+    // ★ নতুন: ডায়াগনস্টিক মেসেজ রাখার জন্য
+    @Volatile var lastDiag: String = ""
+
     fun observeWindow(tvgIds: List<String>, from: Long, to: Long): Flow<List<ProgramEntity>> {
         val distinctIds = tvgIds.distinct()
         if (distinctIds.isEmpty()) return flowOf(emptyList())
@@ -35,9 +41,6 @@ class EpgRepository @Inject constructor(
 
     /**
      * XMLTV (প্লেইন বা .gz) ডাউনলোড করে [এখন-৬ঘ, এখন+৪৮ঘ] জানালার প্রোগ্রাম সেভ করে।
-     *
-     * @param tvgIds দিলে শুধু এই চ্যানেলের প্রোগ্রাম রাখা হয়। null বা খালি হলে সব।
-     * @return সেভ হওয়া প্রোগ্রাম সংখ্যা। ০ হলে ফিডে জানালার মধ্যে মিলে যাওয়া কিছু নেই।
      */
     suspend fun importFromUrl(url: String, tvgIds: Set<String>? = null): Int =
         withContext(Dispatchers.IO) {
@@ -47,9 +50,17 @@ class EpgRepository @Inject constructor(
             val filter = tvgIds?.takeIf { it.isNotEmpty() }
             val programs = ArrayList<ProgramEntity>(8192)
 
+            // ★ নতুন: ডায়াগনস্টিক ভেরিয়েবল
+            var total = 0
+            var idMatched = 0
+            var minStart = Long.MAX_VALUE
+            var maxEnd = 0L
+            val feedIds = LinkedHashSet<String>()
+
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", "StreamBD/1.0")
+                .header("Cache-Control", "no-cache") // ★ নতুন: ক্যাশ এড়াতে
                 .build()
             http.newCall(request).execute().use { response ->
                 check(response.isSuccessful) { "HTTP ${response.code} for EPG feed" }
@@ -58,11 +69,28 @@ class EpgRepository @Inject constructor(
                     XmltvParser.parse(
                         input,
                         accept = { channel, start, end ->
-                            end >= from && start <= to && (filter == null || channel in filter)
+                            total++
+                            if (feedIds.size < 5000) feedIds.add(channel)
+                            if (start < minStart) minStart = start
+                            if (end > maxEnd) maxEnd = end
+                            val idOk = filter == null || channel in filter
+                            if (idOk) idMatched++
+                            end >= from && start <= to && idOk
                         },
                     ) { program -> programs += program }
                 }
             }
+
+            // ★ নতুন: ডায়াগনস্টিক মেসেজ তৈরি
+            val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+                .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            fun d(t: Long) = if (t == Long.MAX_VALUE || t == 0L) "n/a" else fmt.format(java.util.Date(t))
+
+            lastDiag = if (programs.isEmpty()) {
+                "[feed: $total entries, ${feedIds.size} ids e.g. ${feedIds.take(5)}; " +
+                "dates ${d(minStart)} to ${d(maxEnd)} UTC; id matches: $idMatched; " +
+                "now ${d(now)} UTC; your ids e.g. ${filter?.take(5)}]"
+            } else ""
 
             programs.chunked(2000).forEach { dao.upsert(it) }
             dao.pruneBefore(from)
@@ -77,7 +105,6 @@ class EpgRepository @Inject constructor(
         val now = System.currentTimeMillis()
         val shiftMs = shiftMinutes * 60_000L
 
-        // end + shift > now  ⇔  end > now - shift। প্রথম সারিই চলমান প্রোগ্রাম।
         val rows = dao.windowFor(tvgId, now - shiftMs, limit = 6)
         if (rows.isEmpty()) return null
 
