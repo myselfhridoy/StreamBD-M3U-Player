@@ -16,12 +16,10 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         
-        // 🔒 Base64 এনকোডেড API URL
         buildConfigField("String", "ENCODED_API", "\"aHR0cHM6Ly9zdHJlYW1iZC1hY3RpdmF0aW9uLXNlcnZlci5zdHJlYW1iZGlwdHYud29ya2Vycy5kZXY=\"")
         buildConfigField("boolean", "ACTIVATION_ENABLED", "true")
     }
 
-    // 👇 নতুন: রিলিজ সাইনিং কনফিগারেশন
     signingConfigs {
         create("release") {
             val ks = System.getenv("KEYSTORE_PATH")
@@ -42,7 +40,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 👇 নতুন: রিলিজ সাইনিং কনফিগ অ্যাসাইন
             if (System.getenv("KEYSTORE_PATH") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -72,7 +69,10 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
+    
+    // ★ ফিক্স: 2.8.2 থেকে 2.7.0 এ ডাউনগ্রেড করা হলো
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     implementation("androidx.compose.ui:ui")
