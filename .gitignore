@@ -8,3 +8,7 @@ captures/
 .cxx/
 *.apk
 *.keystore
+
+release.jks
+*.jks
+keystore_base64.txt
