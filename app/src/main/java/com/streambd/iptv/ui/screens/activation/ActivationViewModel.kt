@@ -2,6 +2,7 @@ package com.streambd.iptv.ui.screens.activation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streambd.iptv.BuildConfig // ★ নতুন ইমপোর্ট
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.activation.PlaylistData
@@ -56,13 +57,11 @@ class ActivationViewModel @Inject constructor(
             try {
                 repo.activate(activationCode)
                     .onSuccess { active ->
-                        // নতুন: অ্যাক্টিভেশন সফল হলে শুধুমাত্র সার্ভারের (providerId = 0L) পুরোনো প্লেলিস্ট মুছবে
-                        // ইউজারের নিজের প্লেলিস্টগুলো ডেটাবেসে থেকে যাবে।
                         try {
-                            channelRepo.clearProviderData(0L) // আগে ছিল clearAll()
+                            channelRepo.clearProviderData(0L)
                             epgRepo.clear() 
                         } catch (e: Exception) {
-                            // ডেটা ক্লিয়ার করতে সমস্যা হলেও অ্যাক্টিভেশন সফল থাকবে
+                            // ডেটা ক্লিয়ার করতে সমস্যা হলেও অ্যাক্টিভেশন সফল থাকবে
                         }
                         
                         _success.value = active
@@ -78,6 +77,9 @@ class ActivationViewModel @Inject constructor(
      * লোকাল সেটআপ: আগে লিংক নামিয়ে যাচাই ও ইমপোর্ট করে, তারপর সেভ করে।
      */
     fun activateWithPlaylistUrl(playlistUrl: String, epgUrl: String) {
+        // ★ নতুন: রিলিজ বিল্ডে লোকাল মোড বন্ধ
+        if (!BuildConfig.DEBUG) return
+        
         if (_busy.value) return
         val playlist = playlistUrl.trim()
         val epg = epgUrl.trim()
