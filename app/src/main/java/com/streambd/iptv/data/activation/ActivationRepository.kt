@@ -13,7 +13,7 @@ private const val TAG = "ActivationRepo"
 class ActivationRepository @Inject constructor(
     private val store: ActivationStore,
     private val api: ActivationApi,
-    private val clock: TrustedClock, // ★ ট্রাস্টেড ক্লক ইনজেক্ট করা হলো
+    private val clock: TrustedClock,
 ) {
     companion object {
         const val LOCAL_CODE = "LOCAL"
@@ -30,8 +30,9 @@ class ActivationRepository @Inject constructor(
     suspend fun deviceId(): String = store.deviceId()
     suspend fun clear() = store.clear()
 
+    // ★ নতুন: রিলিজে লোকাল মোড বন্ধ
     private fun isLocal(code: String): Boolean =
-        code == LOCAL_CODE || code == LEGACY_LOCAL_CODE
+        BuildConfig.DEBUG && (code == LOCAL_CODE || code == LEGACY_LOCAL_CODE)
 
     fun isLocal(active: ActivationState.Active): Boolean = isLocal(active.code)
 
@@ -41,7 +42,6 @@ class ActivationRepository @Inject constructor(
         }
         return try {
             val response = api.activate(code, store.deviceId())
-            
             clock.sync(response.serverTime)
             
             store.saveActive(
@@ -75,6 +75,8 @@ class ActivationRepository @Inject constructor(
 
     /** Server ছাড়া সরাসরি playlist URL দিয়ে সেটআপ। মেয়াদ কখনও শেষ হয় না (expiresAt = 0). */
     suspend fun activateLocally(playlistUrl: String, epgUrl: String): ActivationState.Active {
+        // ★ নতুন: রিলিজে লোকাল মোড বন্ধ
+        check(BuildConfig.DEBUG) { "Local mode is disabled" }
         val p = PlaylistData("Local Playlist", playlistUrl, epgUrl)
         store.saveActive(LOCAL_CODE, 0L, listOf(p))
         return ActivationState.Active(LOCAL_CODE, 0L, listOf(p))
