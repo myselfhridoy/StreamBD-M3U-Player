@@ -16,12 +16,22 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         
-        // 🔒 সিকিউরিটি: Activation API URL-টি Base64 এ এনকোড করা হলো 
-        // (যাতে APK ডিকম্পাইল করলেও সহজে URL খুঁজে না পাওয়া যায়)
+        // 🔒 Base64 এনকোডেড API URL
         buildConfigField("String", "ENCODED_API", "\"aHR0cHM6Ly9zdHJlYW1iZC1hY3RpdmF0aW9uLXNlcnZlci5zdHJlYW1iZGlwdHYud29ya2Vycy5kZXY=\"")
-        
-        // অ্যাক্টিভেশন এনাবল করা হলো
         buildConfigField("boolean", "ACTIVATION_ENABLED", "true")
+    }
+
+    // 👇 নতুন: রিলিজ সাইনিং কনফিগারেশন
+    signingConfigs {
+        create("release") {
+            val ks = System.getenv("KEYSTORE_PATH")
+            if (ks != null) {
+                storeFile = file(ks)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -32,6 +42,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 👇 নতুন: রিলিজ সাইনিং কনফিগ অ্যাসাইন
+            if (System.getenv("KEYSTORE_PATH") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -88,11 +102,8 @@ dependencies {
     // Media3
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
-    
-    // DASH (MPEG-DASH) এবং SmoothStreaming সাপোর্ট
     implementation("androidx.media3:media3-exoplayer-dash:1.3.1")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.3.1")
-    
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
 
