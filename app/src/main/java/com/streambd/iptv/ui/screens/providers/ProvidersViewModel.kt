@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.db.ProviderEntity
+import com.streambd.iptv.data.ftp.FtpBrowser
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
@@ -20,7 +21,8 @@ import javax.inject.Inject
 class ProvidersViewModel @Inject constructor(
     private val providerDao: ProviderDao,
     private val sync: PlaylistSync,
-    private val channelRepo: ChannelRepository
+    private val channelRepo: ChannelRepository,
+    private val ftpBrowser: FtpBrowser
 ) : ViewModel() {
 
     val providers: StateFlow<List<ProviderEntity>> = providerDao.observeAll()
@@ -28,6 +30,52 @@ class ProvidersViewModel @Inject constructor(
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val defaultBusy = "Downloading channels..."
+    private val _busyMessage = MutableStateFlow(defaultBusy)
+    val busyMessage: StateFlow<String> = _busyMessage.asStateFlow()
+
+    /** FTP/h5ai সার্ভার সেভ: আগে ঠিকানা খোলে কিনা যাচাই, তারপর সেভ। কোনো চ্যানেল ডাউনলোড হয় না। */
+    fun addFtpServer(name: String, address: String, onResult: (Boolean, String?) -> Unit) {
+        saveFtp(null, name, address, onResult)
+    }
+
+    fun updateFtpServer(provider: ProviderEntity, name: String, address: String, onResult: (Boolean, String?) -> Unit) {
+        saveFtp(provider, name, address, onResult)
+    }
+
+    private fun saveFtp(existing: ProviderEntity?, name: String, address: String, onResult: (Boolean, String?) -> Unit) {
+        if (name.isBlank() || address.isBlank()) {
+            onResult(false, "Name and address are required")
+            return
+        }
+        val url = ftpBrowser.normalizeAddress(address)
+        if (url == null) {
+            onResult(false, "Enter a valid server address")
+            return
+        }
+        viewModelScope.launch {
+            _busyMessage.value = "Connecting to server..."
+            _isSyncing.value = true
+            try {
+                ftpBrowser.list(url, force = true) // পৌঁছানো যায় কিনা দেখা
+                if (existing == null) {
+                    providerDao.insert(ProviderEntity(name = name.trim(), url = url, type = "FTP"))
+                    onResult(true, "FTP server added.")
+                } else {
+                    providerDao.update(existing.copy(name = name.trim(), url = url))
+                    onResult(true, "FTP server updated.")
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Could not connect")
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
 
     // নতুন প্লেলিস্ট অ্যাড করার ফাংশন
     fun addProvider(name: String, url: String, onResult: (Boolean, String?) -> Unit) {
