@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.epg.NowNext
+import com.streambd.iptv.data.settings.formatSeekStep // ★ নতুন ইমপোর্ট
 import com.streambd.iptv.player.PlayerUiState
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.channels.BufferOverflow
@@ -172,6 +173,10 @@ fun FullscreenPlayer(
 
     // ★ নতুন: Buffer Time বদলালে নতুন প্লেয়ারে সিক হওয়ার জন্য rememberUpdatedState
     val playerNow by rememberUpdatedState(player)
+    
+    // ★ নতুন: ডাবল-ট্যাপের ল্যাম্বডায় পুরনো মান আসা রোধ করতে
+    val stepNow by rememberUpdatedState(state.seekStepMs)
+
     fun seekBy(deltaMs: Long) {
         val p = playerNow
         val duration = p.duration
@@ -184,11 +189,11 @@ fun FullscreenPlayer(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // ★ নতুন: ডাবল-ট্যাপে ফরওয়ার্ড/রিওয়াইন্ড (লাইভে বন্ধ, শুধু মুভি/সিরিজে)
+            // ★ ডাবল-ট্যাপে ফরওয়ার্ড/রিওয়াইন্ড (লাইভে বন্ধ, শুধু মুভি/সিরিজে)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = if (onStep == null) { offset ->
-                        if (!listOpenNow) seekBy(if (offset.x > size.width / 2f) 10_000L else -10_000L)
+                        if (!listOpenNow) seekBy(if (offset.x > size.width / 2f) stepNow else -stepNow)
                     } else null,
                     onTap = {
                         when {
@@ -230,9 +235,9 @@ fun FullscreenPlayer(
                     Key.ChannelDown -> { stepOrSeek(-1); return@onPreviewKeyEvent true }
                     // ★ নতুন: রিমোটের FF/REW কী হ্যান্ডলিং
                     Key.MediaFastForward, Key.MediaSkipForward ->
-                        if (onStep == null) { seekBy(30_000L); return@onPreviewKeyEvent true }
+                        if (onStep == null) { seekBy(state.seekStepMs); return@onPreviewKeyEvent true }
                     Key.MediaRewind, Key.MediaSkipBackward ->
-                        if (onStep == null) { seekBy(-10_000L); return@onPreviewKeyEvent true }
+                        if (onStep == null) { seekBy(-state.seekStepMs); return@onPreviewKeyEvent true }
                     else -> Unit
                 }
 
@@ -253,14 +258,15 @@ fun FullscreenPlayer(
                         if (inControls) {
                             false
                         } else {
-                            // ★ নতুন: লং-প্রেস করলে সিকিং স্পিড বাড়বে (10s -> 30s -> 60s)
+                            // ★ নতুন: লং-প্রেস করলে সিকিং স্পিড বাড়বে (Base -> x3 -> x6)
                             if (onStep == null) {
                                 val count = event.nativeKeyEvent.repeatCount
+                                val base = state.seekStepMs
                                 val stepMs = when {
-                                    count > 20 -> 60_000L
-                                    count > 8 -> 30_000L
-                                    else -> 10_000L
-                                }
+                                    count > 20 -> base * 6
+                                    count > 8 -> base * 3
+                                    else -> base
+                                }.coerceAtMost(600_000L)
                                 seekBy(if (event.key == Key.DirectionRight) stepMs else -stepMs)
                             } else if (!repeat) {
                                 stepOrSeek(if (event.key == Key.DirectionRight) 1 else -1)
@@ -323,7 +329,8 @@ fun FullscreenPlayer(
                     isLocked = isLocked,
                     playFocus = controlsFocus,
                     onSeek = { ms -> player.seekTo(ms); tick++ },
-                    onSeekBy = { seekBy(it) }, // ★ নতুন
+                    // ★ নতুন: মাল্টিপ্লায়ার (-1L বা 1L) পাস করা হচ্ছে
+                    onSeekBy = { seekBy(it * state.seekStepMs) }, 
                     onTogglePlay = { tick++; onTogglePlay() },
                     onToggleFavorite = { tick++; onToggleFavorite() },
                     onToggleLock = { tick++; onToggleLock() },
@@ -370,7 +377,7 @@ private fun ControlsPanel(
     isLocked: Boolean,
     playFocus: FocusRequester,
     onSeek: (Long) -> Unit,
-    onSeekBy: (Long) -> Unit, // ★ নতুন প্যারামিটার
+    onSeekBy: (Long) -> Unit, // ★ নতুন: মাল্টিপ্লায়ার (-1L বা 1L) নেবে
     onTogglePlay: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleLock: () -> Unit,
@@ -420,11 +427,17 @@ private fun ControlsPanel(
                 onClick = onTogglePlay,
             )
             
-            // ★ নতুন: Replay10 এবং Forward10 বাটন
+            // ★ নতুন: ডাইনামিক FastRewind / FastForward বাটন
             if (state.duration > 0L) {
                 Spacer(Modifier.width(4.dp))
-                ControlButton(Icons.Filled.Replay10, "Back 10 seconds") { onSeekBy(-10_000L) }
-                ControlButton(Icons.Filled.Forward10, "Forward 10 seconds") { onSeekBy(10_000L) }
+                ControlButton(Icons.Filled.FastRewind, "Rewind") { onSeekBy(-1L) }
+                Text(
+                    formatSeekStep(state.seekStepMs.toInt()), 
+                    color = TextMuted, 
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+                ControlButton(Icons.Filled.FastForward, "Fast forward") { onSeekBy(1L) }
                 Spacer(Modifier.width(8.dp))
                 
                 ThinSeekBar(
