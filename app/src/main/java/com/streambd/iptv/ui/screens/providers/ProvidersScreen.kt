@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
@@ -88,21 +89,20 @@ fun ProvidersScreen(
                 fontWeight = FontWeight.Bold
             )
             
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PremiumAddButton(label = "Add FTP", onClick = {
-                    providerToEdit = null
-                    addError = null
-                    dialogIsFtp = true
-                    showDialog = true
-                })
-                Spacer(Modifier.width(8.dp))
-                PremiumAddButton(label = "Add M3U", onClick = {
+            AddProviderMenu(
+                onM3u = {
                     providerToEdit = null
                     addError = null
                     dialogIsFtp = false
                     showDialog = true
-                })
-            }
+                },
+                onFtp = {
+                    providerToEdit = null
+                    addError = null
+                    dialogIsFtp = true
+                    showDialog = true
+                },
+            )
         }
 
         if (providers.isEmpty() && !isSyncing) {
@@ -217,35 +217,87 @@ fun ProvidersScreen(
     }
 }
 
+/** একটাই "Add" বাটন; চাপলে নিচে ছোট মেনু: M3U Playlist / FTP Server। */
 @Composable
-private fun PremiumAddButton(label: String, onClick: () -> Unit) {
+private fun AddProviderMenu(onM3u: () -> Unit, onFtp: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
-    
-    Row(
-        Modifier
-            .clip(shape)
-            .background(if (focused) Accent else Surface1)
-            .border(1.dp, if (focused) Accent else Divider, shape)
-            .onFocusChanged { focused = it.hasFocus }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Add,
-            contentDescription = "Add",
-            tint = if (focused) Color.Black else Accent,
-            modifier = Modifier.size(18.dp)
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            label,
-            color = if (focused) Color.Black else Accent,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold
-        )
+    val firstItem = remember { FocusRequester() }
+
+    Box {
+        Row(
+            Modifier
+                .clip(shape)
+                .background(if (focused) Accent else Surface1)
+                .border(1.dp, if (focused) Accent else Divider, shape)
+                .onFocusChanged { focused = it.hasFocus }
+                .clickable { expanded = true }
+                .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = if (focused) Color.Black else Accent,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Add",
+                color = if (focused) Color.Black else Accent,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Icon(
+                imageVector = Icons.Filled.ArrowDropDown,
+                contentDescription = "Choose type",
+                tint = if (focused) Color.Black else Accent,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(Panel)
+        ) {
+            AddMenuItem("M3U Playlist", Icons.Filled.PlaylistPlay, Modifier.focusRequester(firstItem)) {
+                expanded = false
+                onM3u()
+            }
+            AddMenuItem("FTP Server", Icons.Filled.Dns, Modifier) {
+                expanded = false
+                onFtp()
+            }
+        }
     }
+
+    // TV রিমোটে মেনু খুললে প্রথম আইটেমে ফোকাস
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            delay(80)
+            runCatching { firstItem.requestFocus() }
+        }
+    }
+}
+
+@Composable
+private fun AddMenuItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    DropdownMenuItem(
+        text = { Text(label, color = if (focused) Accent else TextPrimary, fontSize = 14.sp) },
+        leadingIcon = { Icon(icon, contentDescription = null, tint = if (focused) Accent else TextMuted, modifier = Modifier.size(20.dp)) },
+        onClick = onClick,
+        modifier = modifier
+            .onFocusChanged { focused = it.hasFocus }
+            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+    )
 }
 
 @Composable
