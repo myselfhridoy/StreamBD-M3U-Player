@@ -132,7 +132,7 @@ class SettingsViewModel @Inject constructor(
             val providerEpgUrls = linkedSetOf<String>()
             var providerChannels = 0
             try {
-                val userProviders = providerDao.getAll()
+                val userProviders = providerDao.getAll().filter { it.type != "FTP" } // FTP সার্ভার M3U নয়, সিঙ্কে বাদ
                 for (p in userProviders) {
                     try {
                         val synced = sync.syncPlaylist(p.url, providerId = p.id)
