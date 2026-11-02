@@ -46,8 +46,6 @@ import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.data.ftp.FtpEntry
 import com.streambd.iptv.ui.components.AppDialog
 import com.streambd.iptv.ui.components.AppDialogButton
-import com.streambd.iptv.ui.components.ScreenTopBar
-import com.streambd.iptv.ui.components.sideInsets
 import com.streambd.iptv.ui.player.FullscreenPlayer
 import com.streambd.iptv.ui.player.PlayerDialogs
 import com.streambd.iptv.ui.player.RadioRow
@@ -146,17 +144,14 @@ fun FtpScreen(
         return
     }
 
-    Column(Modifier.fillMaxSize().background(BgDark)) {
+    // হেডার নেই: সবচেয়ে ওপরে একটাই পাতলা কন্ট্রোল সারি (সার্ভার ▾ | পাথ | সার্চ | রিফ্রেশ)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(BgDark)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+    ) {
         val selected = servers.firstOrNull { it.id == ui.serverId }
-        ScreenTopBar(title = "FTP", onBack = onBack) {
-            if (selected != null) {
-                IconChip(Icons.Filled.Search, "Search") { searchOpen = true }
-                Spacer(Modifier.width(8.dp))
-                IconChip(Icons.Filled.Refresh, "Refresh") { vm.reload() }
-                Spacer(Modifier.width(8.dp))
-                ServerChip(selected.name) { pickerOpen = true }
-            }
-        }
 
         when {
             ui.blocked -> CenterMessage(
@@ -166,16 +161,21 @@ fun FtpScreen(
             )
             servers.isEmpty() -> CenterMessage(
                 "No FTP server added",
-                "Add one from Providers → Add FTP.",
+                "Add one from Providers → Add → FTP Server.",
                 actionLabel = "OPEN PROVIDERS", onAction = onOpenProviders,
             )
-            else -> Column(Modifier.fillMaxSize().sideInsets()) {
+            else -> Column(Modifier.fillMaxSize()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (selected != null) {
+                        ServerChip(selected.name) { pickerOpen = true }
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    val path = ui.crumbs.drop(1).joinToString("  ›  ") { it.name.trimEnd('/') }
                     Text(
-                        ui.crumbs.joinToString("  ›  ") { it.name.trimEnd('/') },
+                        path.ifEmpty { "/" },
                         color = TextMuted, fontSize = 13.sp, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )
@@ -184,6 +184,10 @@ fun FtpScreen(
                         Text("“${ui.query}”  ✕", color = Accent, fontSize = 13.sp,
                             modifier = Modifier.clickable { vm.setQuery("") })
                     }
+                    Spacer(Modifier.width(8.dp))
+                    IconChip(Icons.Filled.Search, "Search") { searchOpen = true }
+                    Spacer(Modifier.width(4.dp))
+                    IconChip(Icons.Filled.Refresh, "Refresh") { vm.reload() }
                 }
                 Box(Modifier.fillMaxSize()) {
                     when {
