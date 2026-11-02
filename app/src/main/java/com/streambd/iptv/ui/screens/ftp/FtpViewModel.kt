@@ -1,5 +1,6 @@
 package com.streambd.iptv.ui.screens.ftp
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.activation.ActivationRepository
@@ -14,6 +15,7 @@ import com.streambd.iptv.data.util.stableId
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.player.PlayerUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +28,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 const val PROVIDER_TYPE_FTP = "FTP"
+private const val KEY_LAST_SERVER = "last_server_id"
 
 data class Crumb(val name: String, val url: String)
 
@@ -48,7 +51,11 @@ class FtpViewModel @Inject constructor(
     private val browser: FtpBrowser,
     private val playerManager: PlayerManager,
     private val activation: ActivationRepository,
+    @ApplicationContext context: Context,
 ) : ViewModel() {
+
+    // শেষ ব্যবহার করা সার্ভার মনে রাখার জন্য (অ্যাপ বন্ধ করে খুললেও থাকে)
+    private val prefs = context.getSharedPreferences("ftp_prefs", Context.MODE_PRIVATE)
 
     val servers: StateFlow<List<ProviderEntity>> = providerDao.observeAll()
         .map { list -> list.filter { it.type == PROVIDER_TYPE_FTP }.sortedBy { it.name.lowercase() } }
@@ -75,8 +82,9 @@ class FtpViewModel @Inject constructor(
             servers.collect { list ->
                 val sel = _ui.value.serverId
                 if (list.none { it.id == sel }) {
-                    val first = list.firstOrNull()
-                    if (first == null) _ui.update { FtpUiState() } else selectServer(first)
+                    val remembered = prefs.getLong(KEY_LAST_SERVER, -1L)
+                    val pick = list.firstOrNull { it.id == remembered } ?: list.firstOrNull()
+                    if (pick == null) _ui.update { FtpUiState() } else selectServer(pick)
                 }
             }
         }
@@ -90,6 +98,7 @@ class FtpViewModel @Inject constructor(
 
     fun selectServer(server: ProviderEntity) {
         if (server.id == _ui.value.serverId && _ui.value.crumbs.isNotEmpty()) return
+        prefs.edit().putLong(KEY_LAST_SERVER, server.id).apply()
         _ui.update {
             FtpUiState(serverId = server.id, crumbs = listOf(Crumb(server.name, server.url)), loading = true)
         }
