@@ -7,7 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.longPreferencesKey // নতুন ইমপোর্ট
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streambd.iptv.player.AspectMode
@@ -22,12 +22,19 @@ import javax.inject.Singleton
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore("streambd_settings")
 
+// ★ নতুন: সিক স্টেপ অপশন এবং ফরম্যাটার
+val SEEK_STEP_OPTIONS_MS = listOf(5_000, 10_000, 15_000, 30_000, 60_000, 300_000, 600_000)
+
+fun formatSeekStep(ms: Int): String =
+    if (ms >= 60_000) "${ms / 60_000} min" else "${ms / 1_000} s"
+
 data class AppSettings(
     val startAfterReboot: Boolean = false,
     val showEpgOnSelect: Boolean = true,
     val aspectMode: AspectMode = AspectMode.STRETCH,
     val epgTimeShiftMins: Int = 0,
     val bufferTimeMs: Int = 2_500,
+    val seekStepMs: Int = 10_000, // ★ নতুন ফিল্ড
 )
 
 enum class TrackMode { NONE, AUTO, SPECIFIC }
@@ -55,7 +62,8 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         val VIDEO_KEY = stringPreferencesKey("track_video_key")
         val AUDIO_MODE = stringPreferencesKey("track_audio_mode")
         val AUDIO_KEY = stringPreferencesKey("track_audio_key")
-        val LAST_LIVE_ID = longPreferencesKey("last_live_id") // নতুন Key
+        val LAST_LIVE_ID = longPreferencesKey("last_live_id")
+        val SEEK_STEP_MS = intPreferencesKey("seek_step_ms") // ★ নতুন Key
     }
 
     private val prefs = ctx.settingsDataStore
@@ -70,6 +78,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
             epgTimeShiftMins = p[Keys.EPG_TIME_SHIFT_MINS]
                 ?: ((p[Keys.LEGACY_EPG_TIME_SHIFT_HOURS] ?: 0).coerceIn(-10, 10) * 60),
             bufferTimeMs = (p[Keys.BUFFER_TIME_MS] ?: 2_500).coerceIn(1_000, 10_000),
+            seekStepMs = (p[Keys.SEEK_STEP_MS] ?: 10_000).takeIf { it in SEEK_STEP_OPTIONS_MS } ?: 10_000, // ★ নতুন
         )
     }
 
@@ -92,6 +101,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         it.remove(Keys.LEGACY_EPG_TIME_SHIFT_HOURS)
     }
     suspend fun setBufferTime(ms: Int) = prefs.edit { it[Keys.BUFFER_TIME_MS] = ms }
+    suspend fun setSeekStep(ms: Int) = prefs.edit { it[Keys.SEEK_STEP_MS] = ms } // ★ নতুন সেটার
 
     suspend fun setVideoTrack(mode: TrackMode, key: String) = prefs.edit {
         it[Keys.VIDEO_MODE] = mode.name
@@ -103,10 +113,8 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         it[Keys.AUDIO_KEY] = key
     }
 
-    // --- নতুন ফাংশন ---
     suspend fun setLastLiveChannel(id: Long) = prefs.edit { it[Keys.LAST_LIVE_ID] = id }
     suspend fun lastLiveChannel(): Long = prefs.data.first()[Keys.LAST_LIVE_ID] ?: -1L
-    // -----------------
 
     suspend fun setPin(pin: String) {
         val salt = randomSalt()
