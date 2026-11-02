@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable // ★ নতুন ইমপোর্ট
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +36,6 @@ import java.util.Locale
 private data class HomeItem(val label: String, val icon: ImageVector, val route: String?)
 
 private val homeItems = listOf(
-    // "All" এর পরিবর্তে "Providers" যুক্ত করা হলো
     HomeItem("Providers", Icons.Filled.PlaylistPlay, Routes.PROVIDERS),
     HomeItem("Live",     Icons.Filled.LiveTv,       Routes.LIVE),
     HomeItem("Movies",   Icons.Filled.Videocam,     Routes.MOVIES),
@@ -60,12 +60,16 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
         }
     }
 
-    // শক্তিশালী DeviceType ব্যবহার করে TV ডিটেকশন
     val isTv = remember { DeviceType.isTv(ctx) }
-    val firstTile = remember { FocusRequester() }
-    
+
+    // ★ নতুন: শেষবার ফোকাস করা টাইলের ইনডেক্স এবং প্রতিটি টাইলের জন্য আলাদা FocusRequester
+    var lastIndex by rememberSaveable { mutableIntStateOf(0) }
+    val requesters = remember { List(homeItems.size) { FocusRequester() } }
+
     LaunchedEffect(Unit) {
-        if (isTv) runCatching { firstTile.requestFocus() }
+        if (isTv) runCatching {
+            requesters[lastIndex.coerceIn(0, homeItems.lastIndex)].requestFocus()
+        }
     }
 
     Box(
@@ -96,14 +100,15 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
                 homeItems.chunked(4).forEachIndexed { rowIndex, row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEachIndexed { colIndex, item ->
+                            // ★ নতুন: গ্লোবাল ইনডেক্স বের করা হলো
+                            val index = rowIndex * 4 + colIndex
+                            
                             HomeTile(
                                 item = item,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .then(
-                                        if (rowIndex == 0 && colIndex == 0) Modifier.focusRequester(firstTile)
-                                        else Modifier,
-                                    ),
+                                    .focusRequester(requesters[index]), // ★ নির্দিষ্ট ইনডেক্সের রিকোয়েস্টার
+                                onFocus = { lastIndex = index }, // ★ ফোকাস পেলে ইনডেক্স আপডেট
                             ) {
                                 if (item.route == null) showExitDialog = true
                                 else onOpen(item.route)
@@ -131,8 +136,14 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
     }
 }
 
+// ★ নতুন: onFocus প্যারামিটার যুক্ত করা হলো
 @Composable
-private fun HomeTile(item: HomeItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun HomeTile(
+    item: HomeItem, 
+    modifier: Modifier = Modifier, 
+    onFocus: () -> Unit = {},
+    onClick: () -> Unit
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     val tint = if (focused) Accent else TextPrimary
@@ -142,7 +153,10 @@ private fun HomeTile(item: HomeItem, modifier: Modifier = Modifier, onClick: () 
             .clip(shape)
             .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
             .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { 
+                focused = it.isFocused
+                if (it.isFocused) onFocus() // ★ ফোকাস পেলে কলব্যাক ট্রিগার
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
