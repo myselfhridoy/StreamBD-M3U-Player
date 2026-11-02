@@ -1,0 +1,207 @@
+package com.streambd.iptv.ui.screens.ftp
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.streambd.iptv.data.activation.ActivationRepository
+import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.data.db.ProviderDao
+import com.streambd.iptv.data.db.ProviderEntity
+import com.streambd.iptv.data.ftp.FtpBrowser
+import com.streambd.iptv.data.ftp.FtpEntry
+import com.streambd.iptv.data.ftp.sortEntries
+import com.streambd.iptv.data.util.stableId
+import com.streambd.iptv.player.PlayerManager
+import com.streambd.iptv.player.PlayerUiState
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+const val PROVIDER_TYPE_FTP = "FTP"
+
+data class Crumb(val name: String, val url: String)
+
+data class FtpUiState(
+    val serverId: Long? = null,
+    val crumbs: List<Crumb> = emptyList(),
+    val entries: List<FtpEntry> = emptyList(),
+    val loading: Boolean = false,
+    val error: String? = null,
+    val query: String = "",
+    /** অ্যাক্টিভেশন নেই/মেয়াদ শেষ: কনটেন্ট দেখানো হয় না। */
+    val blocked: Boolean = false,
+    /** এই ফোল্ডারে ফিরে এলে যে আইটেমে ফোকাস দিতে হবে। */
+    val focusUrl: String? = null,
+)
+
+@HiltViewModel
+class FtpViewModel @Inject constructor(
+    providerDao: ProviderDao,
+    private val browser: FtpBrowser,
+    private val playerManager: PlayerManager,
+    private val activation: ActivationRepository,
+) : ViewModel() {
+
+    val servers: StateFlow<List<ProviderEntity>> = providerDao.observeAll()
+        .map { list -> list.filter { it.type == PROVIDER_TYPE_FTP }.sortedBy { it.name.lowercase() } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _ui = MutableStateFlow(FtpUiState())
+    val ui: StateFlow<FtpUiState> = _ui.asStateFlow()
+
+    private val _playing = MutableStateFlow<FtpEntry?>(null)
+    val playing: StateFlow<FtpEntry?> = _playing.asStateFlow()
+
+    val playerState: StateFlow<PlayerUiState> = playerManager.state
+    val player get() = playerManager
+
+    private var loadJob: Job? = null
+    private val lastOpened = HashMap<String, String>() // ফোল্ডার URL -> শেষ খোলা আইটেমের URL
+
+    init {
+        viewModelScope.launch {
+            if (!isActivated()) {
+                _ui.update { it.copy(blocked = true) }
+                return@launch
+            }
+            servers.collect { list ->
+                val sel = _ui.value.serverId
+                if (list.none { it.id == sel }) {
+                    val first = list.firstOrNull()
+                    if (first == null) _ui.update { FtpUiState() } else selectServer(first)
+                }
+            }
+        }
+    }
+
+    /** অ্যাক্টিভ ও মেয়াদোত্তীর্ণ নয় — না হলে FTP ব্যবহার করা যাবে না। */
+    private suspend fun isActivated(): Boolean {
+        val s = activation.current()
+        return s is ActivationState.Active && !activation.isExpired(s)
+    }
+
+    fun selectServer(server: ProviderEntity) {
+        if (server.id == _ui.value.serverId && _ui.value.crumbs.isNotEmpty()) return
+        _ui.update {
+            FtpUiState(serverId = server.id, crumbs = listOf(Crumb(server.name, server.url)), loading = true)
+        }
+        load(server.url)
+    }
+
+    fun open(entry: FtpEntry) {
+        val cur = _ui.value.crumbs.lastOrNull() ?: return
+        lastOpened[cur.url] = entry.url
+        _ui.update { it.copy(crumbs = it.crumbs + Crumb(entry.name, entry.url), query = "", loading = true, error = null) }
+        load(entry.url)
+    }
+
+    /** এক ধাপ উপরে। উপরে যাওয়ার কিছু না থাকলে false। */
+    fun up(): Boolean {
+        val crumbs = _ui.value.crumbs
+        if (crumbs.size <= 1) return false
+        goTo(crumbs.size - 2)
+        return true
+    }
+
+    fun goTo(index: Int) {
+        val crumbs = _ui.value.crumbs
+        if (index !in crumbs.indices) return
+        val target = crumbs.take(index + 1)
+        _ui.update { it.copy(crumbs = target, query = "", loading = true, error = null) }
+        load(target.last().url)
+    }
+
+    fun reload() {
+        val url = _ui.value.crumbs.lastOrNull()?.url ?: return
+        browser.forget(url)
+        _ui.update { it.copy(loading = true, error = null) }
+        load(url, force = true)
+    }
+
+    fun setQuery(q: String) = _ui.update { it.copy(query = q) }
+
+    private fun load(url: String, force: Boolean = false) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            try {
+                val sorted = sortEntries(browser.list(url, force).filter { it.isDir || it.isVideo })
+                _ui.update {
+                    // ব্যবহারকারী ততক্ষণে অন্য ফোল্ডারে গেলে পুরনো ফল বসাব না
+                    if (it.crumbs.lastOrNull()?.url != url) it
+                    else it.copy(entries = sorted, loading = false, error = null, focusUrl = lastOpened[url])
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update {
+                    if (it.crumbs.lastOrNull()?.url != url) it
+                    else it.copy(entries = emptyList(), loading = false, error = e.message ?: "Failed to load.")
+                }
+            }
+        }
+    }
+
+    // ───────── প্লে ─────────
+
+    fun play(entry: FtpEntry) {
+        viewModelScope.launch {
+            if (!isActivated()) {
+                playerManager.stopAndClear()
+                _playing.value = null
+                _ui.update { it.copy(blocked = true, entries = emptyList()) }
+                return@launch
+            }
+            _ui.value.crumbs.lastOrNull()?.let { lastOpened[it.url] = entry.url }
+            _playing.value = entry
+            playerManager.play(toChannel(entry))
+        }
+    }
+
+    /** এই ফোল্ডারের পরের ভিডিও (এপিসোড) — থাকলে true। */
+    fun playNext(): Boolean {
+        val cur = _playing.value ?: return false
+        val videos = _ui.value.entries.filter { it.isVideo }
+        val i = videos.indexOfFirst { it.url == cur.url }
+        val next = videos.getOrNull(i + 1) ?: return false
+        play(next)
+        return true
+    }
+
+    fun hasNext(): Boolean {
+        val cur = _playing.value ?: return false
+        val videos = _ui.value.entries.filter { it.isVideo }
+        return videos.indexOfFirst { it.url == cur.url } in 0 until videos.lastIndex
+    }
+
+    fun closePlayer() {
+        playerManager.stopAndClear()
+        _playing.value = null
+        _ui.update { it.copy(focusUrl = lastOpened[it.crumbs.lastOrNull()?.url]) }
+    }
+
+    /** ডেটাবেসে না রেখে শুধু প্লেয়ারের জন্য অস্থায়ী আইটেম। */
+    private fun toChannel(e: FtpEntry) = ChannelEntity(
+        id = stableId("ftp:${e.url}"),
+        number = 0,
+        name = e.name.substringBeforeLast('.'),
+        logoUrl = null,
+        streamUrl = e.url,
+        groupId = 0L,
+        tvgId = null,
+        kind = "MOVIE",
+        providerId = _ui.value.serverId ?: 0L,
+    )
+
+    override fun onCleared() {
+        if (_playing.value != null) playerManager.stopAndClear()
+        super.onCleared()
+    }
+}
