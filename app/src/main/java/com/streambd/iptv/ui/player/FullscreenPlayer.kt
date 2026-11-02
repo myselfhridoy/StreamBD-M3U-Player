@@ -100,7 +100,6 @@ fun FullscreenPlayer(
     var interactive by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
     
-    // নতুন: তালিকায় ইনপুট এলে টাইমার রিসেট। State নয়, তাই প্রতিটা পয়েন্টার ইভেন্টে recomposition হয় না।
     val listActivity = remember {
         MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     }
@@ -129,7 +128,6 @@ fun FullscreenPlayer(
         }
     }
 
-    // নতুন চ্যানেল শুরু বা error হলে তথ্য দেখানো
     LaunchedEffect(state.current?.id) {
         if (state.current != null) showControls()
     }
@@ -137,12 +135,10 @@ fun FullscreenPlayer(
         if (state.error != null) showControls()
     }
     
-    // FIX: তালিকা খোলা বা বন্ধ হলে কন্ট্রোল সবসময় লুকিয়ে থাকবে, যাতে ফ্ল্যাশ না করে
     LaunchedEffect(listOpen) {
         hideControls()
     }
 
-    // নতুন: তালিকা খোলা থাকলে ইনপুট না পেলে নিজে বন্ধ (SharedFlow ব্যবহার করে)
     LaunchedEffect(listOpen, state.current?.id, state.error) {
         if (listOpen && hasList && state.current != null && state.error == null) {
             listActivity.onStart { emit(Unit) }.collectLatest {
@@ -152,7 +148,6 @@ fun FullscreenPlayer(
         }
     }
 
-    // ফোকাস কোথায় থাকবে
     LaunchedEffect(controlsVisible, interactive, listOpen) {
         if (listOpen) return@LaunchedEffect
         val target = if (controlsVisible && interactive) controlsFocus else rootFocus
@@ -175,18 +170,34 @@ fun FullscreenPlayer(
         }
     }
 
+    // ★ নতুন: Buffer Time বদলালে নতুন প্লেয়ারে সিক হওয়ার জন্য rememberUpdatedState
+    val playerNow by rememberUpdatedState(player)
+    fun seekBy(deltaMs: Long) {
+        val p = playerNow
+        val duration = p.duration
+        if (duration <= 0L || !p.isCurrentMediaItemSeekable) return
+        p.seekTo((p.currentPosition + deltaMs).coerceIn(0L, duration))
+        showControls()
+    }
+
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            // ★ নতুন: ডাবল-ট্যাপে ফরওয়ার্ড/রিওয়াইন্ড (লাইভে বন্ধ, শুধু মুভি/সিরিজে)
             .pointerInput(Unit) {
-                detectTapGestures(onTap = {
-                    when {
-                        hasListNow -> listChangeNow(!listOpenNow)
-                        controlsVisible -> hideControls()
-                        else -> showControls()
-                    }
-                })
+                detectTapGestures(
+                    onDoubleTap = if (onStep == null) { offset ->
+                        if (!listOpenNow) seekBy(if (offset.x > size.width / 2f) 10_000L else -10_000L)
+                    } else null,
+                    onTap = {
+                        when {
+                            hasListNow -> listChangeNow(!listOpenNow)
+                            controlsVisible -> hideControls()
+                            else -> showControls()
+                        }
+                    },
+                )
             }
             .pointerInput(Unit) {
                 val threshold = 48.dp.toPx()
@@ -209,7 +220,6 @@ fun FullscreenPlayer(
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (controlsVisible) tick++
                 
-                // নতুন: রিমোটের বাটন চাপলেও তালিকার টাইমার রিসেট হবে
                 if (listOpen) listActivity.tryEmit(Unit)
 
                 when (event.key) {
@@ -218,6 +228,11 @@ fun FullscreenPlayer(
                     Key.MediaPause -> { if (state.isPlaying) onTogglePlay(); return@onPreviewKeyEvent true }
                     Key.ChannelUp -> { stepOrSeek(1); return@onPreviewKeyEvent true }
                     Key.ChannelDown -> { stepOrSeek(-1); return@onPreviewKeyEvent true }
+                    // ★ নতুন: রিমোটের FF/REW কী হ্যান্ডলিং
+                    Key.MediaFastForward, Key.MediaSkipForward ->
+                        if (onStep == null) { seekBy(30_000L); return@onPreviewKeyEvent true }
+                    Key.MediaRewind, Key.MediaSkipBackward ->
+                        if (onStep == null) { seekBy(-10_000L); return@onPreviewKeyEvent true }
                     else -> Unit
                 }
 
@@ -238,7 +253,18 @@ fun FullscreenPlayer(
                         if (inControls) {
                             false
                         } else {
-                            if (!repeat || onStep == null) stepOrSeek(if (event.key == Key.DirectionRight) 1 else -1)
+                            // ★ নতুন: লং-প্রেস করলে সিকিং স্পিড বাড়বে (10s -> 30s -> 60s)
+                            if (onStep == null) {
+                                val count = event.nativeKeyEvent.repeatCount
+                                val stepMs = when {
+                                    count > 20 -> 60_000L
+                                    count > 8 -> 30_000L
+                                    else -> 10_000L
+                                }
+                                seekBy(if (event.key == Key.DirectionRight) stepMs else -stepMs)
+                            } else if (!repeat) {
+                                stepOrSeek(if (event.key == Key.DirectionRight) 1 else -1)
+                            }
                             true
                         }
                     }
@@ -297,6 +323,7 @@ fun FullscreenPlayer(
                     isLocked = isLocked,
                     playFocus = controlsFocus,
                     onSeek = { ms -> player.seekTo(ms); tick++ },
+                    onSeekBy = { seekBy(it) }, // ★ নতুন
                     onTogglePlay = { tick++; onTogglePlay() },
                     onToggleFavorite = { tick++; onToggleFavorite() },
                     onToggleLock = { tick++; onToggleLock() },
@@ -318,7 +345,6 @@ fun FullscreenPlayer(
                         awaitPointerEventScope {
                             while (true) {
                                 awaitPointerEvent(PointerEventPass.Initial)
-                                // নতুন: pointer ইভেন্ট সরাসরি SharedFlow-তে পাঠানো হচ্ছে, State আপডেট হচ্ছে না
                                 listActivity.tryEmit(Unit)
                             }
                         }
@@ -344,6 +370,7 @@ private fun ControlsPanel(
     isLocked: Boolean,
     playFocus: FocusRequester,
     onSeek: (Long) -> Unit,
+    onSeekBy: (Long) -> Unit, // ★ নতুন প্যারামিটার
     onTogglePlay: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleLock: () -> Unit,
@@ -392,8 +419,14 @@ private fun ControlsPanel(
                 modifier = Modifier.focusRequester(playFocus),
                 onClick = onTogglePlay,
             )
+            
+            // ★ নতুন: Replay10 এবং Forward10 বাটন
             if (state.duration > 0L) {
+                Spacer(Modifier.width(4.dp))
+                ControlButton(Icons.Filled.Replay10, "Back 10 seconds") { onSeekBy(-10_000L) }
+                ControlButton(Icons.Filled.Forward10, "Forward 10 seconds") { onSeekBy(10_000L) }
                 Spacer(Modifier.width(8.dp))
+                
                 ThinSeekBar(
                     position = state.position,
                     duration = state.duration,
