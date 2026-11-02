@@ -76,6 +76,9 @@ class SettingsViewModel @Inject constructor(
     fun setAspect(m: AspectMode) = viewModelScope.launch { settings.setAspectMode(m) }
     fun setEpgShift(mins: Int) = viewModelScope.launch { settings.setEpgTimeShiftMins(mins) }
     fun setBuffer(ms: Int) = viewModelScope.launch { settings.setBufferTime(ms) }
+    
+    // ★ নতুন: Seek Step সেট করার ফাংশন
+    fun setSeekStep(ms: Int) = viewModelScope.launch { settings.setSeekStep(ms) }
 
     suspend fun verifyPin(pin: String) = settings.verifyPin(pin)
     fun setPin(pin: String) = viewModelScope.launch { settings.setPin(pin) }
@@ -93,7 +96,7 @@ class SettingsViewModel @Inject constructor(
             var epgError: String? = null
             var hasError = false
 
-            // ★ নতুন: সার্ভার থেকে সর্বশেষ প্লেলিস্ট তালিকা আনুন
+            // ★ সার্ভার থেকে সর্বশেষ প্লেলিস্ট তালিকা আনুন
             // force = true দেওয়ার কারণে ৬/১ ঘণ্টার টাইম লিমিট বাইপাস হবে
             try {
                 activation.revalidateIfNeeded(force = true)
