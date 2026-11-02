@@ -8,6 +8,8 @@ data class PlayerUiState(
     val isBuffering: Boolean = false,
     val position: Long = 0L,
     val duration: Long = 0L,
+    // ★ নতুন: সিক স্টেপ (ডিফল্ট ১০ সেকেন্ড)
+    val seekStepMs: Long = 10_000L,
     val isFullscreen: Boolean = false,
     val aspectMode: AspectMode = AspectMode.STRETCH,
     /** এখন ভলিউম সিস্টেম সামলায়। এই দুটো শুধু পুরনো UI কোডের জন্য রাখা, সবসময় ডিফল্ট থাকে। */
