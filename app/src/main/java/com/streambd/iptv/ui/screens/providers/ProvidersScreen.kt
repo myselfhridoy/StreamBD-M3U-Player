@@ -1,15 +1,13 @@
 package com.streambd.iptv.ui.screens.providers
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -19,7 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,7 +30,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -48,7 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.theme.*
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.delay // নতুন ইমপোর্ট
 
 @Composable
 fun ProvidersScreen(
@@ -57,12 +54,12 @@ fun ProvidersScreen(
 ) {
     val providers by vm.providers.collectAsStateWithLifecycle()
     val isSyncing by vm.isSyncing.collectAsStateWithLifecycle()
-    val context = LocalContext.current // নতুন: Toast এর জন্য
 
-    var showDialog by remember { mutableStateOf(false) }
-    var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) }
+    val busyMessage by vm.busyMessage.collectAsStateWithLifecycle()
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddFtpDialog by remember { mutableStateOf(false) }
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
-    var addError by remember { mutableStateOf<String?>(null) }
     
     Column(
         Modifier
@@ -74,22 +71,22 @@ fun ProvidersScreen(
     ) {
         // Header
         Row(
-            Modifier.fillMaxWidth().padding(bottom = 20.dp),
+            Modifier.fillMaxWidth().padding(bottom = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 "My Providers",
                 color = TextPrimary,
-                fontSize = 24.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
             
-            PremiumAddButton(onClick = { 
-                providerToEdit = null 
-                addError = null 
-                showDialog = true 
-            })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PremiumAddButton(label = "Add FTP", onClick = { showAddFtpDialog = true })
+                Spacer(Modifier.width(12.dp))
+                PremiumAddButton(label = "Add M3U", onClick = { showAddDialog = true })
+            }
         }
 
         if (providers.isEmpty() && !isSyncing) {
@@ -98,26 +95,16 @@ fun ProvidersScreen(
                     Icon(Icons.Filled.PlaylistPlay, contentDescription = null, tint = TextMuted, modifier = Modifier.size(64.dp))
                     Spacer(Modifier.height(16.dp))
                     Text("No providers added yet.", color = TextPrimary, fontSize = 18.sp)
-                    Text("Add your own M3U link to start watching.", color = TextMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("Add your own M3U link or an FTP server.", color = TextMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 160.dp), 
+            LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(providers, key = { it.id }) { provider ->
-                    ProviderGridCard(
-                        provider = provider,
-                        onEdit = { 
-                            providerToEdit = provider
-                            addError = null 
-                            showDialog = true
-                        },
-                        onDelete = { providerToDelete = provider }
-                    )
+                    ProviderCard(provider, onDelete = { providerToDelete = provider })
                 }
             }
         }
@@ -130,46 +117,32 @@ fun ProvidersScreen(
                     Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Accent)
                         Spacer(Modifier.height(16.dp))
-                        Text("Downloading channels...", color = TextPrimary, fontSize = 16.sp)
+                        Text(busyMessage, color = TextPrimary, fontSize = 16.sp)
                     }
                 }
             }
         }
     }
 
-    if (showDialog) {
-        ProviderDialog(
-            initialProvider = providerToEdit,
-            error = addError,
-            onDismiss = { 
-                showDialog = false 
-                addError = null
-            },
-            onSave = { name, url ->
-                addError = null
-                if (providerToEdit == null) {
-                    vm.addProvider(name, url) { success, msg ->
-                        if (success) {
-                            showDialog = false
-                            // নতুন: সাকসেস মেসেজ Toast-এ দেখানো হবে (EPG details সহ)
-                            if (!msg.isNullOrBlank()) {
-                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            }
-                        } else {
-                            addError = msg
-                        }
+    if (showAddDialog) {
+        AddProviderDialog(
+            onDismiss = { showAddDialog = false },
+            onAdd = { name, url ->
+                vm.addProvider(name, url) { success, _ ->
+                    if (success) {
+                        showAddDialog = false
                     }
-                } else {
-                    vm.updateProvider(providerToEdit!!, name, url) { success, msg ->
-                        if (success) {
-                            showDialog = false
-                            if (!msg.isNullOrBlank()) {
-                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            }
-                        } else {
-                            addError = msg
-                        }
-                    }
+                }
+            }
+        )
+    }
+
+    if (showAddFtpDialog) {
+        AddFtpDialog(
+            onDismiss = { showAddFtpDialog = false },
+            onAdd = { name, address, onError ->
+                vm.addFtpServer(name, address) { success, msg ->
+                    if (success) showAddFtpDialog = false else onError(msg ?: "Failed")
                 }
             }
         )
@@ -191,7 +164,7 @@ fun ProvidersScreen(
 }
 
 @Composable
-private fun PremiumAddButton(onClick: () -> Unit) {
+private fun PremiumAddButton(label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
     
@@ -200,134 +173,187 @@ private fun PremiumAddButton(onClick: () -> Unit) {
             .clip(shape)
             .background(if (focused) Accent else Surface1)
             .border(1.dp, if (focused) Accent else Divider, shape)
-            .onFocusChanged { focused = it.hasFocus }
+            .onFocusChanged { focused = it.hasFocus } // এখানেও hasFocus করা হলো
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
             contentDescription = "Add",
             tint = if (focused) Color.Black else Accent,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
-            "Add M3U",
+            label,
             color = if (focused) Color.Black else Accent,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold
         )
     }
 }
 
 @Composable
-private fun ProviderGridCard(
-    provider: ProviderEntity, 
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
+private fun ProviderCard(provider: ProviderEntity, onDelete: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
 
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(if (focused) Surface1 else Panel)
             .border(2.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
-            .focusable()
-            .padding(10.dp)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Filled.PlaylistPlay, 
-                contentDescription = null, 
-                tint = if (focused) Accent else TextPrimary, 
-                modifier = Modifier.size(28.dp)
+        val isFtp = provider.type == "FTP"
+        Icon(
+            if (isFtp) Icons.Filled.Dns else Icons.Filled.PlaylistPlay,
+            contentDescription = null, tint = Accent, modifier = Modifier.size(32.dp)
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (isFtp) "${provider.name}  ·  FTP" else provider.name,
+                color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
             )
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Edit, 
-                        contentDescription = "Edit", 
-                        tint = TextMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Delete, 
-                        contentDescription = "Delete", 
-                        tint = Danger,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+            Text(provider.url, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        
-        Spacer(Modifier.height(10.dp))
-        
-        Text(
-            provider.name, 
-            color = TextPrimary, 
-            fontSize = 14.sp, 
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            provider.url, 
-            color = TextMuted, 
-            fontSize = 11.sp, 
-            maxLines = 2, 
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = 14.sp
-        )
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.focusable()
+        ) {
+            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Danger)
+        }
     }
 }
 
 @Composable
-private fun ProviderDialog(
-    initialProvider: ProviderEntity?,
-    error: String?,
+private fun AddProviderDialog(
     onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
+    onAdd: (String, String) -> Unit
 ) {
-    var name by remember { mutableStateOf(initialProvider?.name ?: "") }
-    var url by remember { mutableStateOf(initialProvider?.url ?: "") }
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
     
     val nameFocus = remember { FocusRequester() }
     val urlFocus = remember { FocusRequester() }
     val cancelFocus = remember { FocusRequester() }
-    val saveFocus = remember { FocusRequester() }
+    val addFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false 
+            decorFitsSystemWindows = false // ★ ১. imePadding কাজ করার জন্য মূল ফিক্স
         )
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .imePadding() 
+                .imePadding() // কিবোর্ড ওপেন হলে ডায়ালগ উপরে তুলবে
+                .navigationBarsPadding()
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                Modifier
+                    .widthIn(max = 340.dp) // ★ ২. আগে widthIn (max constraint)
+                    .fillMaxWidth() // তারপর fillMaxWidth (constraint এর ভেতরে থাকবে)
+                    .verticalScroll(rememberScrollState()) // ★ ৩. জায়গা কম হলে clip হবে না, scroll হবে
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Panel)
+                    .border(1.dp, Divider, RoundedCornerShape(4.dp))
+                    .pointerInput(Unit) { detectTapGestures { } }
+                    .padding(20.dp)
+            ) {
+                Text("Add M3U Provider", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(16.dp))
+                
+                Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                PremiumTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = "e.g. My IPTV",
+                    focusRequester = nameFocus,
+                    imeAction = ImeAction.Next,
+                    onNext = { urlFocus.requestFocus() }
+                )
+                
+                Spacer(Modifier.height(16.dp))
+                
+                Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                PremiumTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    placeholder = "http://example.com/list.m3u",
+                    focusRequester = urlFocus,
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                    onDone = { 
+                        focusManager.clearFocus()
+                        addFocus.requestFocus() 
+                    }
+                )
+                
+                Spacer(Modifier.height(24.dp))
+                
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DialogTextButton(
+                        label = "CANCEL", 
+                        color = TextMuted, 
+                        modifier = Modifier.focusRequester(cancelFocus),
+                        onClick = onDismiss
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    DialogTextButton(
+                        label = "ADD", 
+                        color = Accent, 
+                        modifier = Modifier.focusRequester(addFocus),
+                        onClick = { onAdd(name, url) }
+                    )
+                }
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        delay(100) // ★ ৪. Dialog window তৈরি হওয়ার আগে focus fail করছিল, তাই ১০০ms delay
+        runCatching { nameFocus.requestFocus() }
+    }
+}
+
+@Composable
+private fun AddFtpDialog(
+    onDismiss: () -> Unit,
+    onAdd: (name: String, address: String, onError: (String) -> Unit) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val nameFocus = remember { FocusRequester() }
+    val addressFocus = remember { FocusRequester() }
+    val addFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .imePadding()
                 .navigationBarsPadding()
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
                 .padding(16.dp),
@@ -342,79 +368,64 @@ private fun ProviderDialog(
                     .background(Panel)
                     .border(1.dp, Divider, RoundedCornerShape(4.dp))
                     .pointerInput(Unit) { detectTapGestures { } }
-                    .padding(16.dp)
+                    .padding(20.dp)
             ) {
-                Text(
-                    if (initialProvider == null) "Add M3U Provider" else "Edit M3U Provider", 
-                    color = TextPrimary, 
-                    fontSize = 16.sp, 
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(12.dp))
-                
-                Text("Provider Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+                Text("Add FTP Server", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(16.dp))
+
+                Text("Server Name", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                 PremiumTextField(
                     value = name,
-                    onValueChange = { name = it },
-                    placeholder = "e.g. My IPTV",
+                    onValueChange = { name = it; error = null },
+                    placeholder = "e.g. PlayTime FTP",
                     focusRequester = nameFocus,
                     imeAction = ImeAction.Next,
-                    onNext = { urlFocus.requestFocus() }
+                    onNext = { addressFocus.requestFocus() }
                 )
-                
-                Spacer(Modifier.height(12.dp))
-                
-                Text("M3U URL", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+
+                Spacer(Modifier.height(16.dp))
+
+                Text("Server Address", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
                 PremiumTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    placeholder = "http://example.com/list.m3u",
-                    focusRequester = urlFocus,
+                    value = address,
+                    onValueChange = { address = it; error = null },
+                    placeholder = "http://ftp.example.com:8084/",
+                    focusRequester = addressFocus,
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Done,
-                    onDone = { 
+                    onDone = {
                         focusManager.clearFocus()
-                        saveFocus.requestFocus() 
+                        addFocus.requestFocus()
                     }
                 )
-                
+
                 error?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        it, 
-                        color = Danger, 
-                        fontSize = 12.sp, 
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, color = Danger, fontSize = 12.sp)
                 }
-                
-                Spacer(Modifier.height(20.dp))
-                
+
+                Spacer(Modifier.height(24.dp))
+
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    DialogTextButton(label = "CANCEL", color = TextMuted, onClick = onDismiss)
+                    Spacer(Modifier.width(12.dp))
                     DialogTextButton(
-                        label = "CANCEL", 
-                        color = TextMuted, 
-                        modifier = Modifier.focusRequester(cancelFocus),
-                        onClick = onDismiss
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    DialogTextButton(
-                        label = if (initialProvider == null) "ADD" else "SAVE",
-                        color = Accent, 
-                        modifier = Modifier.focusRequester(saveFocus),
-                        onClick = { onSave(name, url) }
+                        label = "ADD",
+                        color = Accent,
+                        modifier = Modifier.focusRequester(addFocus),
+                        onClick = { onAdd(name, address) { msg -> error = msg } }
                     )
                 }
             }
         }
     }
-    
+
     LaunchedEffect(Unit) {
-        delay(100) 
+        delay(100)
         runCatching { nameFocus.requestFocus() }
     }
 }
@@ -432,7 +443,7 @@ private fun DialogTextButton(
     Text(
         text = label,
         color = color,
-        fontSize = 13.sp,
+        fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
         modifier = modifier
             .clip(shape)
@@ -440,7 +451,7 @@ private fun DialogTextButton(
             .border(if (focused) 2.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.hasFocus }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     )
 }
 
@@ -461,7 +472,7 @@ private fun PremiumTextField(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(48.dp)
             .clip(shape)
             .background(Surface1)
             .border(
@@ -470,7 +481,7 @@ private fun PremiumTextField(
                 shape = shape
             )
             .focusRequester(focusRequester)
-            .onFocusChanged { isFocused = it.hasFocus }
+            .onFocusChanged { isFocused = it.hasFocus } // ★ ৫. isFocused এর বদলে hasFocus
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -492,3 +503,4 @@ private fun PremiumTextField(
         )
     }
 }
+
