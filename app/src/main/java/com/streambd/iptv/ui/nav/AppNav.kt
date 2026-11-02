@@ -22,6 +22,7 @@ import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.ui.screens.HomeMenuScreen
 import com.streambd.iptv.ui.screens.activation.ActivationScreen
+import com.streambd.iptv.ui.screens.ftp.FtpScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
 import com.streambd.iptv.ui.screens.live.LiveScreen
 import com.streambd.iptv.ui.screens.providers.ProvidersScreen
@@ -40,6 +41,7 @@ object Routes {
     const val SPLASH = "splash"
     const val HOME = "home"
     const val PROVIDERS = "providers"
+    const val FTP = "ftp"
     const val LIVE_BASE = "live"
     const val LIVE = "live?channelId={channelId}"
     fun live(channelId: Long = -1L) = "live?channelId=$channelId"
@@ -135,6 +137,13 @@ fun AppNav() {
         composable(Routes.PROVIDERS) {
             ProvidersScreen(
                 onBack = { nav.popBackStack() }
+            )
+        }
+
+        composable(Routes.FTP) {
+            FtpScreen(
+                onBack = { nav.popBackStack() },
+                onOpenProviders = { nav.navigate(Routes.PROVIDERS) }
             )
         }
 
