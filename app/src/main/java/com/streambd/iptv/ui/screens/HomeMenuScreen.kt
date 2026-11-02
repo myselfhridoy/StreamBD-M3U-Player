@@ -33,6 +33,8 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+private const val HOME_COLUMNS = 5
+
 private data class HomeItem(val label: String, val icon: ImageVector, val route: String?)
 
 private val homeItems = listOf(
@@ -40,6 +42,7 @@ private val homeItems = listOf(
     HomeItem("Live",     Icons.Filled.LiveTv,       Routes.LIVE),
     HomeItem("Movies",   Icons.Filled.Videocam,     Routes.MOVIES),
     HomeItem("Series",   Icons.Filled.VideoLibrary, Routes.SERIES),
+    HomeItem("FTP",      Icons.Filled.Dns,          Routes.FTP),
     HomeItem("TV Guide", Icons.Filled.Dvr,          Routes.GUIDE),
     HomeItem("Search",   Icons.Filled.Search,       Routes.SEARCH),
     HomeItem("Settings", Icons.Filled.Settings,     Routes.SETTINGS),
@@ -94,14 +97,14 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
             Spacer(Modifier.height(20.dp))
 
             Column(
-                Modifier.widthIn(max = 560.dp).fillMaxWidth(),
+                Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                homeItems.chunked(4).forEachIndexed { rowIndex, row ->
+                homeItems.chunked(HOME_COLUMNS).forEachIndexed { rowIndex, row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEachIndexed { colIndex, item ->
                             // ★ নতুন: গ্লোবাল ইনডেক্স বের করা হলো
-                            val index = rowIndex * 4 + colIndex
+                            val index = rowIndex * HOME_COLUMNS + colIndex
                             
                             HomeTile(
                                 item = item,
@@ -114,6 +117,7 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
                                 else onOpen(item.route)
                             }
                         }
+                        repeat(HOME_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) } // শেষ সারির ফাঁকা ঘর
                     }
                 }
             }
