@@ -37,10 +37,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.settings.AppSettings
+import com.streambd.iptv.data.settings.formatSeekStep // ★ নতুন ইমপোর্ট
 import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.components.PinDialog
+import com.streambd.iptv.ui.components.SeekStepDialog // ★ নতুন ইমপোর্ট
 import com.streambd.iptv.ui.theme.*
 import com.streambd.iptv.util.isTelevision
 import kotlinx.coroutines.launch
@@ -54,6 +56,7 @@ private const val APP_VERSION = "1.0.0"
 private sealed interface Sd {
     data object None : Sd
     data object Aspect : Sd
+    data object SeekStep : Sd // ★ নতুন
     data object ClearCache : Sd
     data object ResetConfirm : Sd
     data object PinCurrent : Sd
@@ -118,7 +121,6 @@ fun SettingsScreen(
                 onClick = { dlg = Sd.Aspect },
             )
 
-            // stepSize যোগ করা হলো রিমোটে ঠিকমতো কাজ করার জন্য
             SliderRow(
                 label = "EPG Time Shift",
                 valueLabel = if (state.epgTimeShiftMins % 60 == 0) {
@@ -129,25 +131,31 @@ fun SettingsScreen(
                 value = state.epgTimeShiftMins.toFloat(),
                 range = -600f..600f,
                 steps = 39,
-                stepSize = 30f, // ১২০০ / ৪০ স্টেপ = ৩০
+                stepSize = 30f,
                 onChange = {
                     val snapped = (it / 30f).roundToInt() * 30
                     vm.setEpgShift(snapped)
                 },
             )
 
-            // stepSize যোগ করা হলো রিমোটে ঠিকমতো কাজ করার জন্য
             SliderRow(
                 label = "Buffer Time",
                 valueLabel = "${state.bufferTimeMs} ms",
                 value = state.bufferTimeMs.toFloat(),
                 range = 1_000f..10_000f,
                 steps = 35,
-                stepSize = 250f, // ৯০০০ / ৩৬ স্টেপ = ২৫০
+                stepSize = 250f,
                 onChange = {
                     val snapped = (it / 250f).roundToInt() * 250
                     vm.setBuffer(snapped)
                 },
+            )
+
+            // ★ নতুন: Seek Step অপশন
+            ValueRow(
+                label = "Seek Step (FF / REW)",
+                value = formatSeekStep(state.seekStepMs),
+                onClick = { dlg = Sd.SeekStep },
             )
 
             val refreshing = refresh is RefreshState.Running
@@ -213,6 +221,13 @@ fun SettingsScreen(
         Sd.Aspect -> AspectRatioDialog(
             current = state.aspectMode,
             onPick = { vm.setAspect(it); dlg = Sd.None },
+            onDismiss = { dlg = Sd.None },
+        )
+
+        // ★ নতুন: Seek Step ডায়ালগ
+        Sd.SeekStep -> SeekStepDialog(
+            current = state.seekStepMs,
+            onPick = { vm.setSeekStep(it); dlg = Sd.None },
             onDismiss = { dlg = Sd.None },
         )
 
@@ -401,7 +416,6 @@ private fun ActionRow(
     }
 }
 
-// আপডেট করা SliderRow
 @Composable
 private fun SliderRow(
     label: String,
@@ -409,7 +423,7 @@ private fun SliderRow(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
-    stepSize: Float, // নতুন প্যারামিটার
+    stepSize: Float,
     onChange: (Float) -> Unit,
 ) {
     var local by remember(value) { mutableStateOf(value) }
