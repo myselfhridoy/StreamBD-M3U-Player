@@ -111,7 +111,7 @@ class AutoRefresher @Inject constructor(
 
             // ২. ইউজারের নিজের প্লেলিস্টগুলো আপডেট
             try {
-                val userProviders = providerDao.getAll()
+                val userProviders = providerDao.getAll().filter { it.type != "FTP" } // FTP সার্ভার M3U নয়, সিঙ্কে বাদ
                 for (p in userProviders) {
                     try {
                         sync.syncPlaylist(p.url, providerId = p.id)
