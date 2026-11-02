@@ -51,7 +51,6 @@ class PlayerManager @Inject constructor(
         const val MAX_RETRIES = 3
         const val USER_AGENT = "StreamBD/1.0"
 
-        // URL থেকে ধরন না চেনা গেলে এই ক্রমে চেষ্টা (ParserException হলে পরেরটা)
         val FORMAT_HINTS = listOf(
             MimeTypes.APPLICATION_M3U8,
             MimeTypes.APPLICATION_MPD,
@@ -82,7 +81,6 @@ class PlayerManager @Inject constructor(
         },
     )
 
-    // Widevine/PlayReady লাইসেন্স অনুরোধও একই header (UA, Referer) পায়
     private val drmProvider = AppDrmProvider(dataSourceFactory)
 
     private val _state = MutableStateFlow(PlayerUiState())
@@ -195,7 +193,13 @@ class PlayerManager @Inject constructor(
 
         scope.launch {
             settings.flow.collect { s ->
-                _state.update { it.copy(aspectMode = s.aspectMode) }
+                // ★ নতুন: seekStepMs আপডেট
+                _state.update { 
+                    it.copy(
+                        aspectMode = s.aspectMode, 
+                        seekStepMs = s.seekStepMs.toLong() 
+                    ) 
+                }
                 if (s.bufferTimeMs != bufferMs) {
                     bufferMs = s.bufferTimeMs
                     rebuildPlayer()
@@ -276,7 +280,6 @@ class PlayerManager @Inject constructor(
         player.playWhenReady = true
     }
 
-    /** URL, ধরনের ইঙ্গিত ও (থাকলে) DRM নিয়ে MediaItem বানায়। DRM ভুল হলে [DrmSetupException]। */
     private fun buildMediaItem(
         mediaId: String,
         url: String,
@@ -305,7 +308,6 @@ class PlayerManager @Inject constructor(
                 license.startsWith("https://", ignoreCase = true)
 
             if (uuid == C.CLEARKEY_UUID && !isUrl) {
-                // কী সরাসরি দেওয়া: নেটওয়ার্ক ছাড়াই (data: URI কাজ করে না)
                 val json = ClearKeys.toLicenseJson(license)
                     ?: throw DrmSetupException("Invalid ClearKey. Use kid:key (32 hex characters each).")
                 drmProvider.setClearKeys(mediaId, json)
@@ -327,7 +329,6 @@ class PlayerManager @Inject constructor(
         return builder.build()
     }
 
-    /** URL দেখেই DASH/SmoothStreaming বোঝা গেলে ইঙ্গিত। HLS ও বাকিদের ExoPlayer নিজে চেনে। */
     private fun guessMimeType(url: String): String? {
         val lower = url.lowercase()
         val path = lower.substringBefore('?').substringBefore('#')
@@ -342,7 +343,6 @@ class PlayerManager @Inject constructor(
         _state.update { it.copy(error = message, isBuffering = false) }
     }
 
-    /** Catchup (Archive) প্রোগ্রাম প্লে করার জন্য। */
     fun playCatchup(channel: ChannelEntity, catchupUrl: String) {
         if (catchupUrl.isBlank()) return
 
@@ -430,7 +430,6 @@ class PlayerManager @Inject constructor(
     fun clearError() { _state.update { it.copy(error = null) } }
 
     private fun handleError(error: PlaybackException) {
-        // ত্রুটির আসল নাম ও কারণ লগে (adb logcat -s PlayerManager)
         Log.e(TAG, "Player error ${error.errorCodeName}: ${error.cause?.message}", error)
         retryJob?.cancel()
 
@@ -440,7 +439,6 @@ class PlayerManager @Inject constructor(
             return
         }
 
-        // URL থেকে ধরন বোঝা যায়নি: HLS → DASH → SmoothStreaming ক্রমে চেষ্টা
         val item = currentItem
         val formatGuessWrong = error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
             error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ||
@@ -457,7 +455,6 @@ class PlayerManager @Inject constructor(
             }
         }
 
-        // DRM ত্রুটি আবার চেষ্টা করলে সারে না
         if (error.errorCode in 6000..6999) {
             _state.update { it.copy(error = describe(error), isBuffering = false) }
             return
