@@ -37,10 +37,12 @@ object DirectoryParser {
     private val H5_LINK = Regex("""<td class="fb-n"><a href="([^"]*)">(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
     private val H5_DATE = Regex("""<td class="fb-d">([^<]*)</td>""")
     private val H5_SIZE = Regex("""<td class="fb-s">([^<]*)</td>""")
+    // লিংকের পরে একই লাইনের বাকি লেখা (nginx/Apache-র "তারিখ  সাইজ") ও ধরা হয়
     private val ANY_LINK = Regex(
-        """<a\s[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>""",
+        """<a\s[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>([^\r\n<]*)""",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
     )
+    private val PLAIN_META = Regex("""(\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{2}:\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+(\d+|-)""")
     private val TAGS = Regex("<[^>]*>")
 
     /** [pageUrl] হলো যে ডিরেক্টরির HTML এটি; লিংকগুলো এর সাপেক্ষে পূর্ণ URL হয়। */
@@ -87,10 +89,21 @@ object DirectoryParser {
             if (!path.startsWith(basePath) || path == basePath) continue
             val isDir = path.endsWith("/")
             val shown = unescape(stripTags(m.groupValues[2])).trim().trimEnd('/')
-            val name = shown.ifEmpty { decode(path.trimEnd('/').substringAfterLast('/')) }
-            if (name.isEmpty() || name.equals("Parent Directory", true)) continue
+            if (shown.equals("Parent Directory", true)) continue
+            // ★ নাম আসল URL থেকে। nginx লম্বা নাম কেটে "..>" করে দেখায়, তাই দেখানো লেখা ভরসাযোগ্য নয়
+            val name = decode(path.trimEnd('/').substringAfterLast('/')).ifEmpty { shown }
+            if (name.isEmpty()) continue
+            val meta = PLAIN_META.find(m.groupValues[3])
             val key = normalize(url, isDir)
-            out.getOrPut(key) { FtpEntry(name = name, url = key, isDir = isDir) }
+            out.getOrPut(key) {
+                FtpEntry(
+                    name = name,
+                    url = key,
+                    isDir = isDir,
+                    sizeBytes = if (isDir) null else meta?.groupValues?.get(2)?.toLongOrNull(),
+                    modified = meta?.groupValues?.get(1),
+                )
+            }
         }
         return out.values.toList()
     }
