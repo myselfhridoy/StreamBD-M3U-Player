@@ -33,12 +33,11 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private const val HOME_COLUMNS = 5
+private const val HOME_COLUMNS = 4
 
 private data class HomeItem(val label: String, val icon: ImageVector, val route: String?)
 
 private val homeItems = listOf(
-    HomeItem("Providers", Icons.Filled.PlaylistPlay, Routes.PROVIDERS),
     HomeItem("Live",     Icons.Filled.LiveTv,       Routes.LIVE),
     HomeItem("Movies",   Icons.Filled.Videocam,     Routes.MOVIES),
     HomeItem("Series",   Icons.Filled.VideoLibrary, Routes.SERIES),
