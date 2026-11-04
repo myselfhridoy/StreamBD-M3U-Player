@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.WorkspacePremium // নতুন আইকন
 import androidx.compose.material3.CircularProgressIndicator
+import kotlinx.coroutines.delay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -241,14 +242,28 @@ fun <T> PanelList(
     emptyText: String,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
+    emptyActionLabel: String? = null,
+    onEmptyAction: (() -> Unit)? = null,
     row: @Composable (item: T, modifier: Modifier) -> Unit,
 ) {
     if (items.isEmpty()) {
+        // লোড শেষ হওয়ার আগের মুহূর্তে বাটন যেন ঝলকে না ওঠে, তাই একটু দেরিতে দেখাই
+        var actionReady by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { delay(600); actionReady = true }
+        val actionFocus = remember { FocusRequester() }
+        val showAction = !loading && actionReady && emptyActionLabel != null && onEmptyAction != null
+        LaunchedEffect(showAction) { if (showAction) runCatching { actionFocus.requestFocus() } }
         Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             if (loading) {
                 CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
             } else {
-                Text(emptyText, color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(emptyText, color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
+                    if (showAction) {
+                        Spacer(Modifier.height(16.dp))
+                        EmptyActionButton(emptyActionLabel!!, Modifier.focusRequester(actionFocus), onEmptyAction!!)
+                    }
+                }
             }
         }
         return
@@ -277,4 +292,22 @@ fun <T> PanelList(
             row(items[index], if (index == start) Modifier.focusRequester(startFocus) else Modifier)
         }
     }
+}
+@Composable
+private fun EmptyActionButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    Text(
+        text = label,
+        color = if (focused) Color.Black else Accent,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier
+            .clip(shape)
+            .background(if (focused) Accent else Color.Transparent)
+            .border(1.dp, Accent, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+    )
 }
