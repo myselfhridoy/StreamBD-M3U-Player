@@ -182,6 +182,7 @@ fun AppNav() {
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
+                onOpenProviders = { nav.navigate(Routes.PROVIDERS) },
                 onResetComplete = {
                     nav.navigate(Routes.ACTIVATION) {
                         popUpTo(Routes.HOME) { inclusive = true }
