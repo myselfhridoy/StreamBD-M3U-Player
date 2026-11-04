@@ -95,14 +95,13 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
+            SectionHeader("General")
+
             ActionRow(
                 label = "Providers",
                 subtitle = "Add or manage M3U playlists and FTP servers",
                 onClick = onOpenProviders,
             )
-            Spacer(Modifier.height(8.dp))
-
-            SectionHeader("General")
 
             if (isTv) {
                 CheckRow(
