@@ -373,6 +373,7 @@ private fun ProviderGridCard(
             provider.url, 
             color = TextMuted, 
             fontSize = 11.sp, 
+            minLines = 2, // ১ লাইনের URL-এও কার্ডের উচ্চতা সমান থাকে
             maxLines = 2, 
             overflow = TextOverflow.Ellipsis,
             lineHeight = 14.sp
