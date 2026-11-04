@@ -29,7 +29,7 @@ fun SeekStepDialog(
 
     AppDialog(onDismiss = onDismiss) {
         Text(
-            "Seek Step (FF / REW)",
+            "Video Rewind Step",
             color = TextPrimary,
             fontSize = 18.sp,
             modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
