@@ -192,6 +192,23 @@ class SettingsViewModel @Inject constructor(
         freed
     }
 
+    private val _deactivating = MutableStateFlow(false)
+    val deactivating: StateFlow<Boolean> = _deactivating.asStateFlow()
+
+    /** সার্ভারে স্লট ফাঁকা করে, সফল হলে পুরো রিসেট। ব্যর্থ হলে কিছুই মোছে না। */
+    fun deactivate(onSuccess: () -> Unit, onError: (String) -> Unit) {
+        if (_deactivating.value) return
+        viewModelScope.launch {
+            _deactivating.value = true
+            val result = activation.deactivate()
+            _deactivating.value = false
+            result.fold(
+                onSuccess = { resetApplication(onSuccess) },
+                onFailure = { onError(it.message ?: "Could not deactivate. Try again.") },
+            )
+        }
+    }
+
     /** Full reset: caches + DB + DataStore. Caller navigates to Activation. */
     fun resetApplication(onDone: () -> Unit) = viewModelScope.launch {
         withContext(Dispatchers.IO) { clearDiskCache() }
