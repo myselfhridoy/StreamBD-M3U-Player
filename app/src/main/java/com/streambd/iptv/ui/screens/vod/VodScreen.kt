@@ -41,6 +41,7 @@ import com.streambd.iptv.ui.theme.*
 @Composable
 fun VodScreen(
     onBack: () -> Unit,
+    onOpenProviders: () -> Unit = {},
     directPlayId: Long? = null,
     vm: VodViewModel = hiltViewModel(),
 ) {
@@ -151,7 +152,9 @@ fun VodScreen(
                             key = { it.name },
                             startIndex = 0,
                             resetKey = selected,
-                            emptyText = if (groups.isEmpty()) "No series in your playlist." else "No series in this group.",
+                            emptyText = if (groups.isEmpty()) "No series yet.\nAdd a playlist in Providers (Settings)." else "No series in this group.",
+                            emptyActionLabel = if (allItems.isEmpty()) "Add a provider" else null,
+                            onEmptyAction = onOpenProviders,
                         ) { group, rowModifier ->
                             // সিরিজ গ্রুপের ক্ষেত্রে বাদ দেওয়া হলো, কারণ এখানে সরাসরি প্রিমিয়াম ফ্ল্যাগ নেই
                             PanelRow(
@@ -170,9 +173,11 @@ fun VodScreen(
                             emptyText = when {
                                 favoritesFlat -> "No favorite series yet.\nLong-press an episode to add one."
                                 selected == VOD_GROUP_FAVORITES -> "No favorite $noun yet.\nLong-press an item to add one."
-                                groups.isEmpty() -> "No $noun in your playlist."
+                                groups.isEmpty() -> "No $noun yet.\nAdd a playlist in Providers (Settings)."
                                 else -> "No $noun in this group."
                             },
+                            emptyActionLabel = if (allItems.isEmpty()) "Add a provider" else null,
+                            onEmptyAction = onOpenProviders,
                         ) { item, rowModifier ->
                             PanelRow(
                                 title = item.name,
