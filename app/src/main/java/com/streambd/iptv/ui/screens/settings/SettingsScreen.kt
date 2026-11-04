@@ -71,6 +71,7 @@ private sealed interface Sd {
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenProviders: () -> Unit,
     onResetComplete: () -> Unit,
     vm: SettingsViewModel = hiltViewModel(),
 ) {
@@ -94,6 +95,13 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         ) {
+            ActionRow(
+                label = "Providers",
+                subtitle = "Add or manage M3U playlists and FTP servers",
+                onClick = onOpenProviders,
+            )
+            Spacer(Modifier.height(8.dp))
+
             SectionHeader("General")
 
             if (isTv) {
@@ -153,7 +161,7 @@ fun SettingsScreen(
 
             // ★ নতুন: Seek Step অপশন
             ValueRow(
-                label = "Seek Step (FF / REW)",
+                label = "Video Rewind Step",
                 value = formatSeekStep(state.seekStepMs),
                 onClick = { dlg = Sd.SeekStep },
             )
