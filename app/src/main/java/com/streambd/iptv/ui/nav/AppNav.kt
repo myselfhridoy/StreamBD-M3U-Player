@@ -157,6 +157,7 @@ fun AppNav() {
             LiveScreen(
                 preselectChannelId = entry.arguments?.getLong("channelId") ?: -1L,
                 onBack = { nav.popBackStack() },
+                onOpenProviders = { nav.navigate(Routes.PROVIDERS) },
             )
         }
         composable(
@@ -168,6 +169,7 @@ fun AppNav() {
         ) { entry ->
             VodScreen(
                 onBack = { nav.popBackStack() },
+                onOpenProviders = { nav.navigate(Routes.PROVIDERS) },
                 directPlayId = entry.arguments?.getLong("playId")?.takeIf { it > 0L },
             )
         }
