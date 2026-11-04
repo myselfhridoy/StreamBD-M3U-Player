@@ -28,6 +28,7 @@ import com.streambd.iptv.ui.theme.*
 fun LiveScreen(
     preselectChannelId: Long = -1L,
     onBack: () -> Unit = {},
+    onOpenProviders: () -> Unit = {},
     vm: LiveViewModel = hiltViewModel(),
 ) {
     val groups by vm.groups.collectAsStateWithLifecycle()
@@ -52,7 +53,7 @@ fun LiveScreen(
 
     val emptyText = when {
         allChannels.isEmpty() ->
-            "No live channels in your playlist.\nTry Movies or Series, or refresh the playlist in Settings."
+            "No live channels yet.\nAdd a playlist in Providers (Settings), or try Movies/Series."
         selected == LIVE_GROUP_FAVORITES ->
             "No favorite channels yet.\nLong-press a channel to add one."
         else -> "No channels in this group."
@@ -108,6 +109,8 @@ fun LiveScreen(
                         resetKey = selected,
                         emptyText = emptyText,
                         loading = !loaded,
+                        emptyActionLabel = if (allChannels.isEmpty()) "Add a provider" else null,
+                        onEmptyAction = onOpenProviders,
                     ) { channel, rowModifier ->
                         PanelRow(
                             title = channel.name,
