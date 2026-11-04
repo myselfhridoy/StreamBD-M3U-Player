@@ -57,6 +57,31 @@ class ActivationApi @Inject constructor(private val http: OkHttpClient) {
     suspend fun activate(code: String, deviceId: String) = call("activate", code, deviceId)
     suspend fun validate(code: String, deviceId: String) = call("validate", code, deviceId)
 
+    /** এই ডিভাইসকে কোড থেকে সরিয়ে স্লট ফাঁকা করে। কোড সার্ভারে না থাকলেও (404) সফল ধরা হয়। */
+    suspend fun deactivate(code: String, deviceId: String): Unit = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("code", code).put("deviceId", deviceId).toString()
+        val request = Request.Builder()
+            .url("${getBaseUrl().trimEnd('/')}/deactivate")
+            .post(payload.toRequestBody(jsonType))
+            .header("Accept", "application/json")
+            .build()
+        val response = try {
+            http.newCall(request).execute()
+        } catch (e: UnknownHostException) {
+            throw ActivationNetworkException("Cannot reach the activation server.", e)
+        } catch (e: IOException) {
+            throw ActivationNetworkException("Network error. Please try again.", e)
+        }
+        response.use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (resp.isSuccessful || resp.code == 404) return@use
+            if (resp.code >= 500) throw ActivationNetworkException("Server error (${resp.code}).")
+            val msg = runCatching { JSONObject(body).optString("error") }.getOrNull()
+                ?.takeIf { it.isNotBlank() } ?: "Could not deactivate (${resp.code})"
+            throw ActivationRejectedException(msg, false, resp.code)
+        }
+    }
+
     private suspend fun call(path: String, code: String, deviceId: String): ActivationResponse =
         withContext(Dispatchers.IO) {
             // ডিভাইসের আসল নাম বের করা (Unknown Device ফিক্স)
