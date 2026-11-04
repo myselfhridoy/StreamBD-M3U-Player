@@ -73,6 +73,24 @@ class ActivationRepository @Inject constructor(
         }
     }
 
+    /** সার্ভারে এই ডিভাইসের স্লট ফাঁকা করে। লোকাল ডেটা মোছা হয় না; সফল হলে কলার রিসেট চালাবে। */
+    suspend fun deactivate(): Result<Unit> {
+        val active = store.current() as? ActivationState.Active ?: return Result.success(Unit)
+        if (isLocal(active.code)) return Result.success(Unit)
+        return try {
+            api.deactivate(active.code, store.deviceId())
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ActivationRejectedException) {
+            Result.failure(IllegalStateException(e.reason, e))
+        } catch (e: ActivationNetworkException) {
+            Result.failure(IllegalStateException(e.message ?: "Network error", e))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /** Server ছাড়া সরাসরি playlist URL দিয়ে সেটআপ। মেয়াদ কখনও শেষ হয় না (expiresAt = 0). */
     suspend fun activateLocally(playlistUrl: String, epgUrl: String): ActivationState.Active {
         // ★ নতুন: রিলিজে লোকাল মোড বন্ধ
