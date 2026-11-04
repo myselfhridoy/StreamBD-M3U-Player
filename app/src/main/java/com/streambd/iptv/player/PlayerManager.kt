@@ -505,18 +505,35 @@ class PlayerManager @Inject constructor(
         }
     }
 
+    /**
+     * স্ট্রিম URL-এর পরের হেডার পার্স করে। দুই ধরনই চলে:
+     *  - `url|Referer:https://x.com/|User-Agent:Mozilla/5.0 ...`  (প্লেলিস্টে সাধারণ)
+     *  - `url|User-Agent=Mozilla/5.0&Referer=https%3A%2F%2Fx.com%2F`  (Kodi-স্টাইল)
+     */
     private fun splitHeaders(raw: String): Pair<String, Map<String, String>> {
         val bar = raw.indexOf('|')
         if (bar < 0) return raw to emptyMap()
 
         val headers = LinkedHashMap<String, String>()
-        for (pair in raw.substring(bar + 1).split('&')) {
-            val eq = pair.indexOf('=')
-            if (eq <= 0) continue
-            val key = pair.substring(0, eq).trim()
-            val rawValue = pair.substring(eq + 1)
-            val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrDefault(rawValue)
-            if (key.isNotEmpty()) headers[key] = value.trim()
+        for (segment in raw.substring(bar + 1).split('|')) {
+            val eq = segment.indexOf('=')
+            val colon = segment.indexOf(':')
+            if (colon > 0 && (eq < 0 || colon < eq)) {
+                // "Key: Value"
+                val key = segment.substring(0, colon).trim()
+                val value = segment.substring(colon + 1).trim()
+                if (key.isNotEmpty() && key.none { it.isWhitespace() }) headers[key] = value
+            } else {
+                // "Key=Value&Key2=Value2"
+                for (pair in segment.split('&')) {
+                    val e = pair.indexOf('=')
+                    if (e <= 0) continue
+                    val key = pair.substring(0, e).trim()
+                    val rawValue = pair.substring(e + 1)
+                    val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrDefault(rawValue)
+                    if (key.isNotEmpty()) headers[key] = value.trim()
+                }
+            }
         }
         return raw.substring(0, bar) to headers
     }
