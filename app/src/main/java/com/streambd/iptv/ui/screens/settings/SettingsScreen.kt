@@ -63,6 +63,9 @@ private sealed interface Sd {
     data object PinNew : Sd
     data object PinConfirm : Sd
     data object PinForReset : Sd
+    data object PinForDeactivate : Sd
+    data object DeactivateConfirm : Sd
+    data class DeactivateError(val message: String) : Sd
     data object Help : Sd
     data object Licenses : Sd
     data object OverlayPermission : Sd
@@ -173,6 +176,12 @@ fun SettingsScreen(
             )
             
             ActionRow("Change PIN Code", onClick = { dlg = Sd.PinCurrent })
+            ActionRow(
+                label = "Deactivate this device",
+                subtitle = "Free this device's slot so you can activate it elsewhere",
+                danger = true,
+                onClick = { dlg = Sd.PinForDeactivate },
+            )
             ActionRow("Reset Application", danger = true, onClick = { dlg = Sd.PinForReset })
             ActionRow("Clear Disk Cache", onClick = { dlg = Sd.ClearCache })
             ActionRow("Help", onClick = { dlg = Sd.Help })
@@ -224,7 +233,7 @@ fun SettingsScreen(
         RefreshState.Idle, RefreshState.Running -> Unit
     }
 
-    when (dlg) {
+    when (val d = dlg) {
         Sd.Aspect -> AspectRatioDialog(
             current = state.aspectMode,
             onPick = { vm.setAspect(it); dlg = Sd.None },
@@ -283,6 +292,37 @@ fun SettingsScreen(
             verify = { it == pendingPin },
             onSuccess = { vm.setPin(pendingPin); dlg = Sd.None },
             onDismiss = { dlg = Sd.None },
+        )
+
+        Sd.PinForDeactivate -> PinDialog(
+            title = "Enter PIN",
+            verify = { vm.verifyPin(it) },
+            onSuccess = { dlg = Sd.DeactivateConfirm },
+            onDismiss = { dlg = Sd.None },
+        )
+
+        Sd.DeactivateConfirm -> ConfirmDialog(
+            title = "Deactivate this device?",
+            body = "This device will be removed from your activation code and the app will be reset. You can activate it again later with the same code. Internet is required.",
+            confirmLabel = "DEACTIVATE",
+            confirmIsDangerous = true,
+            onCancel = { dlg = Sd.None },
+            onConfirm = {
+                dlg = Sd.None
+                Toast.makeText(ctx, "Deactivating…", Toast.LENGTH_SHORT).show()
+                vm.deactivate(
+                    onSuccess = { onResetComplete() },
+                    onError = { dlg = Sd.DeactivateError(it) },
+                )
+            },
+        )
+
+        is Sd.DeactivateError -> ConfirmDialog(
+            title = "Couldn't deactivate",
+            body = d.message,
+            confirmLabel = "OK",
+            onCancel = { dlg = Sd.None },
+            onConfirm = { dlg = Sd.None },
         )
 
         Sd.PinForReset -> PinDialog(
