@@ -343,7 +343,7 @@ fun SettingsScreen(
 
         Sd.Licenses -> ConfirmDialog(
             title = "Open-source licenses",
-            body = "AndroidX, Jetpack Compose, Media3, Room, DataStore, Hilt, OkHttp, Coil — each under Apache-2.0. Poppins/Nunito (when bundled) under SIL OFL 1.1.",
+            body = "AndroidX, Jetpack Compose, Media3, Room, DataStore, Hilt, OkHttp, Coil — each under Apache-2.0. Poppins/Nunito (when bundled) under SIL OFL 1.1.\n\nThis app uses FFmpeg (libavcodec) for audio decoding, licensed under the GNU LGPL v2.1 or later (https://ffmpeg.org). FFmpeg is built without GPL components, as a separate shared library that can be replaced.",
             confirmLabel = "CLOSE",
             confirmIsDangerous = false,
             onCancel = { dlg = Sd.None },
