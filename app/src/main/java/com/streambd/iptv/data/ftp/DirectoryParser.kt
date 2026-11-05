@@ -14,6 +14,7 @@ data class FtpEntry(
 ) {
     val ext: String get() = if (isDir) "" else name.substringAfterLast('.', "").lowercase()
     val isVideo: Boolean get() = !isDir && ext in VIDEO_EXT
+    val isSubtitle: Boolean get() = !isDir && ext in SUBTITLE_EXT
     /** ExoPlayer এই ফরম্যাট সাধারণত চালাতে পারে না। */
     val likelyUnsupported: Boolean get() = !isDir && ext in RISKY_EXT
 
@@ -23,6 +24,7 @@ data class FtpEntry(
             "avi", "wmv", "flv", "divx",
         )
         val RISKY_EXT = setOf("avi", "wmv", "flv", "divx")
+        val SUBTITLE_EXT = setOf("srt", "vtt", "ass", "ssa")
     }
 }
 
