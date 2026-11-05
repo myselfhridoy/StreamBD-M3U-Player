@@ -113,7 +113,7 @@ fun VodScreen(
             onToggleLock = { current?.let(vm::toggleLock) },
             onOpenTracks = dialogs::openTracks,
             onOpenSettings = dialogs::openAspect,
-            onRetry = { vm.player.retry() },
+            onRetry = vm::retry,
             listOpen = listOpen,
             onListOpenChange = { listOpen = it },
             listContent = {
