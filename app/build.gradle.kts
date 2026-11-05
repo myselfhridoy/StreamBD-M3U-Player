@@ -18,6 +18,9 @@ android {
         
         buildConfigField("String", "ENCODED_API", "\"aHR0cHM6Ly9zdHJlYW1iZC1hY3RpdmF0aW9uLXNlcnZlci5zdHJlYW1iZGlwdHYud29ya2Vycy5kZXY=\"")
         buildConfigField("boolean", "ACTIVATION_ENABLED", "true")
+
+        // FFmpeg নেটিভ লাইব্রেরি শুধু TV box/ফোনের ABI-র জন্য (x86 বাদ), APK ছোট রাখতে
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -109,6 +112,8 @@ dependencies {
     implementation("androidx.media3:media3-datasource-rtmp:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
+    // ★ নতুন: নিজেদের বিল্ড করা FFmpeg অডিও ডিকোডার (AC-3, E-AC-3, DTS, TrueHD ...), LGPL
+    implementation(files("libs/lib-decoder-ffmpeg-release.aar"))
 
     implementation("io.coil-kt:coil-compose:2.6.0")
 
