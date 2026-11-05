@@ -227,9 +227,13 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    fun play(channel: ChannelEntity) {
+    /**
+     * [force] = true হলে একই চ্যানেল চললেও নতুন করে শুরু হয় (নতুন URL/টোকেন বসাতে)।
+     * [resumeAtMs] দিলে মুভি/এপিসোড ওই জায়গা থেকে চলে।
+     */
+    fun play(channel: ChannelEntity, force: Boolean = false, resumeAtMs: Long = C.TIME_UNSET) {
         val same = _state.value.current?.id == channel.id
-        if (same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
+        if (!force && same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
 
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
@@ -275,9 +279,26 @@ class PlayerManager @Inject constructor(
         }
 
         currentItem = item
-        player.setMediaItem(item)
+        if (resumeAtMs != C.TIME_UNSET) player.setMediaItem(item, resumeAtMs) else player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
+    }
+
+    /**
+     * প্লেলিস্ট আপডেটে চলমান চ্যানেলের URL (টোকেন) বদলে গেলে এবং প্লেয়ার আটকে/এরর অবস্থায় থাকলে
+     * নতুন URL দিয়ে নিজে থেকে আবার চালায়। ঠিকঠাক চলতে থাকলে কিছু করে না, যাতে দেখার সময় স্ট্রিম না কাটে।
+     */
+    fun recoverWith(fresh: ChannelEntity) {
+        val s = _state.value
+        val cur = s.current ?: return
+        if (cur.id != fresh.id || cur.streamUrl == fresh.streamUrl) return
+        if (s.error == null && !(s.isBuffering && !s.isPlaying)) return
+        val resume = if (!player.isCurrentMediaItemLive && player.currentPosition > 5_000L) {
+            player.currentPosition
+        } else {
+            C.TIME_UNSET
+        }
+        play(fresh, force = true, resumeAtMs = resume)
     }
 
     private fun buildMediaItem(
@@ -389,7 +410,7 @@ class PlayerManager @Inject constructor(
     }
 
     fun retry() {
-        _state.value.current?.let(::play)
+        _state.value.current?.let { play(it, force = true) }
     }
 
     fun stopAndClear() {
