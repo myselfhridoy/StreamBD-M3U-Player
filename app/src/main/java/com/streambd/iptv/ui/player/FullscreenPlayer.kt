@@ -200,6 +200,9 @@ fun FullscreenPlayer(
         onDispose { player.removeListener(listener) }
     }
 
+    // স্ট্রিম তথ্য ওভারলে (রিমোটের INFO বাটন বা কন্ট্রোলের (i) আইকন)
+    var showInfo by remember { mutableStateOf(false) }
+
     /** বন্ধ → সাবটাইটেল ১ → ২ … → বন্ধ, এভাবে ঘোরে। */
     fun cycleSubtitle() {
         val p = playerNow
@@ -267,6 +270,11 @@ fun FullscreenPlayer(
                 if (controlsVisible) tick++
                 
                 if (listOpen) listActivity.tryEmit(Unit)
+
+                if (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_INFO) {
+                    showInfo = !showInfo
+                    return@onPreviewKeyEvent true
+                }
 
                 when (event.key) {
                     Key.MediaPlayPause -> { onTogglePlay(); return@onPreviewKeyEvent true }
@@ -351,6 +359,14 @@ fun FullscreenPlayer(
             )
         }
 
+        if (showInfo) {
+            StreamInfoOverlay(
+                player = player,
+                state = state,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
+
         val ch = state.current
         AnimatedVisibility(
             visible = controlsVisible && !listOpen && ch != null,
@@ -380,6 +396,8 @@ fun FullscreenPlayer(
                     subtitleCount = subtitleCount,
                     subtitleOn = subtitleOn,
                     onCycleSubtitle = { tick++; cycleSubtitle() },
+                    infoOn = showInfo,
+                    onToggleInfo = { tick++; showInfo = !showInfo },
                 )
             }
         }
@@ -430,6 +448,8 @@ private fun ControlsPanel(
     subtitleCount: Int = 0,
     subtitleOn: Boolean = false,
     onCycleSubtitle: () -> Unit = {},
+    infoOn: Boolean = false,
+    onToggleInfo: () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -527,6 +547,13 @@ private fun ControlsPanel(
                     onClick = onCycleSubtitle,
                 )
             }
+            Spacer(Modifier.width(4.dp))
+            ControlButton(
+                icon = Icons.Filled.Info,
+                description = "Stream info",
+                tint = if (infoOn) Accent else TextPrimary,
+                onClick = onToggleInfo,
+            )
             Spacer(Modifier.weight(1f))
             ControlButton(icon = Icons.Filled.AspectRatio, description = "Aspect ratio", onClick = onOpenAspect)
         }
@@ -704,4 +731,108 @@ private fun aspectLabel(aspect: Float): String? {
     val nearest = known.minByOrNull { abs(it.first - aspect) }
     return if (nearest != null && abs(nearest.first - aspect) < 0.06f) nearest.second
     else "%.2f:1".format(aspect)
+}
+/* ---------------------------- stream info ----------------------------- */
+
+@Composable
+private fun StreamInfoOverlay(player: ExoPlayer, state: PlayerUiState, modifier: Modifier = Modifier) {
+    var tickInfo by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            tickInfo++
+        }
+    }
+    val rows = remember(tickInfo, state.videoDecoder, state.audioDecoder, state.droppedFrames, state.drmInfo, player) {
+        buildInfoRows(player, state)
+    }
+    Column(
+        modifier
+            .displayCutoutPadding()
+            .padding(24.dp)
+            .widthIn(max = 460.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text("STREAM INFO", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        for ((label, value) in rows) {
+            Row {
+                Text(label, color = TextMuted, fontSize = 11.sp, modifier = Modifier.width(96.dp))
+                Text(value, color = TextPrimary, fontSize = 11.sp, modifier = Modifier.weight(1f, fill = false))
+            }
+        }
+    }
+}
+
+private fun f1(x: Float): String = String.format(java.util.Locale.US, "%.1f", x)
+
+private fun buildInfoRows(player: ExoPlayer, state: PlayerUiState): List<Pair<String, String>> {
+    val out = ArrayList<Pair<String, String>>()
+
+    val v = player.videoFormat
+    out += "Video" to if (v == null) "—" else buildString {
+        append(videoName(v.sampleMimeType))
+        if (v.width > 0 && v.height > 0) append("  ${v.width}x${v.height}")
+        if (v.frameRate > 0f) append("  @ ${f1(v.frameRate)} fps")
+        if (v.bitrate > 0) append("  ${f1(v.bitrate / 1_000_000f)} Mbps")
+        v.codecs?.let { append("  ($it)") }
+    }
+    out += "Video decoder" to (state.videoDecoder ?: "—")
+
+    val a = player.audioFormat
+    out += "Audio" to if (a == null) "—" else buildString {
+        append(audioName(a.sampleMimeType))
+        if (a.channelCount > 0) append("  ${channelLabel(a.channelCount)}")
+        if (a.sampleRate > 0) append("  ${f1(a.sampleRate / 1000f)} kHz")
+        if (a.bitrate > 0) append("  ${a.bitrate / 1000} kbps")
+        a.language?.takeIf { it != "und" }?.let { append("  [$it]") }
+    }
+    out += "Audio decoder" to (
+        state.audioDecoder?.let { if (it.contains("ffmpeg", ignoreCase = true)) "$it  (FFmpeg)" else it } ?: "—"
+        )
+
+    out += "Dropped frames" to state.droppedFrames.toString()
+    out += "Buffered" to "${f1(player.totalBufferedDuration / 1000f)} s"
+    state.drmInfo?.let { out += "DRM" to it }
+    return out
+}
+
+private fun videoName(mime: String?): String = when (mime) {
+    "video/avc" -> "H.264"
+    "video/hevc" -> "H.265 (HEVC)"
+    "video/av01" -> "AV1"
+    "video/x-vnd.on2.vp9" -> "VP9"
+    "video/x-vnd.on2.vp8" -> "VP8"
+    "video/mpeg2" -> "MPEG-2"
+    "video/mp4v-es" -> "MPEG-4"
+    null -> "?"
+    else -> mime.removePrefix("video/")
+}
+
+private fun audioName(mime: String?): String = when (mime) {
+    "audio/mp4a-latm" -> "AAC"
+    "audio/ac3" -> "AC-3"
+    "audio/eac3" -> "E-AC-3"
+    "audio/eac3-joc" -> "E-AC-3 (Atmos)"
+    "audio/vnd.dts" -> "DTS"
+    "audio/vnd.dts.hd" -> "DTS-HD"
+    "audio/vnd.dts.hd;profile=lbr" -> "DTS Express"
+    "audio/true-hd" -> "TrueHD"
+    "audio/mpeg" -> "MP3"
+    "audio/mpeg-L2" -> "MP2"
+    "audio/opus" -> "Opus"
+    "audio/vorbis" -> "Vorbis"
+    "audio/flac" -> "FLAC"
+    null -> "?"
+    else -> mime.removePrefix("audio/")
+}
+
+private fun channelLabel(n: Int): String = when (n) {
+    1 -> "mono"
+    2 -> "stereo"
+    6 -> "5.1"
+    8 -> "7.1"
+    else -> "${n}ch"
 }
