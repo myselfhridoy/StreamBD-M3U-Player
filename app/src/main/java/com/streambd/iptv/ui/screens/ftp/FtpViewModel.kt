@@ -12,6 +12,7 @@ import com.streambd.iptv.data.ftp.FtpBrowser
 import com.streambd.iptv.data.ftp.FtpEntry
 import com.streambd.iptv.data.ftp.sortEntries
 import com.streambd.iptv.data.util.stableId
+import com.streambd.iptv.player.ExternalSubtitle
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.player.PlayerUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +73,7 @@ class FtpViewModel @Inject constructor(
 
     private var loadJob: Job? = null
     private val lastOpened = HashMap<String, String>() // ফোল্ডার URL -> শেষ খোলা আইটেমের URL
+    private val subsByFolder = HashMap<String, List<FtpEntry>>() // ফোল্ডার URL -> সেখানের সাবটাইটেল ফাইল
 
     init {
         viewModelScope.launch {
@@ -141,7 +143,9 @@ class FtpViewModel @Inject constructor(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
-                val sorted = sortEntries(browser.list(url, force).filter { it.isDir || it.isVideo })
+                val all = browser.list(url, force)
+                val sorted = sortEntries(all.filter { it.isDir || it.isVideo })
+                subsByFolder[url] = all.filter { it.isSubtitle }
                 _ui.update {
                     // ব্যবহারকারী ততক্ষণে অন্য ফোল্ডারে গেলে পুরনো ফল বসাব না
                     if (it.crumbs.lastOrNull()?.url != url) it
@@ -170,8 +174,36 @@ class FtpViewModel @Inject constructor(
             }
             _ui.value.crumbs.lastOrNull()?.let { lastOpened[it.url] = entry.url }
             _playing.value = entry
-            playerManager.play(toChannel(entry))
+            playerManager.play(toChannel(entry), subtitles = subtitlesFor(entry))
         }
+    }
+
+    /**
+     * ভিডিওর পাশে একই নামে শুরু হওয়া সাবটাইটেল: "Movie.mkv" -> "Movie.srt", "Movie.en.srt"।
+     * নামের পরের অংশ ফাঁকা বা '.' দিয়ে শুরু না হলে ধরা হয় না ("Movie 2.srt" ≠ "Movie.mkv"-এর)।
+     */
+    private fun subtitlesFor(video: FtpEntry): List<ExternalSubtitle> {
+        val folder = _ui.value.crumbs.lastOrNull()?.url ?: return emptyList()
+        val subs = subsByFolder[folder].orEmpty()
+        if (subs.isEmpty()) return emptyList()
+        val base = video.name.substringBeforeLast('.')
+        val otherBases = _ui.value.entries.filter { it.isVideo && it.url != video.url }
+            .map { it.name.substringBeforeLast('.') }
+            .filter { it.length > base.length && it.startsWith(base, ignoreCase = true) }
+        return subs.mapNotNull { s ->
+            val sb = s.name.substringBeforeLast('.')
+            if (!sb.startsWith(base, ignoreCase = true)) return@mapNotNull null
+            val rest = sb.substring(base.length)
+            if (rest.isNotEmpty() && !rest.startsWith(".")) return@mapNotNull null
+            // আরও লম্বা নামের অন্য ভিডিওর সাবটাইটেল হলে বাদ
+            if (otherBases.any { sb.startsWith(it, ignoreCase = true) }) return@mapNotNull null
+            val tag = rest.trim('.', ' ', '_', '-')
+            ExternalSubtitle(
+                url = s.url,
+                label = tag.ifBlank { "Subtitle" },
+                language = tag.takeIf { it.length in 2..3 && it.all(Char::isLetter) }?.lowercase(),
+            )
+        }.take(6)
     }
 
     /** এই ফোল্ডারের পরের ভিডিও (এপিসোড) — থাকলে true। */
