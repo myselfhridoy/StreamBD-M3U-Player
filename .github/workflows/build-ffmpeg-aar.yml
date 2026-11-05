@@ -51,7 +51,7 @@ jobs:
           FFMPEG_MODULE_PATH="$GITHUB_WORKSPACE/media/libraries/decoder_ffmpeg/src/main"
           NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
           HOST_PLATFORM="linux-x86_64"
-          ANDROID_ABI=23   # = app minSdk
+          ANDROID_ABI=21   # Media3 মডিউলের JNI ২১ লেভেলে লিঙ্ক হয়; FFmpeg-ও একই লেভেলে না হলে 'undefined symbol: stderr' আসে
           ENABLED_DECODERS=(vorbis opus flac alac pcm_mulaw pcm_alaw mp3 amrnb amrwb aac ac3 eac3 dca mlp truehd)
           cd "$FFMPEG_MODULE_PATH/jni"
           ln -s "$GITHUB_WORKSPACE/ffmpeg" ffmpeg
