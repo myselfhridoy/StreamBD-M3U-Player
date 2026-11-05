@@ -42,6 +42,8 @@ class AutoRefresher @Inject constructor(
 
     fun start() {
         if (job?.isActive == true) return
+        // প্রতিবার অ্যাপে ঢোকার (onStart) সময় "entry refresh" আবার হবে (৫ মিনিটের বেশি পুরনো হলে)
+        entryRefreshDone = false
         job = scope.launch {
             delay(FIRST_DELAY_MS)
             while (isActive) {
