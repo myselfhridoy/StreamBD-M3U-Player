@@ -19,6 +19,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
@@ -162,7 +163,12 @@ class PlayerManager @Inject constructor(
         val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
         val forPlaybackMs = minOf(1_000, minMs)
         val afterRebufferMs = minOf(2_000, minMs)
-        return ExoPlayer.Builder(appContext)
+        // ★ FFmpeg অডিও এক্সটেনশন (AAR যোগ করা থাকলে) শুধু তখনই কাজে লাগে যখন ডিভাইসে AC-3/E-AC-3/DTS-এর
+        //   নিজস্ব ডিকোডার নেই। না থাকলে এই সেটিংয়ে কিছুই বদলায় না।
+        val renderersFactory = DefaultRenderersFactory(appContext)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setEnableDecoderFallback(true)
+        return ExoPlayer.Builder(appContext, renderersFactory)
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(dataSourceFactory)
                     .setDrmSessionManagerProvider(drmProvider),
