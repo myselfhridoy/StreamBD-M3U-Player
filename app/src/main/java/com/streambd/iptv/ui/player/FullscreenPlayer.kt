@@ -46,6 +46,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.epg.NowNext
@@ -176,6 +181,42 @@ fun FullscreenPlayer(
     
     // ★ নতুন: ডাবল-ট্যাপের ল্যাম্বডায় পুরনো মান আসা রোধ করতে
     val stepNow by rememberUpdatedState(state.seekStepMs)
+
+    // ── সাবটাইটেল (ভিডিওর ভেতরের বা বাইরে থেকে জোড়া): আছে কিনা ও চালু কিনা ──
+    var subtitleCount by remember { mutableIntStateOf(0) }
+    var subtitleOn by remember { mutableStateOf(false) }
+    DisposableEffect(player) {
+        fun refresh() {
+            val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+            subtitleCount = groups.size
+            subtitleOn = groups.any { it.isSelected }
+        }
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) = refresh()
+            override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) = refresh()
+        }
+        player.addListener(listener)
+        refresh()
+        onDispose { player.removeListener(listener) }
+    }
+
+    /** বন্ধ → সাবটাইটেল ১ → ২ … → বন্ধ, এভাবে ঘোরে। */
+    fun cycleSubtitle() {
+        val p = playerNow
+        val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+        if (groups.isEmpty()) return
+        val selected = groups.indexOfFirst { it.isSelected }
+        val b = p.trackSelectionParameters.buildUpon()
+        if (selected == groups.lastIndex) {
+            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        } else {
+            val next = groups[selected + 1]
+            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(next.mediaTrackGroup, 0))
+        }
+        p.trackSelectionParameters = b.build()
+        showControls()
+    }
 
     fun seekBy(deltaMs: Long) {
         val p = playerNow
@@ -336,6 +377,9 @@ fun FullscreenPlayer(
                     onToggleLock = { tick++; onToggleLock() },
                     onOpenTracks = { tick++; onOpenTracks() },
                     onOpenAspect = { tick++; onOpenSettings() },
+                    subtitleCount = subtitleCount,
+                    subtitleOn = subtitleOn,
+                    onCycleSubtitle = { tick++; cycleSubtitle() },
                 )
             }
         }
@@ -383,6 +427,9 @@ private fun ControlsPanel(
     onToggleLock: () -> Unit,
     onOpenTracks: () -> Unit,
     onOpenAspect: () -> Unit,
+    subtitleCount: Int = 0,
+    subtitleOn: Boolean = false,
+    onCycleSubtitle: () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -471,6 +518,15 @@ private fun ControlsPanel(
             )
             Spacer(Modifier.width(4.dp))
             ControlButton(icon = Icons.Filled.Settings, description = "Tracks", onClick = onOpenTracks)
+            if (subtitleCount > 0) {
+                Spacer(Modifier.width(4.dp))
+                ControlButton(
+                    icon = if (subtitleOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionOff,
+                    description = "Subtitles",
+                    tint = if (subtitleOn) Accent else TextPrimary,
+                    onClick = onCycleSubtitle,
+                )
+            }
             Spacer(Modifier.weight(1f))
             ControlButton(icon = Icons.Filled.AspectRatio, description = "Aspect ratio", onClick = onOpenAspect)
         }
