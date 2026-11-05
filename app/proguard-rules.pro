@@ -9,3 +9,6 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# app/proguard-rules.pro -এর শেষে এই লাইন যোগ করুন (FFmpeg রেন্ডারার রিফ্লেকশনে লোড হয়, R8 যেন মুছে না ফেলে)
+-keep class androidx.media3.decoder.ffmpeg.** { *; }
