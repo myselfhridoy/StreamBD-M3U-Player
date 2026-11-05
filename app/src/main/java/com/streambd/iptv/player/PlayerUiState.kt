@@ -22,4 +22,13 @@ data class PlayerUiState(
     val videoHeight: Int = 0,
     /** পিক্সেল অনুপাত ধরে প্রদর্শন অনুপাত (যেমন 1.777 = 16:9)। অজানা হলে 0। */
     val videoAspect: Float = 0f,
+    // ★ স্ট্রিম তথ্য ওভারলের জন্য
+    /** যে ডিকোডার ভিডিও চালাচ্ছে (যেমন "OMX.amlogic.avc.decoder.awesome")। */
+    val videoDecoder: String? = null,
+    /** যে ডিকোডার অডিও চালাচ্ছে। নামে "ffmpeg" থাকলে FFmpeg ব্যবহার হচ্ছে। */
+    val audioDecoder: String? = null,
+    /** এই স্ট্রিম শুরুর পর মোট বাদ পড়া ফ্রেম। */
+    val droppedFrames: Int = 0,
+    /** DRM থাকলে তার ধরন ও ডিভাইস সাপোর্ট। */
+    val drmInfo: String? = null,
 )
