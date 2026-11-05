@@ -2,6 +2,7 @@ package com.streambd.iptv.player
 
 import android.content.Context
 import android.media.MediaDrm
+import android.net.Uri
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -13,6 +14,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -38,6 +40,9 @@ import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** ভিডিওর সাথে বাইরে থেকে জোড়া সাবটাইটেল (SRT/VTT/ASS)। */
+data class ExternalSubtitle(val url: String, val label: String?, val language: String?)
 
 @OptIn(UnstableApi::class)
 @Singleton
@@ -70,8 +75,9 @@ class PlayerManager @Inject constructor(
         .setReadTimeoutMs(15_000)
         .setAllowCrossProtocolRedirects(true)
 
+    // DefaultDataSource: http(s) ছাড়াও rtmp:// (media3-datasource-rtmp থাকলে), file, content সামলায়
     private val dataSourceFactory = ResolvingDataSource.Factory(
-        httpFactory,
+        DefaultDataSource.Factory(appContext, httpFactory),
         ResolvingDataSource.Resolver { dataSpec ->
             val headers = requestHeaders
             val hasUserAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
@@ -92,6 +98,7 @@ class PlayerManager @Inject constructor(
     private var restoredForMediaId: String? = null
     private var currentItem: MediaItem? = null
     private var hintIndex = 0
+    private var lastSubtitles: List<ExternalSubtitle> = emptyList()
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -231,7 +238,12 @@ class PlayerManager @Inject constructor(
      * [force] = true হলে একই চ্যানেল চললেও নতুন করে শুরু হয় (নতুন URL/টোকেন বসাতে)।
      * [resumeAtMs] দিলে মুভি/এপিসোড ওই জায়গা থেকে চলে।
      */
-    fun play(channel: ChannelEntity, force: Boolean = false, resumeAtMs: Long = C.TIME_UNSET) {
+    fun play(
+        channel: ChannelEntity,
+        force: Boolean = false,
+        resumeAtMs: Long = C.TIME_UNSET,
+        subtitles: List<ExternalSubtitle> = emptyList(),
+    ) {
         val same = _state.value.current?.id == channel.id
         if (!force && same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
 
@@ -240,6 +252,7 @@ class PlayerManager @Inject constructor(
         networkRetries = 0
         hintIndex = 0
         restoredForMediaId = null
+        lastSubtitles = subtitles
 
         val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
 
@@ -267,7 +280,7 @@ class PlayerManager @Inject constructor(
         }
 
         val item = try {
-            buildMediaItem(channel.id.toString(), rawUrl, cleanHeaders, drmScheme, drmLicense)
+            buildMediaItem(channel.id.toString(), rawUrl, cleanHeaders, drmScheme, drmLicense, subtitles)
         } catch (e: DrmSetupException) {
             Log.e(TAG, "DRM setup failed: ${e.message}")
             fail(e.message ?: "DRM setup failed")
@@ -298,7 +311,7 @@ class PlayerManager @Inject constructor(
         } else {
             C.TIME_UNSET
         }
-        play(fresh, force = true, resumeAtMs = resume)
+        play(fresh, force = true, resumeAtMs = resume, subtitles = lastSubtitles)
     }
 
     private fun buildMediaItem(
@@ -307,9 +320,21 @@ class PlayerManager @Inject constructor(
         headers: Map<String, String>,
         drmScheme: String?,
         drmLicense: String?,
+        subtitles: List<ExternalSubtitle> = emptyList(),
     ): MediaItem {
         val builder = MediaItem.Builder().setUri(url).setMediaId(mediaId)
         guessMimeType(url)?.let { builder.setMimeType(it) }
+        if (subtitles.isNotEmpty()) {
+            builder.setSubtitleConfigurations(
+                subtitles.map { s ->
+                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
+                        .setMimeType(subtitleMime(s.url))
+                        .setLanguage(s.language)
+                        .setLabel(s.label)
+                        .build()
+                },
+            )
+        }
 
         if (!drmScheme.isNullOrBlank() && !drmLicense.isNullOrBlank()) {
             val scheme = drmScheme.lowercase()
@@ -348,6 +373,15 @@ class PlayerManager @Inject constructor(
             }
         }
         return builder.build()
+    }
+
+    private fun subtitleMime(url: String): String {
+        val path = url.lowercase().substringBefore('?').substringBefore('#')
+        return when {
+            path.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+            path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+            else -> MimeTypes.APPLICATION_SUBRIP
+        }
     }
 
     private fun guessMimeType(url: String): String? {
@@ -410,7 +444,7 @@ class PlayerManager @Inject constructor(
     }
 
     fun retry() {
-        _state.value.current?.let { play(it, force = true) }
+        _state.value.current?.let { play(it, force = true, subtitles = lastSubtitles) }
     }
 
     fun stopAndClear() {
