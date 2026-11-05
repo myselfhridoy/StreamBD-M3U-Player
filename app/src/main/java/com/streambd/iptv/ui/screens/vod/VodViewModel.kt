@@ -100,6 +100,23 @@ class VodViewModel @Inject constructor(
     val sessionUnlocked: StateFlow<Boolean> = lockController.unlocked
     val player get() = playerManager
 
+    init {
+        // প্লেলিস্ট আপডেটে টোকেন বদলালে আটকে থাকা প্লেব্যাক নতুন URL-এ চলবে
+        viewModelScope.launch {
+            repo.byKind(kind).collect { list ->
+                val cur = playerManager.state.value.current ?: return@collect
+                list.firstOrNull { it.id == cur.id }?.let(playerManager::recoverWith)
+            }
+        }
+    }
+
+    /** Retry সর্বশেষ URL দিয়ে চালায়। FTP-র মতো ডাটাবেসে না থাকা আইটেম হলে আগেরটাই। */
+    fun retry() {
+        val cur = playerManager.state.value.current ?: return
+        val fresh = allItems.value.firstOrNull { it.id == cur.id } ?: cur
+        playerManager.play(fresh, force = true)
+    }
+
     fun onEnter() {
         val current = playerManager.state.value.current ?: return
         if (current.kind != kind.name) playerManager.stopAndClear()
