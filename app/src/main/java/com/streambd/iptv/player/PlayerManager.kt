@@ -192,6 +192,7 @@ class PlayerManager @Inject constructor(
     }
 
     init {
+        Log.i(TAG, "FFmpeg audio decoders available: ${androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()}")
         scope.launch {
             while (isActive) {
                 _state.update {
