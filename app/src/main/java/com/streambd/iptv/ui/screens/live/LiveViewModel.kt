@@ -99,6 +99,14 @@ class LiveViewModel @Inject constructor(
             }
         }
 
+        // প্লেলিস্ট আপডেটে চলমান চ্যানেলের টোকেন বদলালে, আটকে থাকা প্লেব্যাক নিজে থেকে নতুন URL-এ চলবে
+        viewModelScope.launch {
+            repo.liveChannels().collect { list ->
+                val cur = playerManager.state.value.current ?: return@collect
+                list.firstOrNull { it.id == cur.id }?.let(playerManager::recoverWith)
+            }
+        }
+
         // শেষ দেখা লাইভ চ্যানেল মনে রাখা (বুটে সরাসরি চালানোর জন্য)
         viewModelScope.launch {
             playerManager.state
@@ -171,7 +179,14 @@ class LiveViewModel @Inject constructor(
     suspend fun verifyPin(pin: String): Boolean = settingsStore.verifyPin(pin)
     fun relock() = lockController.relock()
 
-    fun retry() = playerManager.retry()
+    /** Retry সবসময় ডাটাবেসের সর্বশেষ URL (নতুন টোকেন) দিয়ে চালায়, পুরনো কপি দিয়ে নয়। */
+    fun retry() {
+        val cur = playerManager.state.value.current ?: return
+        viewModelScope.launch {
+            val fresh = repo.liveChannels().first().firstOrNull { it.id == cur.id } ?: cur
+            playerManager.play(fresh, force = true)
+        }
+    }
     fun togglePlayPause() = playerManager.togglePlayPause()
     fun setAspectMode(mode: AspectMode) {
         playerManager.setAspectMode(mode)
