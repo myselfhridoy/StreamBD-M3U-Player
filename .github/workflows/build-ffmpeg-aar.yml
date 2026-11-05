@@ -1,0 +1,78 @@
+# Media3 1.3.1-এর FFmpeg অডিও ডিকোডার (AC-3, E-AC-3, DTS, TrueHD ...) নিজেরা বিল্ড করে AAR বানায়।
+# FFmpeg LGPL মোডে বিল্ড হয় (GPL/nonfree ফ্ল্যাগ পেলে বিল্ড থেমে যায়)।
+# ব্যবহার: GitHub -> Actions -> "Build FFmpeg decoder AAR" -> Run workflow। শেষে Artifacts থেকে ZIP নামান।
+name: Build FFmpeg decoder AAR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout androidx/media (1.3.1)
+        uses: actions/checkout@v4
+        with:
+          repository: androidx/media
+          ref: 1.3.1
+          path: media
+
+      - name: Checkout FFmpeg (release/6.0)
+        uses: actions/checkout@v4
+        with:
+          repository: FFmpeg/FFmpeg
+          ref: release/6.0
+          path: ffmpeg
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install NDK r26b
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+
+      - name: Check FFmpeg is built as LGPL
+        working-directory: media/libraries/decoder_ffmpeg/src/main/jni
+        run: |
+          echo "--- licence-related flags in build_ffmpeg.sh ---"
+          grep -nE -e '--enable-(gpl|nonfree|version3)' build_ffmpeg.sh || echo "none found (LGPL)"
+          if grep -qE -e '--enable-(gpl|nonfree)' build_ffmpeg.sh; then
+            echo "GPL/nonfree flag found - stopping"; exit 1
+          fi
+
+      - name: Build FFmpeg native libraries
+        run: |
+          set -e
+          FFMPEG_MODULE_PATH="$GITHUB_WORKSPACE/media/libraries/decoder_ffmpeg/src/main"
+          NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
+          HOST_PLATFORM="linux-x86_64"
+          ANDROID_ABI=23   # = app minSdk
+          ENABLED_DECODERS=(vorbis opus flac alac pcm_mulaw pcm_alaw mp3 amrnb amrwb aac ac3 eac3 dca mlp truehd)
+          cd "$FFMPEG_MODULE_PATH/jni"
+          ln -s "$GITHUB_WORKSPACE/ffmpeg" ffmpeg
+          ./build_ffmpeg.sh "$FFMPEG_MODULE_PATH" "$NDK_PATH" "$HOST_PLATFORM" "$ANDROID_ABI" "${ENABLED_DECODERS[@]}"
+
+      - name: Build AAR
+        working-directory: media
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.22.1" || true
+          ./gradlew projects --no-daemon | grep -i ffmpeg || true
+          ./gradlew :lib-decoder-ffmpeg:assembleRelease --no-daemon
+
+      - name: Collect AAR
+        run: |
+          mkdir out
+          find media/libraries/decoder_ffmpeg -name '*.aar' -path '*release*' -exec cp {} out/lib-decoder-ffmpeg-release.aar \;
+          ls -la out
+          unzip -l out/lib-decoder-ffmpeg-release.aar | grep -E '\.so|classes\.jar'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: media3-ffmpeg-decoder-aar
+          path: out/
