@@ -21,6 +21,7 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.settings.SettingsStore
@@ -153,6 +154,35 @@ class PlayerManager @Inject constructor(
         }
     }
 
+    // স্ট্রিম তথ্য ওভারলের জন্য: কোন ডিকোডার চলছে ও কত ফ্রেম বাদ পড়ছে
+    private val analyticsListener = object : AnalyticsListener {
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            _state.update { it.copy(videoDecoder = decoderName) }
+        }
+
+        override fun onAudioDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            _state.update { it.copy(audioDecoder = decoderName) }
+        }
+
+        override fun onDroppedVideoFrames(
+            eventTime: AnalyticsListener.EventTime,
+            droppedFrames: Int,
+            elapsedMs: Long,
+        ) {
+            _state.update { it.copy(droppedFrames = it.droppedFrames + droppedFrames) }
+        }
+    }
+
     private var bufferMs = DEFAULT_BUFFER_MS
 
     var player: ExoPlayer = createPlayer(bufferMs)
@@ -188,7 +218,10 @@ class PlayerManager @Inject constructor(
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
-            .also { it.addListener(playerListener) }
+            .also {
+                it.addListener(playerListener)
+                it.addAnalyticsListener(analyticsListener)
+            }
     }
 
     init {
@@ -283,6 +316,10 @@ class PlayerManager @Inject constructor(
                 videoWidth = 0,
                 videoHeight = 0,
                 videoAspect = 0f,
+                videoDecoder = null,
+                audioDecoder = null,
+                droppedFrames = 0,
+                drmInfo = drmInfoFor(drmScheme),
             )
         }
 
@@ -382,6 +419,20 @@ class PlayerManager @Inject constructor(
         return builder.build()
     }
 
+    /** ওভারলে দেখানোর জন্য: DRM-এর ধরন ও এই ডিভাইস সেটা সাপোর্ট করে কিনা। */
+    private fun drmInfoFor(scheme: String?): String? {
+        if (scheme.isNullOrBlank()) return null
+        val s = scheme.lowercase()
+        val (name, uuid) = when {
+            s.contains("widevine") -> "Widevine" to C.WIDEVINE_UUID
+            s.contains("playready") -> "PlayReady" to C.PLAYREADY_UUID
+            s.contains("clearkey") -> "ClearKey" to C.CLEARKEY_UUID
+            else -> return scheme
+        }
+        val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
+        return "$name (device: ${if (ok) "supported" else "NOT supported"})"
+    }
+
     private fun subtitleMime(url: String): String {
         val path = url.lowercase().substringBefore('?').substringBefore('#')
         return when {
@@ -430,6 +481,10 @@ class PlayerManager @Inject constructor(
                 videoWidth = 0,
                 videoHeight = 0,
                 videoAspect = 0f,
+                videoDecoder = null,
+                audioDecoder = null,
+                droppedFrames = 0,
+                drmInfo = null,
             )
         }
 
