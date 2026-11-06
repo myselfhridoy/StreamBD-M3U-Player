@@ -472,7 +472,7 @@ class PlayerManager @Inject constructor(
     fun recoverWith(fresh: ChannelEntity) {
         val s = _state.value
         val cur = s.current ?: return
-        if (cur.id != fresh.id || (cur.streamUrl == fresh.streamUrl && cur.sources == fresh.sources)) return
+        if (cur.id != fresh.id || (cur.allSources() == fresh.allSources())) return
         if (s.error == null && !(s.isBuffering && !s.isPlaying)) return
         val resume = if (!player.isCurrentMediaItemLive && player.currentPosition > 5_000L) {
             player.currentPosition
