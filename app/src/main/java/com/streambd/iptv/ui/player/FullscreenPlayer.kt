@@ -39,6 +39,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -53,8 +54,10 @@ import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
+import dagger.hilt.android.EntryPointAccessors
 import com.streambd.iptv.data.epg.NowNext
 import com.streambd.iptv.data.settings.formatSeekStep // ★ নতুন ইমপোর্ট
+import com.streambd.iptv.player.PlayerManagerEntryPoint
 import com.streambd.iptv.player.PlayerUiState
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.channels.BufferOverflow
@@ -94,6 +97,11 @@ fun FullscreenPlayer(
     val hasList = listContent != null
     val view = LocalView.current
     val focusManager = LocalFocusManager.current
+    // ব্যাকআপ সোর্স বদলাতে PlayerManager (প্রতিটি স্ক্রিনের কল না বদলেই)
+    val appContext = LocalContext.current.applicationContext
+    val sourceSwitcher = remember(appContext) {
+        EntryPointAccessors.fromApplication(appContext, PlayerManagerEntryPoint::class.java).playerManager()
+    }
 
     // স্ক্রিন জাগিয়ে রাখা
     DisposableEffect(view) {
@@ -368,6 +376,21 @@ fun FullscreenPlayer(
             )
         }
 
+        state.sourceNotice?.let { message ->
+            Text(
+                message,
+                color = Color.White,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .displayCutoutPadding()
+                    .padding(top = 24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+
         val ch = state.current
         AnimatedVisibility(
             visible = controlsVisible && !listOpen && ch != null,
@@ -400,6 +423,7 @@ fun FullscreenPlayer(
                     onCycleSubtitle = { tick++; cycleSubtitle() },
                     infoOn = showInfo,
                     onToggleInfo = { tick++; showInfo = !showInfo },
+                    onCycleSource = { tick++; sourceSwitcher.cycleSource() },
                 )
             }
         }
@@ -453,6 +477,7 @@ private fun ControlsPanel(
     onCycleSubtitle: () -> Unit = {},
     infoOn: Boolean = false,
     onToggleInfo: () -> Unit = {},
+    onCycleSource: () -> Unit = {},
 ) {
     Column(
         Modifier
@@ -559,6 +584,20 @@ private fun ControlsPanel(
                 tint = if (infoOn) Accent else TextPrimary,
                 onClick = onToggleInfo,
             )
+            if (state.sourceCount > 1) {
+                Spacer(Modifier.width(4.dp))
+                ControlButton(
+                    icon = Icons.Filled.SwapHoriz,
+                    description = "Switch source",
+                    onClick = onCycleSource,
+                )
+                Text(
+                    "${state.sourceIndex + 1}/${state.sourceCount}",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
             Spacer(Modifier.weight(1f))
             ControlButton(icon = Icons.Filled.AspectRatio, description = "Aspect ratio", onClick = onOpenAspect)
         }
@@ -748,7 +787,7 @@ private fun StreamInfoOverlay(player: ExoPlayer, state: PlayerUiState, modifier:
             tickInfo++
         }
     }
-    val rows = remember(tickInfo, state.videoDecoder, state.audioDecoder, state.droppedFrames, state.drmInfo, player) {
+    val rows = remember(tickInfo, state.videoDecoder, state.audioDecoder, state.droppedFrames, state.drmInfo, state.sourceIndex, player) {
         buildInfoRows(player, state)
     }
     Column(
@@ -801,6 +840,7 @@ private fun buildInfoRows(player: ExoPlayer, state: PlayerUiState): List<Pair<St
     out += "Dropped frames" to state.droppedFrames.toString()
     out += "Buffered" to "${f1(player.totalBufferedDuration / 1000f)} s"
     state.drmInfo?.let { out += "DRM" to it }
+    if (state.sourceCount > 1) out += "Source" to "${state.sourceIndex + 1} / ${state.sourceCount}"
     return out
 }
 
