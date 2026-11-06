@@ -20,7 +20,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /** একটা চ্যানেলে সর্বোচ্চ কতগুলো ব্যাকআপ সোর্স রাখা হবে। */
-private const val MAX_BACKUPS = 5
 
 @Singleton
 class ChannelRepository @Inject constructor(
@@ -75,6 +74,8 @@ class ChannelRepository @Inject constructor(
         }
 
         db.withTransaction {
+            val oldNumbers = HashMap<Long, Int>()
+            for (r in channels.numbersByProvider(providerId)) if (r.number in 1..9999) oldNumbers[r.id] = r.number
             val favorites = channels.favoriteIds().toHashSet()
             val locked = channels.lockedIds().toHashSet()
 
@@ -84,7 +85,13 @@ class ChannelRepository @Inject constructor(
             
             groups.upsert(rows.groups)
             rows.channels.chunked(2_000).forEach { chunk ->
-                channels.upsert(chunk.map { it.copy(isFavorite = it.id in favorites, isLocked = it.id in locked) })
+                channels.upsert(chunk.map {
+                    it.copy(
+                        isFavorite = it.id in favorites,
+                        isLocked = it.id in locked,
+                        number = oldNumbers[it.id] ?: it.number, // আগের নম্বর থাকলে সেটাই
+                    )
+                })
             }
         }
         
@@ -95,20 +102,59 @@ class ChannelRepository @Inject constructor(
     }
 
     /**
-     * সব provider মিলিয়ে প্রতিটা kind এ নম্বর বসায় (provider ক্রম ধরে)।
-     * প্লেলিস্টে tvg-chno থাকলে সেটাই নম্বর হয়; বাকিরা ফাঁকা নম্বরে ক্রম অনুযায়ী বসে।
+     * সব provider মিলিয়ে প্রতিটা kind এ কাজ করে:
+     * ১. Live/Radio-তে একই নামের চ্যানেল অন্য প্লেলিস্টে থাকলে সেটা মূলটার ব্যাকআপ হয়ে লুকায় (প্রতিবার নতুন করে হিসাব)।
+     * ২. দৃশ্যমান চ্যানেলে নম্বর বসে: tvg-chno আগে, তারপর আগের নম্বর (স্থিতিশীল), শেষে ফাঁকা নম্বরে ক্রম অনুযায়ী।
      */
     suspend fun renumber() {
         db.withTransaction {
             for (kind in ChannelKind.values()) {
                 val list = channels.listByKindOrdered(kind.name)
-                val numbers = assignNumbers(list)
+                val hidden = BooleanArray(list.size)
+                val extras = arrayOfNulls<String>(list.size)
+                if (kind == ChannelKind.LIVE || kind == ChannelKind.RADIO) mergeAcrossProviders(list, hidden, extras)
+
+                val visible = list.indices.filter { !hidden[it] }
+                val numbers = assignNumbers(visible.map { list[it] })
+                val newNumber = HashMap<Int, Int>()
+                visible.forEachIndexed { k, i -> newNumber[i] = numbers[k] }
+
                 val changed = list.mapIndexedNotNull { i, c ->
-                    if (c.number != numbers[i]) c.copy(number = numbers[i]) else null
+                    val n = newNumber[i] ?: c.number // লুকানো চ্যানেলের নম্বর অপরিবর্তিত
+                    if (c.number != n || c.hidden != hidden[i] || c.extraSources != extras[i]) {
+                        c.copy(number = n, hidden = hidden[i], extraSources = extras[i])
+                    } else null
                 }
                 changed.chunked(2_000).forEach { channels.upsert(it) }
             }
         }
+    }
+
+    private fun nameKey(name: String) = name.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    private fun ownSources(c: ChannelEntity): List<StreamSource> =
+        listOf(StreamSource(c.streamUrl, c.drmScheme, c.drmLicense)) + StreamSources.decode(c.sources)
+
+    /** একই নামের চ্যানেল ভিন্ন প্লেলিস্টে থাকলে প্রথমটা (provider ক্রমে) মূল, বাকিগুলো লুকিয়ে তার extraSources হয়। */
+    private fun mergeAcrossProviders(list: List<ChannelEntity>, hidden: BooleanArray, extras: Array<String?>) {
+        val primary = HashMap<String, Int>()
+        val gathered = HashMap<Int, MutableList<StreamSource>>()
+        for ((i, c) in list.withIndex()) {
+            val key = nameKey(c.name)
+            val p = primary[key]
+            if (p == null) {
+                primary[key] = i
+                continue
+            }
+            // একই প্লেলিস্টের ভিন্ন গ্রুপের একই নাম আগের মতো আলাদা চ্যানেল থাকে
+            if (list[p].providerId == c.providerId) continue
+            hidden[i] = true
+            val have = ownSources(list[p]).mapTo(HashSet()) { it.url }
+            val g = gathered.getOrPut(p) { ArrayList() }
+            g.forEach { have += it.url }
+            for (s in ownSources(c)) if (have.add(s.url)) g += s
+        }
+        for ((p, g) in gathered) extras[p] = StreamSources.encode(g)
     }
 
     private fun assignNumbers(list: List<ChannelEntity>): IntArray {
@@ -125,7 +171,12 @@ class ChannelRepository @Inject constructor(
             val want = c.chno ?: continue
             if (want in 1..9999 && taken.add(want)) result[i] = want
         }
-        // ৩. নম্বরহীনরা ফাঁকা নম্বরে ক্রম অনুযায়ী
+        // ৩. আগে থেকে নম্বর পাওয়া চ্যানেল (tvg-chno ছাড়া) নিজের নম্বর রাখে, যাতে নম্বর সরে না যায়
+        for ((i, c) in list.withIndex()) {
+            if (result[i] != 0) continue
+            if (c.number in 1..9999 && taken.add(c.number)) result[i] = c.number
+        }
+        // ৪. নতুনরা ফাঁকা নম্বরে ক্রম অনুযায়ী
         var next = 1
         for (i in list.indices) {
             if (result[i] != 0) continue
@@ -167,15 +218,16 @@ class ChannelRepository @Inject constructor(
                     val main = channelRows[idx]
                     val list = backups.getOrPut(idx) { ArrayList() }
                     val duplicate = p.streamUrl == main.streamUrl || list.any { it.url == p.streamUrl }
-                    if (!duplicate && list.size < MAX_BACKUPS) {
+                    if (!duplicate) {
                         list += StreamSource(p.streamUrl, p.drmScheme, p.drmLicense)
                     }
                     continue
                 }
             }
 
-            val number = (numbers[p.kind] ?: 0) + 1
-            numbers[p.kind] = number
+            val seq = (numbers[p.kind] ?: 0) + 1
+            numbers[p.kind] = seq
+            val number = 10_000 + seq // সাময়িক (১০০০০+): renumber() এ আসল নম্বর বসবে
 
             val occurrence = (occurrences[key] ?: 0) + 1
             occurrences[key] = occurrence
