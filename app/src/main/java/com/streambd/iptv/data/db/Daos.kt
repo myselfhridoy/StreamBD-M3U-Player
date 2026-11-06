@@ -72,16 +72,22 @@ interface ProviderDao {
     @Query("SELECT * FROM providers ORDER BY createdAt DESC")
     suspend fun getAll(): List<ProviderEntity>
 
+    @Query("SELECT * FROM providers WHERE id = :id")
+    suspend fun getById(id: Long): ProviderEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(provider: ProviderEntity): Long
 
     @Update
     suspend fun update(provider: ProviderEntity)
 
+    @Query("UPDATE providers SET epgUrl = :epgUrl WHERE id = :id")
+    suspend fun setEpgUrl(id: Long, epgUrl: String)
+
     @Query("DELETE FROM providers WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    @Query("DELETE FROM providers") 
+    @Query("DELETE FROM providers")
     suspend fun clear()
 }
 
