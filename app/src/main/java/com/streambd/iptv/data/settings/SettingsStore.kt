@@ -54,6 +54,7 @@ data class AppSettings(
     val seekStepMs: Int = 10_000, // ★ নতুন ফিল্ড
     val audioLang: String = "",     // পছন্দের অডিও ভাষা ("" = Auto)
     val subtitleLang: String = "",  // পছন্দের সাবটাইটেল ভাষা ("" = Auto, "off" = বন্ধ)
+    val autoBackup: Boolean = true,  // স্ট্রিম ব্যর্থ বা আটকে গেলে নিজে ব্যাকআপ সোর্সে যাওয়া
 )
 
 enum class TrackMode { NONE, AUTO, SPECIFIC }
@@ -85,6 +86,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         val SEEK_STEP_MS = intPreferencesKey("seek_step_ms") // ★ নতুন Key
         val PREF_AUDIO_LANG = stringPreferencesKey("pref_audio_lang")
         val PREF_SUB_LANG = stringPreferencesKey("pref_sub_lang")
+        val AUTO_BACKUP = booleanPreferencesKey("auto_backup")
     }
 
     private val prefs = ctx.settingsDataStore
@@ -102,6 +104,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
             seekStepMs = (p[Keys.SEEK_STEP_MS] ?: 10_000).takeIf { it in SEEK_STEP_OPTIONS_MS } ?: 10_000, // ★ নতুন
             audioLang = p[Keys.PREF_AUDIO_LANG].orEmpty(),
             subtitleLang = p[Keys.PREF_SUB_LANG].orEmpty(),
+            autoBackup = p[Keys.AUTO_BACKUP] ?: true,
         )
     }
 
@@ -127,6 +130,7 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
     suspend fun setSeekStep(ms: Int) = prefs.edit { it[Keys.SEEK_STEP_MS] = ms } // ★ নতুন সেটার
     suspend fun setAudioLang(code: String) = prefs.edit { it[Keys.PREF_AUDIO_LANG] = code }
     suspend fun setSubtitleLang(code: String) = prefs.edit { it[Keys.PREF_SUB_LANG] = code }
+    suspend fun setAutoBackup(v: Boolean) = prefs.edit { it[Keys.AUTO_BACKUP] = v }
 
     suspend fun setVideoTrack(mode: TrackMode, key: String) = prefs.edit {
         it[Keys.VIDEO_MODE] = mode.name
