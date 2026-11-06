@@ -28,6 +28,23 @@ val SEEK_STEP_OPTIONS_MS = listOf(5_000, 10_000, 15_000, 30_000, 60_000, 300_000
 fun formatSeekStep(ms: Int): String =
     if (ms >= 60_000) "${ms / 60_000} min" else "${ms / 1_000} s"
 
+/** পছন্দের ভাষার তালিকা (ISO 639-1 কোড, নাম)। */
+val LANGUAGE_OPTIONS = listOf(
+    "bn" to "Bengali", "en" to "English", "hi" to "Hindi", "ur" to "Urdu", "ar" to "Arabic",
+    "ta" to "Tamil", "te" to "Telugu", "ml" to "Malayalam", "kn" to "Kannada", "mr" to "Marathi",
+    "pa" to "Punjabi", "ne" to "Nepali", "fa" to "Persian", "tr" to "Turkish", "id" to "Indonesian",
+    "ms" to "Malay", "th" to "Thai", "zh" to "Chinese", "ja" to "Japanese", "ko" to "Korean",
+    "ru" to "Russian", "fr" to "French", "de" to "German", "es" to "Spanish", "pt" to "Portuguese",
+    "it" to "Italian",
+)
+
+/** "" = Auto (স্ট্রিমের ডিফল্ট), "off" = বন্ধ (শুধু সাবটাইটেলে)। */
+fun langLabel(code: String): String = when (code) {
+    "" -> "Auto"
+    "off" -> "Off"
+    else -> LANGUAGE_OPTIONS.firstOrNull { it.first == code }?.second ?: code
+}
+
 data class AppSettings(
     val startAfterReboot: Boolean = false,
     val showEpgOnSelect: Boolean = true,
@@ -35,6 +52,8 @@ data class AppSettings(
     val epgTimeShiftMins: Int = 0,
     val bufferTimeMs: Int = 2_500,
     val seekStepMs: Int = 10_000, // ★ নতুন ফিল্ড
+    val audioLang: String = "",     // পছন্দের অডিও ভাষা ("" = Auto)
+    val subtitleLang: String = "",  // পছন্দের সাবটাইটেল ভাষা ("" = Auto, "off" = বন্ধ)
 )
 
 enum class TrackMode { NONE, AUTO, SPECIFIC }
@@ -64,6 +83,8 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
         val AUDIO_KEY = stringPreferencesKey("track_audio_key")
         val LAST_LIVE_ID = longPreferencesKey("last_live_id")
         val SEEK_STEP_MS = intPreferencesKey("seek_step_ms") // ★ নতুন Key
+        val PREF_AUDIO_LANG = stringPreferencesKey("pref_audio_lang")
+        val PREF_SUB_LANG = stringPreferencesKey("pref_sub_lang")
     }
 
     private val prefs = ctx.settingsDataStore
@@ -79,6 +100,8 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
                 ?: ((p[Keys.LEGACY_EPG_TIME_SHIFT_HOURS] ?: 0).coerceIn(-10, 10) * 60),
             bufferTimeMs = (p[Keys.BUFFER_TIME_MS] ?: 2_500).coerceIn(1_000, 10_000),
             seekStepMs = (p[Keys.SEEK_STEP_MS] ?: 10_000).takeIf { it in SEEK_STEP_OPTIONS_MS } ?: 10_000, // ★ নতুন
+            audioLang = p[Keys.PREF_AUDIO_LANG].orEmpty(),
+            subtitleLang = p[Keys.PREF_SUB_LANG].orEmpty(),
         )
     }
 
@@ -102,6 +125,8 @@ class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Con
     }
     suspend fun setBufferTime(ms: Int) = prefs.edit { it[Keys.BUFFER_TIME_MS] = ms }
     suspend fun setSeekStep(ms: Int) = prefs.edit { it[Keys.SEEK_STEP_MS] = ms } // ★ নতুন সেটার
+    suspend fun setAudioLang(code: String) = prefs.edit { it[Keys.PREF_AUDIO_LANG] = code }
+    suspend fun setSubtitleLang(code: String) = prefs.edit { it[Keys.PREF_SUB_LANG] = code }
 
     suspend fun setVideoTrack(mode: TrackMode, key: String) = prefs.edit {
         it[Keys.VIDEO_MODE] = mode.name
