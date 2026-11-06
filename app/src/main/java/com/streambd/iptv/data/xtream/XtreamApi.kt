@@ -4,6 +4,8 @@ import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.ParsedChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -125,49 +127,35 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
     }
 
     /**
-     * Live + Movie একসাথে নামায়। কোনো একটি অংশ fail করলেও অন্যটা থাকলে catalog ফেরে;
-     * দুটোই খালি হলে প্রথম error-এর friendly message ছোড়ে।
+     * Live + Movie একসাথে নামায়। চারটা অনুরোধ একসাথে (parallel) চলে, তাই আগের চেয়ে অনেক দ্রুত।
+     * কোনো একটি অংশ fail করলেও অন্যটা থাকলে catalog ফেরে; দুটোই খালি হলে প্রথম error-এর message ছোড়ে।
+     *
+     * @param knownAuth আগেই authenticate করা থাকলে দিন, দ্বিতীয়বার অনুরোধ যাবে না।
      */
-    suspend fun loadCatalog(credentials: XtreamCredentials): XtreamCatalog {
-        val auth = authenticate(credentials)
+    suspend fun loadCatalog(
+        credentials: XtreamCredentials,
+        knownAuth: XtreamAuth? = null,
+    ): XtreamCatalog = coroutineScope {
+        val auth = knownAuth ?: authenticate(credentials)
 
-        var firstError: Exception? = null
-
-        val liveCats = try {
-            categories(credentials, "get_live_categories")
+        suspend fun <T> safe(block: suspend () -> List<T>): Pair<List<T>, Exception?> = try {
+            block() to null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (firstError == null) firstError = e
-            emptyList()
+            emptyList<T>() to e
         }
 
-        val live = try {
-            liveStreams(credentials)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (firstError == null) firstError = e
-            emptyList()
-        }
+        val liveCatsD = async { safe { categories(credentials, "get_live_categories") } }
+        val liveD = async { safe { liveStreams(credentials) } }
+        val vodCatsD = async { safe { categories(credentials, "get_vod_categories") } }
+        val vodD = async { safe { vodStreams(credentials) } }
 
-        val vodCats = try {
-            categories(credentials, "get_vod_categories")
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (firstError == null) firstError = e
-            emptyList()
-        }
-
-        val vod = try {
-            vodStreams(credentials)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (firstError == null) firstError = e
-            emptyList()
-        }
+        val (liveCats, e1) = liveCatsD.await()
+        val (live, e2) = liveD.await()
+        val (vodCats, e3) = vodCatsD.await()
+        val (vod, e4) = vodD.await()
+        val firstError = e1 ?: e2 ?: e3 ?: e4
 
         if (live.isEmpty() && vod.isEmpty()) {
             throw XtreamException(
@@ -176,7 +164,7 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
             )
         }
 
-        return XtreamCatalog(
+        XtreamCatalog(
             channels = buildChannels(credentials, live, liveCats, vod, vodCats),
             epgUrl = xmltvUrl(credentials),
             liveCount = live.size,
