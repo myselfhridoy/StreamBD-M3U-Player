@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProviderEntity::class,
         WatchProgressEntity::class, // ভার্সন ৫: Continue Watching
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +22,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun epg(): EpgDao
     abstract fun providers(): ProviderDao
     abstract fun watchProgress(): WatchProgressDao
+}
+
+/** ৫ → ৬: চ্যানেলে ব্যাকআপ সোর্স ও tvg-chno। দুটোই নতুন কলাম, কিছু মোছে না। */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `sources` TEXT")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `chno` INTEGER")
+    }
 }
 
 /** ৪ → ৫: শুধু নতুন টেবিল যোগ হয়। চ্যানেল, প্রোভাইডার, ফেভারিট কিছুই মোছে না। */
