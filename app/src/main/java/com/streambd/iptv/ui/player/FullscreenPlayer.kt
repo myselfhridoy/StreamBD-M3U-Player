@@ -77,6 +77,7 @@ fun FullscreenPlayer(
     groupName: String,
     nowNext: NowNext? = null,
     showNumber: Boolean = true,
+    showFavoriteLock: Boolean = true,
     onExit: () -> Unit,
     onTogglePlay: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -384,6 +385,7 @@ fun FullscreenPlayer(
                     nowNext = nowNext,
                     isFavorite = isFavorite,
                     isLocked = isLocked,
+                    showFavoriteLock = showFavoriteLock,
                     playFocus = controlsFocus,
                     onSeek = { ms -> player.seekTo(ms); tick++ },
                     // ★ নতুন: মাল্টিপ্লায়ার (-1L বা 1L) পাস করা হচ্ছে
@@ -437,6 +439,7 @@ private fun ControlsPanel(
     nowNext: NowNext?,
     isFavorite: Boolean,
     isLocked: Boolean,
+    showFavoriteLock: Boolean = true,
     playFocus: FocusRequester,
     onSeek: (Long) -> Unit,
     onSeekBy: (Long) -> Unit, // ★ নতুন: মাল্টিপ্লায়ার (-1L বা 1L) নেবে
@@ -523,20 +526,22 @@ private fun ControlsPanel(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ControlButton(
-                icon = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                description = "Favorite",
-                tint = if (isFavorite) Accent else TextPrimary,
-                onClick = onToggleFavorite,
-            )
-            Spacer(Modifier.width(4.dp))
-            ControlButton(
-                icon = if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                description = "Lock",
-                tint = if (isLocked) Accent else TextPrimary,
-                onClick = onToggleLock,
-            )
-            Spacer(Modifier.width(4.dp))
+            if (showFavoriteLock) {
+                ControlButton(
+                    icon = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    description = "Favorite",
+                    tint = if (isFavorite) Accent else TextPrimary,
+                    onClick = onToggleFavorite,
+                )
+                Spacer(Modifier.width(4.dp))
+                ControlButton(
+                    icon = if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                    description = "Lock",
+                    tint = if (isLocked) Accent else TextPrimary,
+                    onClick = onToggleLock,
+                )
+                Spacer(Modifier.width(4.dp))
+            }
             ControlButton(icon = Icons.Filled.Settings, description = "Tracks", onClick = onOpenTracks)
             if (subtitleCount > 0) {
                 Spacer(Modifier.width(4.dp))
