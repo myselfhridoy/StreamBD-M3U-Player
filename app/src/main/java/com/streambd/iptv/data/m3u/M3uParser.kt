@@ -39,6 +39,9 @@ data class ParsedChannel(
     val imdbId: String? = null,
     val tmdbId: String? = null,
     val seekPreview: String? = null,
+
+    /** tvg-chno: প্লেলিস্টে ঠিক করা চ্যানেল নম্বর (১–৯৯৯৯)। */
+    val chno: Int? = null,
 )
 
 object M3uParser {
@@ -149,6 +152,7 @@ object M3uParser {
                         imdbId = p.imdbId,
                         tmdbId = p.tmdbId,
                         seekPreview = p.seekPreview,
+                        chno = p.chno,
                     )
                 }
             }
@@ -192,6 +196,7 @@ object M3uParser {
             imdbId = attrs["tvg-imdb"]?.takeIf { it.isNotBlank() },
             tmdbId = attrs["tvg-tmdb"]?.takeIf { it.isNotBlank() },
             seekPreview = attrs["seek_preview"]?.takeIf { it.isNotBlank() },
+            chno = parseChno(attrs),
         )
         
         // tvg-rec এবং catchup-enable পার্স করা
@@ -200,6 +205,11 @@ object M3uParser {
         
         return pending
     }
+
+    /** tvg-chno (বা সমার্থক অ্যাট্রিবিউট) থেকে নম্বর। ১–৯৯৯৯-এর বাইরে বা ভুল হলে null। */
+    private fun parseChno(attrs: Map<String, String>): Int? =
+        (attrs["tvg-chno"] ?: attrs["channel-number"] ?: attrs["channel-no"] ?: attrs["tvg-channel-no"])
+            ?.trim()?.toIntOrNull()?.takeIf { it in 1..9999 }
 
     private fun separatorIndex(line: String): Int {
         var inQuote = false
@@ -314,6 +324,7 @@ object M3uParser {
         val imdbId: String?,
         val tmdbId: String?,
         val seekPreview: String?,
+        val chno: Int?,
     ) {
         var extGroup: String? = null
         val headers = LinkedHashMap<String, String>()
