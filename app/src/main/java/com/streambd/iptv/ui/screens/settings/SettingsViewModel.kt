@@ -79,6 +79,8 @@ class SettingsViewModel @Inject constructor(
     
     // ★ নতুন: Seek Step সেট করার ফাংশন
     fun setSeekStep(ms: Int) = viewModelScope.launch { settings.setSeekStep(ms) }
+    fun setAudioLang(code: String) = viewModelScope.launch { settings.setAudioLang(code) }
+    fun setSubtitleLang(code: String) = viewModelScope.launch { settings.setSubtitleLang(code) }
 
     suspend fun verifyPin(pin: String) = settings.verifyPin(pin)
     fun setPin(pin: String) = viewModelScope.launch { settings.setPin(pin) }
