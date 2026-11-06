@@ -60,7 +60,13 @@ data class ProviderEntity(
     val name: String,
     val url: String,
     val type: String = "M3U",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+
+    // Xtream Codes (এবং ভবিষ্যতের plugin) fields
+    val username: String? = null,
+    val password: String? = null,
+    val epgUrl: String? = null,
+    val userAgent: String? = null,
 )
 
 /**
