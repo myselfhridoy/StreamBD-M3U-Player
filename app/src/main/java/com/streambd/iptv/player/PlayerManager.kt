@@ -101,6 +101,8 @@ class PlayerManager @Inject constructor(
     private var currentItem: MediaItem? = null
     private var hintIndex = 0
     private var lastSubtitles: List<ExternalSubtitle> = emptyList()
+    private var prefAudioLang = ""
+    private var prefSubLang = ""
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -247,6 +249,11 @@ class PlayerManager @Inject constructor(
                         seekStepMs = s.seekStepMs.toLong() 
                     ) 
                 }
+                if (s.audioLang != prefAudioLang || s.subtitleLang != prefSubLang) {
+                    prefAudioLang = s.audioLang
+                    prefSubLang = s.subtitleLang
+                    applyLanguagePrefs()
+                }
                 if (s.bufferTimeMs != bufferMs) {
                     bufferMs = s.bufferTimeMs
                     rebuildPlayer()
@@ -265,6 +272,7 @@ class PlayerManager @Inject constructor(
         player.removeListener(playerListener)
         player.release()
         player = createPlayer(bufferMs)
+        applyLanguagePrefs()
         restoredForMediaId = null
         player.volume = volume
         player.playWhenReady = playWhenReady
@@ -336,6 +344,7 @@ class PlayerManager @Inject constructor(
         }
 
         currentItem = item
+        applyLanguagePrefs()
         if (resumeAtMs != C.TIME_UNSET) player.setMediaItem(item, resumeAtMs) else player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
@@ -419,6 +428,24 @@ class PlayerManager @Inject constructor(
         return builder.build()
     }
 
+    /**
+     * সেটিংসের পছন্দের অডিও/সাবটাইটেল ভাষা প্লেয়ারে বসায়। প্রতিটি নতুন স্ট্রিম শুরুতে চলে, তাই আগের
+     * স্ট্রিমে হাতে বন্ধ করা সাবটাইটেল পরের স্ট্রিমে আটকে থাকে না।
+     */
+    private fun applyLanguagePrefs() {
+        val b = player.trackSelectionParameters.buildUpon()
+            .setPreferredAudioLanguage(prefAudioLang.takeIf { it.isNotBlank() })
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        when (prefSubLang) {
+            "" -> b.setPreferredTextLanguage(null).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            "off" -> b.setPreferredTextLanguage(null).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            else -> b.setPreferredTextLanguage(prefSubLang)
+                .setSelectUndeterminedTextLanguage(true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+        }
+        player.trackSelectionParameters = b.build()
+    }
+
     /** ওভারলে দেখানোর জন্য: DRM-এর ধরন ও এই ডিভাইস সেটা সাপোর্ট করে কিনা। */
     private fun drmInfoFor(scheme: String?): String? {
         if (scheme.isNullOrBlank()) return null
@@ -496,6 +523,7 @@ class PlayerManager @Inject constructor(
             val item = builder.build()
 
             currentItem = item
+            applyLanguagePrefs()
             player.setMediaItem(item)
             player.prepare()
             player.playWhenReady = true
