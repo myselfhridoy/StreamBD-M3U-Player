@@ -2,7 +2,11 @@ package com.streambd.iptv.player
 
 import android.content.Context
 import android.media.MediaDrm
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -24,6 +28,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.data.db.StreamSource
+import com.streambd.iptv.data.db.allSources
 import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.data.settings.TrackMode
@@ -59,6 +65,7 @@ class PlayerManager @Inject constructor(
         const val DEFAULT_BUFFER_MS = 2_500
         const val MAX_RETRIES = 3
         const val USER_AGENT = "StreamBD/1.0"
+        const val STALL_MS = 15_000L // এর বেশি বাফারিং হলে ব্যাকআপ সোর্সে যাবে
 
         val FORMAT_HINTS = listOf(
             MimeTypes.APPLICATION_M3U8,
@@ -106,6 +113,15 @@ class PlayerManager @Inject constructor(
     private var prefAudioLang = ""
     private var prefSubLang = ""
 
+    // ব্যাকআপ সোর্স
+    private var autoBackup = true
+    private var sources: List<StreamSource> = emptyList()
+    private var sourceIdx = 0
+    private var failoverCount = 0          // শেষ সফল চালুর পর কতবার সরা হয়েছে
+    private var bufferingSince = 0L
+    private val lastGoodSource = HashMap<Long, Int>() // এই সেশনে যে সোর্স চলেছিল
+    private var noticeJob: Job? = null
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.update { it.copy(isPlaying = isPlaying) }
@@ -122,6 +138,8 @@ class PlayerManager @Inject constructor(
                 retriesLeft = MAX_RETRIES
                 networkRetries = 0
                 retryJob?.cancel()
+                failoverCount = 0
+                rememberGoodSource()
             }
         }
 
@@ -244,6 +262,18 @@ class PlayerManager @Inject constructor(
                     sinceSave = 0
                     if (player.isPlaying) saveProgress()
                 }
+                // ১৫ সেকেন্ডের বেশি আটকে থাকলে ব্যাকআপ সোর্সে সরা
+                if (sources.size > 1 && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
+                    val now = SystemClock.elapsedRealtime()
+                    if (bufferingSince == 0L) {
+                        bufferingSince = now
+                    } else if (now - bufferingSince >= STALL_MS) {
+                        bufferingSince = 0L
+                        tryFailover("stalled")
+                    }
+                } else {
+                    bufferingSince = 0L
+                }
                 delay(500L)
             }
         }
@@ -257,6 +287,7 @@ class PlayerManager @Inject constructor(
                         seekStepMs = s.seekStepMs.toLong() 
                     ) 
                 }
+                autoBackup = s.autoBackup
                 if (s.audioLang != prefAudioLang || s.subtitleLang != prefSubLang) {
                     prefAudioLang = s.audioLang
                     prefSubLang = s.subtitleLang
@@ -305,6 +336,26 @@ class PlayerManager @Inject constructor(
 
         saveProgress() // আগের মুভির অগ্রগতি রেখে নতুনটা শুরু
 
+        sources = channel.allSources()
+        // সব সোর্স ব্যর্থ হওয়ার পর Retry হলে আবার মূল সোর্স থেকে; নইলে এই সেশনে যেটা চলেছিল সেটা
+        if (force && same && _state.value.error != null) lastGoodSource.remove(channel.id)
+        val start = lastGoodSource[channel.id]?.takeIf { it in sources.indices } ?: 0
+        failoverCount = 0
+        bufferingSince = 0L
+        startSource(channel, start, resumeAtMs, subtitles, notice = null)
+    }
+
+    /** [sources]-এর [idx]-তম সোর্স চালু করে। [notice] দিলে স্ক্রিনে কয়েক সেকেন্ড বার্তা দেখায়। */
+    private fun startSource(
+        channel: ChannelEntity,
+        idx: Int,
+        resumeAtMs: Long,
+        subtitles: List<ExternalSubtitle>,
+        notice: String?,
+    ) {
+        val src = sources.getOrNull(idx) ?: StreamSource(channel.streamUrl, channel.drmScheme, channel.drmLicense)
+        sourceIdx = idx.coerceIn(0, (sources.size - 1).coerceAtLeast(0))
+
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
         networkRetries = 0
@@ -312,12 +363,12 @@ class PlayerManager @Inject constructor(
         restoredForMediaId = null
         lastSubtitles = subtitles
 
-        val (rawUrl, rawHeaders) = splitHeaders(channel.streamUrl)
+        val (rawUrl, rawHeaders) = splitHeaders(src.url)
 
         val drmScheme = rawHeaders.entries.firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
-            ?: channel.drmScheme
+            ?: src.drmScheme
         val drmLicense = rawHeaders.entries.firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
-            ?: channel.drmLicense
+            ?: src.drmLicense
 
         val cleanHeaders = rawHeaders.filterKeys {
             !it.equals("drmScheme", ignoreCase = true) && !it.equals("drmLicense", ignoreCase = true)
@@ -338,17 +389,24 @@ class PlayerManager @Inject constructor(
                 audioDecoder = null,
                 droppedFrames = 0,
                 drmInfo = drmInfoFor(drmScheme),
+                sourceIndex = sourceIdx,
+                sourceCount = sources.size.coerceAtLeast(1),
+                sourceNotice = notice,
             )
         }
+        if (notice != null) scheduleNoticeClear()
 
         val item = try {
             buildMediaItem(channel.id.toString(), rawUrl, cleanHeaders, drmScheme, drmLicense, subtitles)
         } catch (e: DrmSetupException) {
             Log.e(TAG, "DRM setup failed: ${e.message}")
+            // এই ডিভাইসে এই DRM চলে না: ব্যাকআপ (হয়তো DRM ছাড়া) থাকলে সেটায় যাই
+            if (tryFailover("drm setup")) return
             fail(e.message ?: "DRM setup failed")
             return
         } catch (e: Throwable) {
             Log.e(TAG, "Playback start failed: ${e.message}", e)
+            if (tryFailover("start failed")) return
             fail("Playback failed: ${e.message}")
             return
         }
@@ -360,6 +418,53 @@ class PlayerManager @Inject constructor(
         player.playWhenReady = true
     }
 
+    /** ব্যর্থ বা আটকে গেলে পরের সোর্সে যায়। সম্ভব না হলে false (তখন আগের মতো রিট্রাই/এরর)। */
+    private fun tryFailover(why: String): Boolean {
+        val ch = _state.value.current ?: return false
+        if (!autoBackup || sources.size <= 1 || failoverCount >= sources.size - 1) return false
+        failoverCount++
+        val next = (sourceIdx + 1) % sources.size
+        Log.i(TAG, "Backup failover: source ${sourceIdx + 1} -> ${next + 1} ($why)")
+        startSource(ch, next, C.TIME_UNSET, lastSubtitles, notice = "Switching to source ${next + 1} of ${sources.size}")
+        return true
+    }
+
+    /** প্লেয়ারের "Source" বাটন: পরের সোর্সে যায় (শেষেরটা থেকে আবার প্রথমটায়)। */
+    fun cycleSource() {
+        val ch = _state.value.current ?: return
+        if (sources.size <= 1) return
+        failoverCount = 0
+        val next = (sourceIdx + 1) % sources.size
+        startSource(ch, next, C.TIME_UNSET, lastSubtitles, notice = "Source ${next + 1} of ${sources.size}")
+    }
+
+    private fun scheduleNoticeClear() {
+        noticeJob?.cancel()
+        noticeJob = scope.launch {
+            delay(3_000L)
+            _state.update { it.copy(sourceNotice = null) }
+        }
+    }
+
+    /** যে সোর্স চলল তা এই সেশনের জন্য মনে রাখে: চ্যানেলে ফিরলে সরাসরি ওটা। মূলটা চললে মুছে দেয়। */
+    private fun rememberGoodSource() {
+        val id = _state.value.current?.id ?: return
+        if (sources.size <= 1) return
+        if (sourceIdx == 0) lastGoodSource.remove(id) else lastGoodSource[id] = sourceIdx
+    }
+
+    private fun isOnline(): Boolean = try {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (cm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            true
+        } else {
+            cm.getNetworkCapabilities(cm.activeNetwork)
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        }
+    } catch (e: Exception) {
+        true // অনুমতি না থাকলে অফলাইন ধরব না
+    }
+
     /**
      * প্লেলিস্ট আপডেটে চলমান চ্যানেলের URL (টোকেন) বদলে গেলে এবং প্লেয়ার আটকে/এরর অবস্থায় থাকলে
      * নতুন URL দিয়ে নিজে থেকে আবার চালায়। ঠিকঠাক চলতে থাকলে কিছু করে না, যাতে দেখার সময় স্ট্রিম না কাটে।
@@ -367,7 +472,7 @@ class PlayerManager @Inject constructor(
     fun recoverWith(fresh: ChannelEntity) {
         val s = _state.value
         val cur = s.current ?: return
-        if (cur.id != fresh.id || cur.streamUrl == fresh.streamUrl) return
+        if (cur.id != fresh.id || (cur.streamUrl == fresh.streamUrl && cur.sources == fresh.sources)) return
         if (s.error == null && !(s.isBuffering && !s.isPlaying)) return
         val resume = if (!player.isCurrentMediaItemLive && player.currentPosition > 5_000L) {
             player.currentPosition
@@ -501,6 +606,8 @@ class PlayerManager @Inject constructor(
         networkRetries = 0
         hintIndex = 0
         restoredForMediaId = null
+        sources = emptyList()
+        sourceIdx = 0
 
         val (rawUrl, rawHeaders) = splitHeaders(catchupUrl)
         val cleanHeaders = rawHeaders.filterKeys {
@@ -522,6 +629,9 @@ class PlayerManager @Inject constructor(
                 audioDecoder = null,
                 droppedFrames = 0,
                 drmInfo = null,
+                sourceIndex = 0,
+                sourceCount = 1,
+                sourceNotice = null,
             )
         }
 
@@ -552,11 +662,17 @@ class PlayerManager @Inject constructor(
         retryJob?.cancel()
         requestHeaders = emptyMap()
         currentItem = null
+        sources = emptyList()
+        sourceIdx = 0
+        failoverCount = 0
         player.stop()
         player.clearMediaItems()
         _state.update {
             it.copy(
                 current = null,
+                sourceIndex = 0,
+                sourceCount = 1,
+                sourceNotice = null,
                 isPlaying = false,
                 isBuffering = false,
                 position = 0L,
@@ -624,6 +740,11 @@ class PlayerManager @Inject constructor(
                 return
             }
         }
+
+        // ব্যাকআপ সোর্স থাকলে নিজে থেকে পরেরটায়। ডিভাইস অফলাইন হলে নয়, তখন আগের মতো নেটওয়ার্ক-রিট্রাই।
+        val connectionError = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+        if (!(connectionError && !isOnline()) && tryFailover("error ${error.errorCodeName}")) return
 
         if (error.errorCode in 6000..6999) {
             _state.update { it.copy(error = describe(error), isBuffering = false) }
