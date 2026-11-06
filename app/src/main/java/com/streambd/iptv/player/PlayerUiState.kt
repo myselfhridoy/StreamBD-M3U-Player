@@ -31,4 +31,8 @@ data class PlayerUiState(
     val droppedFrames: Int = 0,
     /** DRM থাকলে তার ধরন ও ডিভাইস সাপোর্ট। */
     val drmInfo: String? = null,
+    // ব্যাকআপ সোর্স: এখন কোনটা চলছে (০ থেকে), মোট কতগুলো, আর ক্ষণস্থায়ী বার্তা
+    val sourceIndex: Int = 0,
+    val sourceCount: Int = 1,
+    val sourceNotice: String? = null,
 )
