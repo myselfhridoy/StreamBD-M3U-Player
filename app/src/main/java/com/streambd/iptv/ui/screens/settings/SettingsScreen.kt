@@ -137,6 +137,12 @@ fun SettingsScreen(
                 onCheckedChange = vm::setShowEpg,
             )
 
+            CheckRow(
+                label = "Auto switch to backup stream",
+                checked = state.autoBackup,
+                onCheckedChange = vm::setAutoBackup,
+            )
+
             ValueRow(
                 label = "Aspect Ratio",
                 value = state.aspectMode.label,
