@@ -11,6 +11,7 @@ import com.streambd.iptv.data.epg.EpgRepository
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
+import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.settings.AppSettings
 import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.player.AspectMode
@@ -44,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     private val epg: EpgRepository,
     private val sync: PlaylistSync,
     private val providerDao: ProviderDao,
+    private val watchProgress: WatchProgressRepository,
     @ApplicationContext private val ctx: Context,
 ) : ViewModel() {
 
@@ -216,6 +218,7 @@ class SettingsViewModel @Inject constructor(
         withContext(Dispatchers.IO) { clearDiskCache() }
         repo.clearAll()
         epg.clear()
+        watchProgress.clear()
         activation.clear()
         settings.clearAll()
         sync.clearState()
