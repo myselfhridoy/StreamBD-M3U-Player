@@ -26,6 +26,7 @@ import com.streambd.iptv.ui.screens.ftp.FtpScreen
 import com.streambd.iptv.ui.screens.guide.GuideScreen
 import com.streambd.iptv.ui.screens.live.LiveScreen
 import com.streambd.iptv.ui.screens.providers.ProvidersScreen
+import com.streambd.iptv.ui.screens.resume.ContinueScreen
 import com.streambd.iptv.ui.screens.search.SearchScreen
 import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
@@ -51,6 +52,7 @@ object Routes {
     fun vodPlay(kind: String, channelId: Long) = "vod/$kind?playId=$channelId"
     const val GUIDE = "guide"
     const val SEARCH = "search"
+    const val CONTINUE = "continue_watching"
     const val SETTINGS = "settings"
     const val ACTIVATION = "activation"
 }
@@ -174,6 +176,7 @@ fun AppNav() {
             )
         }
         composable(Routes.GUIDE) { GuideScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.CONTINUE) { ContinueScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { nav.popBackStack() },
