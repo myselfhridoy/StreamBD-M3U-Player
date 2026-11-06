@@ -14,10 +14,12 @@ import com.streambd.iptv.data.repo.SyncException
 import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.settings.AppSettings
 import com.streambd.iptv.data.settings.SettingsStore
+import com.streambd.iptv.data.xtream.XtreamRepository
 import com.streambd.iptv.player.AspectMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +48,7 @@ class SettingsViewModel @Inject constructor(
     private val sync: PlaylistSync,
     private val providerDao: ProviderDao,
     private val watchProgress: WatchProgressRepository,
+    private val xtream: XtreamRepository,
     @ApplicationContext private val ctx: Context,
 ) : ViewModel() {
 
@@ -78,7 +81,7 @@ class SettingsViewModel @Inject constructor(
     fun setAspect(m: AspectMode) = viewModelScope.launch { settings.setAspectMode(m) }
     fun setEpgShift(mins: Int) = viewModelScope.launch { settings.setEpgTimeShiftMins(mins) }
     fun setBuffer(ms: Int) = viewModelScope.launch { settings.setBufferTime(ms) }
-    
+
     // ★ নতুন: Seek Step সেট করার ফাংশন
     fun setSeekStep(ms: Int) = viewModelScope.launch { settings.setSeekStep(ms) }
     fun setAudioLang(code: String) = viewModelScope.launch { settings.setAudioLang(code) }
@@ -95,14 +98,14 @@ class SettingsViewModel @Inject constructor(
         if (_refresh.value is RefreshState.Running) return
         viewModelScope.launch {
             _refresh.value = RefreshState.Running
-            
+
             var totalChannels = 0
             var totalPrograms = 0
             var epgError: String? = null
             var hasError = false
 
             // ★ সার্ভার থেকে সর্বশেষ প্লেলিস্ট তালিকা আনুন
-            // force = true দেওয়ার কারণে ৬/১ ঘণ্টার টাইম লিমিট বাইপাস হবে
+            // force = true দেওয়ার কারণে ৬/১ ঘণ্টার টাইম লিমিট বাইপাস হবে
             try {
                 activation.revalidateIfNeeded(force = true)
             } catch (e: Exception) {
@@ -110,7 +113,7 @@ class SettingsViewModel @Inject constructor(
             }
 
             val active = activation.current() as? ActivationState.Active
-            
+
             // ১. সার্ভারের প্লেলিস্ট আপডেট করা (যদি থাকে)
             if (active != null && active.playlists.isNotEmpty()) {
                 try {
@@ -122,11 +125,13 @@ class SettingsViewModel @Inject constructor(
                     totalChannels += result.channels
                     totalPrograms += result.programs
                     if (result.epgError != null) epgError = result.epgError
-                    
+
                     val firstEpg = active.playlists.firstOrNull()?.epgUrl ?: ""
                     if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
                         activation.updateEpgUrl(result.epgUrl)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Server playlists sync failed: ${e.message}")
                     hasError = true
@@ -140,15 +145,33 @@ class SettingsViewModel @Inject constructor(
                 val userProviders = providerDao.getAll().filter { it.type != "FTP" } // FTP সার্ভার M3U নয়, সিঙ্কে বাদ
                 for (p in userProviders) {
                     try {
-                        val synced = sync.syncPlaylist(p.url, providerId = p.id)
-                        totalChannels += synced.channels
-                        providerChannels += synced.channels
-                        providerEpgUrls.addAll(synced.epgUrls)
+                        when (p.type.uppercase()) {
+                            "XTREAM" -> {
+                                // এখানে EPG নামাব না; নিচে সব provider-এর EPG একবারে নামবে
+                                val synced = xtream.sync(p, syncEpg = false)
+                                totalChannels += synced.channels
+                                providerChannels += synced.channels
+                                if (synced.epgUrl.isNotBlank()) {
+                                    providerEpgUrls.add(synced.epgUrl)
+                                }
+                            }
+
+                            else -> {
+                                val synced = sync.syncPlaylist(p.url, providerId = p.id)
+                                totalChannels += synced.channels
+                                providerChannels += synced.channels
+                                providerEpgUrls.addAll(synced.epgUrls)
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "User playlist ${p.name} sync failed: ${e.message}")
                         hasError = true
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch user providers: ${e.message}")
                 hasError = true
@@ -164,6 +187,8 @@ class SettingsViewModel @Inject constructor(
                     try {
                         totalPrograms += sync.syncEpg(providerEpgUrls.joinToString("\n"))
                         epgError = null // এখন গাইড এসেছে
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: SyncException) {
                         epgError = e.message
                     } catch (e: Exception) {
@@ -214,15 +239,22 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Full reset: caches + DB + DataStore. Caller navigates to Activation. */
+    /**
+     * Full reset: caches + DB + DataStore. Caller navigates to Activation.
+     *
+     * Xtream/FTP provider-ও মুছে ফেলা হয়, নইলে reset-এর পর পুরোনো provider ফিরে আসে।
+     */
     fun resetApplication(onDone: () -> Unit) = viewModelScope.launch {
         withContext(Dispatchers.IO) { clearDiskCache() }
         repo.clearAll()
         epg.clear()
         watchProgress.clear()
+        providerDao.clear()
         activation.clear()
         settings.clearAll()
         sync.clearState()
+        ctx.getSharedPreferences("ftp_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        ctx.getSharedPreferences("streambd_clock", Context.MODE_PRIVATE).edit().clear().apply()
         _lastUpdateTime.value = 0L
         onDone()
     }
