@@ -80,6 +80,7 @@ private sealed interface Sd {
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
+    onOpenContinue: () -> Unit,
     onResetComplete: () -> Unit,
     vm: SettingsViewModel = hiltViewModel(),
 ) {
@@ -109,6 +110,12 @@ fun SettingsScreen(
                 label = "Providers",
                 subtitle = "Add or manage M3U playlists and FTP servers",
                 onClick = onOpenProviders,
+            )
+
+            ActionRow(
+                label = "Continue Watching",
+                subtitle = "Resume movies and episodes you stopped halfway",
+                onClick = onOpenContinue,
             )
 
             if (isTv) {
