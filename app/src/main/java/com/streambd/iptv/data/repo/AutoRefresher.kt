@@ -4,6 +4,7 @@ import android.util.Log
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.db.ProviderDao
+import com.streambd.iptv.data.xtream.XtreamRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,7 +25,8 @@ private const val TAG = "AutoRefresher"
 class AutoRefresher @Inject constructor(
     private val sync: PlaylistSync,
     private val activation: ActivationRepository,
-    private val providerDao: ProviderDao, // নতুন: ইউজারের প্লেলিস্ট পাওয়ার জন্য
+    private val providerDao: ProviderDao,
+    private val xtream: XtreamRepository,
 ) {
     private companion object {
         const val FIRST_DELAY_MS = 2_000L
@@ -106,6 +108,8 @@ class AutoRefresher @Inject constructor(
                     if (result.epgUrl.isNotBlank() && result.epgUrl != firstEpg) {
                         activation.updateEpgUrl(result.epgUrl)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Server playlists sync failed: ${e.message}")
                 }
@@ -114,13 +118,38 @@ class AutoRefresher @Inject constructor(
             // ২. ইউজারের নিজের প্লেলিস্টগুলো আপডেট
             try {
                 val userProviders = providerDao.getAll().filter { it.type != "FTP" } // FTP সার্ভার M3U নয়, সিঙ্কে বাদ
+                var epgDue = sync.isEpgDue()
                 for (p in userProviders) {
                     try {
-                        sync.syncPlaylist(p.url, providerId = p.id)
+                        when (p.type.uppercase()) {
+                            "XTREAM" -> {
+                                // EPG প্রতি ১৫ মিনিটে নয়; isEpgDue() অনুযায়ী
+                                xtream.sync(p, syncEpg = epgDue)
+                                if (epgDue) epgDue = sync.isEpgDue()
+                            }
+
+                            else -> {
+                                val synced = sync.syncPlaylist(p.url, providerId = p.id)
+                                if (epgDue && synced.epgUrls.isNotEmpty()) {
+                                    try {
+                                        sync.syncEpg(synced.epgUrls.joinToString("\n"))
+                                        epgDue = sync.isEpgDue()
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "EPG sync failed for ${p.name}: ${e.message}")
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "User playlist ${p.name} sync failed: ${e.message}")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch user providers: ${e.message}")
             }
