@@ -3,6 +3,7 @@ package com.streambd.iptv.ui.screens.ftp
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.db.ChannelEntity
@@ -11,6 +12,7 @@ import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.data.ftp.FtpBrowser
 import com.streambd.iptv.data.ftp.FtpEntry
 import com.streambd.iptv.data.ftp.sortEntries
+import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.util.stableId
 import com.streambd.iptv.player.ExternalSubtitle
 import com.streambd.iptv.player.PlayerManager
@@ -51,6 +53,7 @@ class FtpViewModel @Inject constructor(
     providerDao: ProviderDao,
     private val browser: FtpBrowser,
     private val playerManager: PlayerManager,
+    private val watchProgress: WatchProgressRepository,
     private val activation: ActivationRepository,
     @ApplicationContext context: Context,
 ) : ViewModel() {
@@ -174,7 +177,12 @@ class FtpViewModel @Inject constructor(
             }
             _ui.value.crumbs.lastOrNull()?.let { lastOpened[it.url] = entry.url }
             _playing.value = entry
-            playerManager.play(toChannel(entry), subtitles = subtitlesFor(entry))
+            val resume = watchProgress.resumePositionFor(stableId("ftp:${entry.url}"))
+            playerManager.play(
+                toChannel(entry),
+                resumeAtMs = resume ?: C.TIME_UNSET,
+                subtitles = subtitlesFor(entry),
+            )
         }
     }
 
