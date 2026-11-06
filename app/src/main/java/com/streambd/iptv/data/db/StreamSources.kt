@@ -45,4 +45,4 @@ object StreamSources {
 
 /** প্রথমটা মূল সোর্স, তারপর ব্যাকআপগুলো (প্লেলিস্টের ক্রমে)। */
 fun ChannelEntity.allSources(): List<StreamSource> =
-    listOf(StreamSource(streamUrl, drmScheme, drmLicense)) + StreamSources.decode(sources)
+    listOf(StreamSource(streamUrl, drmScheme, drmLicense)) + StreamSources.decode(sources) + StreamSources.decode(extraSources)

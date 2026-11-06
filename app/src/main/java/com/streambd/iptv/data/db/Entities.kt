@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -52,6 +53,11 @@ data class ChannelEntity(
     val sources: String? = null,
     /** প্লেলিস্টের tvg-chno: থাকলে চ্যানেল সবসময় এই নম্বর পায়। */
     val chno: Int? = null,
+
+    /** অন্য প্লেলিস্টে একই চ্যানেলের সোর্স (renumber() প্রতিবার নতুন করে হিসাব করে)। */
+    val extraSources: String? = null,
+    /** true হলে অন্য প্লেলিস্টের মূল চ্যানেলের ব্যাকআপ হয়ে লুকানো আছে; তালিকায় দেখায় না। */
+    @ColumnInfo(defaultValue = "0") val hidden: Boolean = false,
 )
 
 @Entity(tableName = "providers")

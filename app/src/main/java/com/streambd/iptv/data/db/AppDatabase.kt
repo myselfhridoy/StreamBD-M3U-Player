@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProviderEntity::class,
         WatchProgressEntity::class, // ভার্সন ৫: Continue Watching
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +22,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun epg(): EpgDao
     abstract fun providers(): ProviderDao
     abstract fun watchProgress(): WatchProgressDao
+}
+
+/** ৭ → ৮: প্লেলিস্ট জুড়ে ব্যাকআপ মার্জ। channels-এ নতুন কলাম, কিছু মোছে না। */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `extraSources` TEXT")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `hidden` INTEGER NOT NULL DEFAULT 0")
+    }
 }
 
 /** ৬ → ৭: Xtream credentials / EPG / custom User-Agent। সব নতুন nullable কলাম, কিছু মোছে না। */

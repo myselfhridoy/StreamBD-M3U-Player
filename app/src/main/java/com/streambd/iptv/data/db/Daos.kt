@@ -3,18 +3,20 @@ package com.streambd.iptv.data.db
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+data class IdNumber(val id: Long, val number: Int)
+
 @Dao
 interface ChannelDao {
-    @Query("SELECT * FROM channels WHERE kind = :kind ORDER BY number")
+    @Query("SELECT * FROM channels WHERE kind = :kind AND hidden = 0 ORDER BY number")
     fun observeByKind(kind: String): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE kind = :kind AND groupId = :gid ORDER BY number")
+    @Query("SELECT * FROM channels WHERE kind = :kind AND groupId = :gid AND hidden = 0 ORDER BY number")
     fun observeByKindAndGroup(kind: String, gid: Long): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE kind = :kind AND name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY number LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE kind = :kind AND hidden = 0 AND name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY number LIMIT :limit")
     fun searchByKind(kind: String, q: String, limit: Int = 300): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY kind, number LIMIT 300")
+    @Query("SELECT * FROM channels WHERE hidden = 0 AND name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY kind, number LIMIT 300")
     fun searchAll(q: String): Flow<List<ChannelEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -46,6 +48,10 @@ interface ChannelDao {
     // নতুন: চ্যানেলের নম্বর আপডেট করার জন্য
     @Query("UPDATE channels SET number = :number WHERE id = :id")
     suspend fun updateNumber(id: Long, number: Int)
+
+    // ইমপোর্টের আগে পুরনো নম্বর ধরে রাখতে (নম্বর স্থিতিশীল রাখার জন্য)
+    @Query("SELECT id, number FROM channels WHERE providerId = :providerId")
+    suspend fun numbersByProvider(providerId: Long): List<IdNumber>
 
     // Continue Watching থেকে চালানোর সময় টাটকা URL/টোকেন আনতে
     @Query("SELECT * FROM channels WHERE id = :id")
