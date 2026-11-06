@@ -3,10 +3,12 @@ package com.streambd.iptv.ui.screens.vod
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.repo.ChannelRepository
+import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.data.vod.EpisodeEntry
 import com.streambd.iptv.data.vod.SeriesGroup
@@ -34,6 +36,7 @@ class VodViewModel @Inject constructor(
     private val playerManager: PlayerManager,
     private val lockController: LockController,
     private val settingsStore: SettingsStore,
+    private val watchProgress: WatchProgressRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -136,8 +139,12 @@ class VodViewModel @Inject constructor(
     }
 
     fun play(item: ChannelEntity) {
-        playerManager.play(item)
-        playerManager.setFullscreen(true)
+        viewModelScope.launch {
+            // আগে দেখা থাকলে যেখানে থেমেছিল সেখান থেকে চলবে
+            val resume = watchProgress.resumePositionFor(item.id)
+            playerManager.play(item, resumeAtMs = resume ?: C.TIME_UNSET)
+            playerManager.setFullscreen(true)
+        }
     }
 
     fun unlockAndPlay(item: ChannelEntity) {
