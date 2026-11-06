@@ -4,6 +4,11 @@ import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -29,6 +34,8 @@ data class XtreamSyncSummary(
     val programs: Int,
     val epgError: String?,
     val epgUrl: String,
+    /** true হলে TV guide ব্যাকগ্রাউন্ডে নামছে; চ্যানেল আগেই ব্যবহারযোগ্য। */
+    val epgPending: Boolean = false,
 ) {
     fun message(): String = buildString {
         append("Added $channels channels")
@@ -36,6 +43,7 @@ data class XtreamSyncSummary(
         when {
             epgError != null -> append(". TV guide: $epgError")
             programs > 0 -> append(", $programs guide entries")
+            epgPending -> append(". TV guide is loading in the background")
         }
         append(".")
     }
@@ -50,6 +58,21 @@ class XtreamRepository @Inject constructor(
 ) {
 
     private val syncLock = Mutex()
+    private val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** EPG বড় হতে পারে; ব্যবহারকারীকে আটকে না রেখে ব্যাকগ্রাউন্ডে নামায়। ব্যর্থ হলে পরের রিফ্রেশে আবার চেষ্টা হবে। */
+    private fun syncEpgInBackground(epgUrl: String) {
+        if (epgUrl.isBlank()) return
+        bgScope.launch {
+            try {
+                playlists.syncEpg(epgUrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("XtreamRepository", "background EPG failed: ${e.message}")
+            }
+        }
+    }
 
     /** নতুন Xtream provider যোগ করে; auth fail করলে ডেটাবেসে কিছুই থাকে না। */
     suspend fun add(
@@ -62,7 +85,7 @@ class XtreamRepository @Inject constructor(
         val credentials = credentials(url, username, password, userAgent)
 
         // Insert করার আগেই যাচাই, যাতে ভুল পাসওয়ার্ডে ভাঙা provider না থাকে
-        api.authenticate(credentials)
+        val auth = api.authenticate(credentials)
 
         val entity = ProviderEntity(
             name = name.trim(),
@@ -74,7 +97,10 @@ class XtreamRepository @Inject constructor(
         )
         val id = providers.insert(entity)
         return try {
-            sync(entity.copy(id = id))
+            sync(entity.copy(id = id), syncEpg = false, knownAuth = auth).let {
+                syncEpgInBackground(it.epgUrl)
+                it.copy(epgPending = it.epgUrl.isNotBlank())
+            }
         } catch (e: Exception) {
             providers.deleteById(id)
             channels.clearProviderData(id)
@@ -105,7 +131,7 @@ class XtreamRepository @Inject constructor(
                 existing.userAgent != credentials.userAgent
 
         // শুধু নাম বদলালে অফলাইনেও কাজ করবে; credentials বদলালে আগে যাচাই
-        if (credentialsChanged) api.authenticate(credentials)
+        val auth = if (credentialsChanged) api.authenticate(credentials) else null
 
         val updated = existing.copy(
             name = name.trim(),
@@ -116,7 +142,12 @@ class XtreamRepository @Inject constructor(
         )
         providers.update(updated)
 
-        return if (credentialsChanged) sync(updated) else null
+        return if (credentialsChanged) {
+            sync(updated, syncEpg = false, knownAuth = auth).let {
+                syncEpgInBackground(it.epgUrl)
+                it.copy(epgPending = it.epgUrl.isNotBlank())
+            }
+        } else null
     }
 
     /**
@@ -126,6 +157,7 @@ class XtreamRepository @Inject constructor(
     suspend fun sync(
         provider: ProviderEntity,
         syncEpg: Boolean = true,
+        knownAuth: XtreamAuth? = null,
     ): XtreamSyncSummary = syncLock.withLock {
         val credentials = credentials(
             provider.url,
@@ -134,7 +166,7 @@ class XtreamRepository @Inject constructor(
             provider.userAgent,
         )
 
-        val catalog = api.loadCatalog(credentials)
+        val catalog = api.loadCatalog(credentials, knownAuth)
         val count = channels.import(
             catalog.channels,
             isPremium = false,
