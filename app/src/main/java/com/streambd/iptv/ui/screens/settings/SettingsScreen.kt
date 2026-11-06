@@ -37,10 +37,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.settings.AppSettings
+import com.streambd.iptv.data.settings.LANGUAGE_OPTIONS
 import com.streambd.iptv.data.settings.formatSeekStep // ★ নতুন ইমপোর্ট
+import com.streambd.iptv.data.settings.langLabel
 import com.streambd.iptv.player.AspectMode
 import com.streambd.iptv.ui.components.AspectRatioDialog
 import com.streambd.iptv.ui.components.ConfirmDialog
+import com.streambd.iptv.ui.components.LanguageDialog
 import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.components.SeekStepDialog // ★ নতুন ইমপোর্ট
 import com.streambd.iptv.ui.theme.*
@@ -57,6 +60,8 @@ private sealed interface Sd {
     data object None : Sd
     data object Aspect : Sd
     data object SeekStep : Sd // ★ নতুন
+    data object AudioLang : Sd
+    data object SubtitleLang : Sd
     data object ClearCache : Sd
     data object ResetConfirm : Sd
     data object PinCurrent : Sd
@@ -168,6 +173,18 @@ fun SettingsScreen(
                 onClick = { dlg = Sd.SeekStep },
             )
 
+            ValueRow(
+                label = "Preferred Audio Language",
+                value = langLabel(state.audioLang),
+                onClick = { dlg = Sd.AudioLang },
+            )
+
+            ValueRow(
+                label = "Preferred Subtitle Language",
+                value = langLabel(state.subtitleLang),
+                onClick = { dlg = Sd.SubtitleLang },
+            )
+
             val refreshing = refresh is RefreshState.Running
             ActionRow(
                 label = if (refreshing) "Refreshing playlist…" else "Refresh Playlist",
@@ -244,6 +261,22 @@ fun SettingsScreen(
         Sd.SeekStep -> SeekStepDialog(
             current = state.seekStepMs,
             onPick = { vm.setSeekStep(it); dlg = Sd.None },
+            onDismiss = { dlg = Sd.None },
+        )
+
+        Sd.AudioLang -> LanguageDialog(
+            title = "Preferred Audio Language",
+            options = listOf("" to "Auto (stream default)") + LANGUAGE_OPTIONS,
+            current = state.audioLang,
+            onPick = { vm.setAudioLang(it); dlg = Sd.None },
+            onDismiss = { dlg = Sd.None },
+        )
+
+        Sd.SubtitleLang -> LanguageDialog(
+            title = "Preferred Subtitle Language",
+            options = listOf("" to "Auto (stream default)", "off" to "Off") + LANGUAGE_OPTIONS,
+            current = state.subtitleLang,
+            onPick = { vm.setSubtitleLang(it); dlg = Sd.None },
             onDismiss = { dlg = Sd.None },
         )
 
