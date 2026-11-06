@@ -39,13 +39,17 @@ interface ChannelDao {
     @Query("DELETE FROM channels WHERE providerId = :providerId") suspend fun clearByProvider(providerId: Long)
     @Query("SELECT COUNT(*) FROM channels") suspend fun count(): Int
 
-    // নতুন: প্রোভাইডার অনুযায়ী অর্ডার করে সব চ্যানেল আনার জন্য
+    // নতুন: প্রোভাইডার অনুযায়ী অর্ডার করে সব চ্যানেল আনার জন্য
     @Query("SELECT * FROM channels WHERE kind = :kind ORDER BY providerId, number")
     suspend fun listByKindOrdered(kind: String): List<ChannelEntity>
 
     // নতুন: চ্যানেলের নম্বর আপডেট করার জন্য
     @Query("UPDATE channels SET number = :number WHERE id = :id")
     suspend fun updateNumber(id: Long, number: Int)
+
+    // Continue Watching থেকে চালানোর সময় টাটকা URL/টোকেন আনতে
+    @Query("SELECT * FROM channels WHERE id = :id")
+    suspend fun getById(id: Long): ChannelEntity?
 }
 
 @Dao
@@ -79,4 +83,26 @@ interface ProviderDao {
 
     @Query("DELETE FROM providers") 
     suspend fun clear()
+}
+
+@Dao
+interface WatchProgressDao {
+    @Query("SELECT * FROM watch_progress ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<WatchProgressEntity>>
+
+    @Query("SELECT * FROM watch_progress WHERE id = :id")
+    suspend fun get(id: Long): WatchProgressEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: WatchProgressEntity)
+
+    @Query("DELETE FROM watch_progress WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM watch_progress")
+    suspend fun clear()
+
+    /** সবচেয়ে নতুন [keep]টি রেখে বাকি মোছে। */
+    @Query("DELETE FROM watch_progress WHERE id NOT IN (SELECT id FROM watch_progress ORDER BY updatedAt DESC LIMIT :keep)")
+    suspend fun prune(keep: Int)
 }
