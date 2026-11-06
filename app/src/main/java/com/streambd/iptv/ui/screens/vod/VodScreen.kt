@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C as Media3C
+import androidx.media3.common.Player
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.ui.components.PanelList
@@ -84,6 +85,18 @@ fun VodScreen(
 
     DisposableEffect(vm) {
         onDispose { vm.player.pause() }
+    }
+
+    // সিরিজে এপিসোড শেষ হলে পরের এপিসোড নিজে থেকে চলে
+    val exo = vm.player.player
+    DisposableEffect(exo) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) vm.playNextEpisode()
+            }
+        }
+        exo.addListener(listener)
+        onDispose { exo.removeListener(listener) }
     }
 
     // এখান থেকে 'চ্যানেল চালু হলে তালিকা বন্ধ' লজিক সরানো হয়েছে।
