@@ -21,6 +21,8 @@ import javax.inject.Singleton
 
 /** একটা চ্যানেলে সর্বোচ্চ কতগুলো ব্যাকআপ সোর্স রাখা হবে। */
 
+private val WHITESPACE = Regex("\\s+")
+
 @Singleton
 class ChannelRepository @Inject constructor(
     private val db: AppDatabase,
@@ -130,7 +132,7 @@ class ChannelRepository @Inject constructor(
         }
     }
 
-    private fun nameKey(name: String) = name.trim().lowercase().replace(Regex("\\s+"), " ")
+    private fun nameKey(name: String) = name.trim().lowercase().replace(WHITESPACE, " ")
 
     private fun ownSources(c: ChannelEntity): List<StreamSource> =
         listOf(StreamSource(c.streamUrl, c.drmScheme, c.drmLicense)) + StreamSources.decode(c.sources)
