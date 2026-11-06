@@ -116,6 +116,7 @@ fun FtpScreen(
                 kindLabel = "FTP",
                 groupName = ui.crumbs.lastOrNull()?.name.orEmpty(),
                 showNumber = false,
+                showFavoriteLock = false, // FTP ফাইল ডেটাবেসে থাকে না, তাই ফেভারিট/লক নেই
                 onExit = vm::closePlayer,
                 onTogglePlay = vm.player::togglePlayPause,
                 onToggleFavorite = {},
