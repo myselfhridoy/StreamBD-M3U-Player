@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.data.settings.TrackMode
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -51,6 +52,7 @@ data class ExternalSubtitle(val url: String, val label: String?, val language: S
 class PlayerManager @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val settings: SettingsStore,
+    private val progress: WatchProgressRepository,
 ) {
     private companion object {
         const val TAG = "PlayerManager"
@@ -229,12 +231,18 @@ class PlayerManager @Inject constructor(
     init {
         Log.i(TAG, "FFmpeg audio decoders available: ${androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()}")
         scope.launch {
+            var sinceSave = 0
             while (isActive) {
                 _state.update {
                     it.copy(
                         position = player.currentPosition.coerceAtLeast(0L),
                         duration = player.duration.coerceAtLeast(0L),
                     )
+                }
+                // প্রতি ~১০ সেকেন্ডে মুভি/এপিসোডের অগ্রগতি সেভ
+                if (++sinceSave >= 20) {
+                    sinceSave = 0
+                    if (player.isPlaying) saveProgress()
                 }
                 delay(500L)
             }
@@ -294,6 +302,8 @@ class PlayerManager @Inject constructor(
     ) {
         val same = _state.value.current?.id == channel.id
         if (!force && same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
+
+        saveProgress() // আগের মুভির অগ্রগতি রেখে নতুনটা শুরু
 
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
@@ -538,6 +548,7 @@ class PlayerManager @Inject constructor(
     }
 
     fun stopAndClear() {
+        saveProgress()
         retryJob?.cancel()
         requestHeaders = emptyMap()
         currentItem = null
@@ -561,13 +572,27 @@ class PlayerManager @Inject constructor(
     fun togglePlayPause() {
         when {
             player.playbackState == Player.STATE_IDLE -> retry()
-            player.isPlaying -> player.pause()
+            player.isPlaying -> { saveProgress(); player.pause() }
             else -> player.play()
         }
     }
 
     fun pause() {
-        if (player.isPlaying) player.pause()
+        if (player.isPlaying) {
+            saveProgress()
+            player.pause()
+        }
+    }
+
+    /** মুভি/সিরিজ হলে বর্তমান জায়গা সেভ করে (লাইভ হলে কিছু করে না)। */
+    private fun saveProgress() {
+        val ch = _state.value.current ?: return
+        if (ch.kind != "MOVIE" && ch.kind != "SERIES") return
+        if (player.isCurrentMediaItemLive) return
+        val duration = player.duration
+        if (duration == C.TIME_UNSET || duration <= 0L) return
+        val position = player.currentPosition
+        scope.launch { runCatching { progress.save(ch, position, duration) } }
     }
 
     fun setFullscreen(on: Boolean) { _state.update { it.copy(isFullscreen = on) } }
