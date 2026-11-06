@@ -46,7 +46,12 @@ data class ChannelEntity(
     val serieTitle: String? = null,
     
     val isPremium: Boolean = false,
-    val providerId: Long = 0L // নতুন: সার্ভার নাকি ইউজারের প্লেলিস্ট
+    val providerId: Long = 0L, // নতুন: সার্ভার নাকি ইউজারের প্লেলিস্ট
+
+    /** ব্যাকআপ সোর্সের JSON তালিকা (StreamSources)। শুধু Live/Radio-তে। */
+    val sources: String? = null,
+    /** প্লেলিস্টের tvg-chno: থাকলে চ্যানেল সবসময় এই নম্বর পায়। */
+    val chno: Int? = null,
 )
 
 @Entity(tableName = "providers")
