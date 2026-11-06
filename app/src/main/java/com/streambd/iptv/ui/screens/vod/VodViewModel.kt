@@ -147,6 +147,20 @@ class VodViewModel @Inject constructor(
         }
     }
 
+    /** সিরিজের এপিসোড তালিকা খোলা থাকলে চলমান এপিসোডের পরেরটা চালায়। না থাকলে false। */
+    fun playNextEpisode(): Boolean {
+        if (kind != ChannelKind.SERIES) return false
+        val cur = playerManager.state.value.current ?: return false
+        val eps = episodes.value
+        val i = eps.indexOfFirst { it.id == cur.id }
+        if (i < 0) return false
+        val nextId = eps.getOrNull(i + 1)?.id ?: return false
+        val next = allItems.value.firstOrNull { it.id == nextId } ?: return false
+        if (next.isLocked && !lockController.unlocked.value) return false
+        play(next)
+        return true
+    }
+
     fun unlockAndPlay(item: ChannelEntity) {
         lockController.unlock()
         play(item)
