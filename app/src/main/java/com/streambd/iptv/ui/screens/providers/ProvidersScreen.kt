@@ -51,6 +51,7 @@ import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.theme.*
 import kotlinx.coroutines.delay
+import androidx.compose.material.icons.filled.Cloud
 
 @Composable
 fun ProvidersScreen(
@@ -64,6 +65,7 @@ fun ProvidersScreen(
 
     var showDialog by remember { mutableStateOf(false) }
     var dialogIsFtp by remember { mutableStateOf(false) }
+    var dialogIsXtream by remember { mutableStateOf(false) }
     var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) }
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
     var addError by remember { mutableStateOf<String?>(null) }
@@ -94,12 +96,21 @@ fun ProvidersScreen(
                     providerToEdit = null
                     addError = null
                     dialogIsFtp = false
+                    dialogIsXtream = false
                     showDialog = true
                 },
                 onFtp = {
                     providerToEdit = null
                     addError = null
                     dialogIsFtp = true
+                    dialogIsXtream = false
+                    showDialog = true
+                },
+                onXtream = {
+                    providerToEdit = null
+                    addError = null
+                    dialogIsFtp = false
+                    dialogIsXtream = true
                     showDialog = true
                 },
             )
@@ -128,6 +139,7 @@ fun ProvidersScreen(
                             providerToEdit = provider
                             addError = null
                             dialogIsFtp = provider.type == "FTP"
+                            dialogIsXtream = provider.type == "XTREAM"
                             showDialog = true
                         },
                         onDelete = { providerToDelete = provider }
@@ -151,7 +163,37 @@ fun ProvidersScreen(
         }
     }
 
-    if (showDialog) {
+    if (showDialog && dialogIsXtream) {
+        XtreamProviderDialog(
+            initialProvider = providerToEdit,
+            error = addError,
+            onDismiss = {
+                showDialog = false
+                addError = null
+            },
+            onSave = { name, url, username, password, userAgent ->
+                addError = null
+                val done: (Boolean, String?) -> Unit = { success, msg ->
+                    if (success) {
+                        showDialog = false
+                        if (!msg.isNullOrBlank()) {
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        addError = msg
+                    }
+                }
+                val existing = providerToEdit
+                if (existing == null) {
+                    vm.addXtream(name, url, username, password, userAgent, done)
+                } else {
+                    vm.updateXtream(existing, name, url, username, password, userAgent, done)
+                }
+            },
+        )
+    }
+
+    if (showDialog && !dialogIsXtream) {
         ProviderDialog(
             initialProvider = providerToEdit,
             isFtp = dialogIsFtp,
@@ -219,7 +261,11 @@ fun ProvidersScreen(
 
 /** একটাই "Add" বাটন; চাপলে নিচে ছোট মেনু: M3U Playlist / FTP Server। */
 @Composable
-private fun AddProviderMenu(onM3u: () -> Unit, onFtp: () -> Unit) {
+private fun AddProviderMenu(
+    onM3u: () -> Unit,
+    onFtp: () -> Unit,
+    onXtream: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
@@ -269,6 +315,10 @@ private fun AddProviderMenu(onM3u: () -> Unit, onFtp: () -> Unit) {
             AddMenuItem("FTP Server", Icons.Filled.Dns, Modifier) {
                 expanded = false
                 onFtp()
+            }
+            AddMenuItem("Xtream Codes", Icons.Filled.Cloud, Modifier) {
+                expanded = false
+                onXtream()
             }
         }
     }
@@ -325,7 +375,11 @@ private fun ProviderGridCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (provider.type == "FTP") Icons.Filled.Dns else Icons.Filled.PlaylistPlay,
+                when (provider.type.uppercase()) {
+                    "FTP" -> Icons.Filled.Dns
+                    "XTREAM" -> Icons.Filled.Cloud
+                    else -> Icons.Filled.PlaylistPlay
+                },
                 contentDescription = null, 
                 tint = if (focused) Accent else TextPrimary, 
                 modifier = Modifier.size(28.dp)
@@ -360,8 +414,13 @@ private fun ProviderGridCard(
         
         Spacer(Modifier.height(10.dp))
         
+        val typeLabel = when (provider.type.uppercase()) {
+            "FTP" -> "FTP"
+            "XTREAM" -> "XTREAM"
+            else -> null
+        }
         Text(
-            if (provider.type == "FTP") "${provider.name}  ·  FTP" else provider.name,
+            if (typeLabel != null) "${provider.name}  ·  $typeLabel" else provider.name,
             color = TextPrimary, 
             fontSize = 14.sp, 
             fontWeight = FontWeight.Bold,
