@@ -7,6 +7,7 @@ import com.streambd.iptv.data.db.ChannelDao
 import com.streambd.iptv.data.db.EpgDao
 import com.streambd.iptv.data.db.GroupDao
 import com.streambd.iptv.data.db.MIGRATION_4_5
+import com.streambd.iptv.data.db.MIGRATION_5_6
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.db.WatchProgressDao
 import dagger.Module
@@ -24,7 +25,7 @@ object AppModule {
     @Provides @Singleton
     fun provideDb(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "streambd.db")
-            .addMigrations(MIGRATION_4_5) // ৪ → ৫ তে ডেটা অক্ষত থাকে
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6) // ডেটা অক্ষত থাকে
             .fallbackToDestructiveMigration()
             .build()
 
