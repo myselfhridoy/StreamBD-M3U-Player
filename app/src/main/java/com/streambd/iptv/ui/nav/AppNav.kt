@@ -188,6 +188,7 @@ fun AppNav() {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
                 onOpenProviders = { nav.navigate(Routes.PROVIDERS) },
+                onOpenContinue = { nav.navigate(Routes.CONTINUE) },
                 onResetComplete = {
                     nav.navigate(Routes.ACTIVATION) {
                         popUpTo(Routes.HOME) { inclusive = true }
