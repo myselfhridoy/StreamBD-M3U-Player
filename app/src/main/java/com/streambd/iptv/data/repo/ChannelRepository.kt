@@ -6,6 +6,8 @@ import com.streambd.iptv.data.db.ChannelDao
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupDao
 import com.streambd.iptv.data.db.GroupEntity
+import com.streambd.iptv.data.db.StreamSource
+import com.streambd.iptv.data.db.StreamSources
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.ParsedChannel
 import com.streambd.iptv.data.util.stableId
@@ -16,6 +18,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** একটা চ্যানেলে সর্বোচ্চ কতগুলো ব্যাকআপ সোর্স রাখা হবে। */
+private const val MAX_BACKUPS = 5
 
 @Singleton
 class ChannelRepository @Inject constructor(
@@ -89,18 +94,47 @@ class ChannelRepository @Inject constructor(
         return rows.channels.size
     }
 
-    /** সব provider মিলিয়ে প্রতিটা kind এ নম্বর ১, ২, ৩… করে দেয় (provider ক্রম ধরে)। */
+    /**
+     * সব provider মিলিয়ে প্রতিটা kind এ নম্বর বসায় (provider ক্রম ধরে)।
+     * প্লেলিস্টে tvg-chno থাকলে সেটাই নম্বর হয়; বাকিরা ফাঁকা নম্বরে ক্রম অনুযায়ী বসে।
+     */
     suspend fun renumber() {
         db.withTransaction {
             for (kind in ChannelKind.values()) {
                 val list = channels.listByKindOrdered(kind.name)
+                val numbers = assignNumbers(list)
                 val changed = list.mapIndexedNotNull { i, c ->
-                    val num = i + 1
-                    if (c.number != num) c.copy(number = num) else null
+                    if (c.number != numbers[i]) c.copy(number = numbers[i]) else null
                 }
                 changed.chunked(2_000).forEach { channels.upsert(it) }
             }
         }
+    }
+
+    private fun assignNumbers(list: List<ChannelEntity>): IntArray {
+        val result = IntArray(list.size)
+        val taken = HashSet<Int>()
+        // ১. যে চ্যানেল ইতিমধ্যে নিজের tvg-chno নম্বরে আছে, সে আগে দাবি করে (বারবার জায়গা বদল ঠেকাতে)
+        for ((i, c) in list.withIndex()) {
+            val want = c.chno ?: continue
+            if (want in 1..9999 && c.number == want && taken.add(want)) result[i] = want
+        }
+        // ২. বাকি tvg-chno-ওয়ালারা (provider/ক্রম অনুযায়ী, আগেরজন জেতে)
+        for ((i, c) in list.withIndex()) {
+            if (result[i] != 0) continue
+            val want = c.chno ?: continue
+            if (want in 1..9999 && taken.add(want)) result[i] = want
+        }
+        // ৩. নম্বরহীনরা ফাঁকা নম্বরে ক্রম অনুযায়ী
+        var next = 1
+        for (i in list.indices) {
+            if (result[i] != 0) continue
+            while (next in taken) next++
+            result[i] = next
+            taken += next
+            next++
+        }
+        return result
     }
 
     private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
@@ -111,6 +145,9 @@ class ChannelRepository @Inject constructor(
         val occurrences = HashMap<String, Int>()
         val usedIds = HashSet<Long>(parsed.size * 2)
         val channelRows = ArrayList<ChannelEntity>(parsed.size)
+        // ব্যাকআপ জোড়া: মূল চ্যানেলের key -> channelRows-এর ইনডেক্স, আর ইনডেক্স -> ব্যাকআপ তালিকা
+        val mainIndex = HashMap<String, Int>()
+        val backups = HashMap<Int, MutableList<StreamSource>>()
 
         for (p in parsed) {
             // providerId যুক্ত করা হলো যাতে গ্রুপ আইডি ক্ল্যাশ না করে
@@ -120,10 +157,26 @@ class ChannelRepository @Inject constructor(
                 groupRows[gid] = GroupEntity(id = gid, name = p.groupTitle, order = groupRows.size, kind = p.kind.name, providerId = providerId)
             }
 
+            val key = "$groupKey|${p.name.lowercase()}"
+
+            // Live/Radio-তে একই নাম ও গ্রুপের পরের এন্ট্রি আলাদা চ্যানেল নয়, মূলটার ব্যাকআপ সোর্স
+            val mergeable = (p.kind == ChannelKind.LIVE || p.kind == ChannelKind.RADIO) && !p.isNestedPlaylist
+            if (mergeable) {
+                val idx = mainIndex[key]
+                if (idx != null) {
+                    val main = channelRows[idx]
+                    val list = backups.getOrPut(idx) { ArrayList() }
+                    val duplicate = p.streamUrl == main.streamUrl || list.any { it.url == p.streamUrl }
+                    if (!duplicate && list.size < MAX_BACKUPS) {
+                        list += StreamSource(p.streamUrl, p.drmScheme, p.drmLicense)
+                    }
+                    continue
+                }
+            }
+
             val number = (numbers[p.kind] ?: 0) + 1
             numbers[p.kind] = number
 
-            val key = "$groupKey|${p.name.lowercase()}"
             val occurrence = (occurrences[key] ?: 0) + 1
             occurrences[key] = occurrence
 
@@ -136,9 +189,19 @@ class ChannelRepository @Inject constructor(
                 catchupType = p.catchupType, catchupDays = p.catchupDays, catchupSource = p.catchupSource, catchupEnable = p.catchupEnable,
                 tvgShift = p.tvgShift, parentCode = p.parentCode, adult = p.adult, audioTrack = p.audioTrack, videoTrack = p.videoTrack,
                 drmScheme = p.drmScheme, drmLicense = p.drmLicense, season = p.season, episode = p.episode, serieId = p.serieId, serieTitle = p.serieTitle,
-                isPremium = isPremium, providerId = providerId
+                isPremium = isPremium, providerId = providerId, chno = p.chno,
             )
+            if (mergeable) mainIndex[key] = channelRows.lastIndex
         }
-        return ImportRows(groupRows.values.toList(), channelRows)
+
+        val finalRows = if (backups.isEmpty()) {
+            channelRows
+        } else {
+            channelRows.mapIndexed { i, c ->
+                val list = backups[i]
+                if (list.isNullOrEmpty()) c else c.copy(sources = StreamSources.encode(list))
+            }
+        }
+        return ImportRows(groupRows.values.toList(), finalRows)
     }
 }
