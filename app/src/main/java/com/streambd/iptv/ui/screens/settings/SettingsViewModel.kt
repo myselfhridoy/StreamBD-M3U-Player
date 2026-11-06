@@ -83,6 +83,7 @@ class SettingsViewModel @Inject constructor(
     fun setSeekStep(ms: Int) = viewModelScope.launch { settings.setSeekStep(ms) }
     fun setAudioLang(code: String) = viewModelScope.launch { settings.setAudioLang(code) }
     fun setSubtitleLang(code: String) = viewModelScope.launch { settings.setSubtitleLang(code) }
+    fun setAutoBackup(v: Boolean) = viewModelScope.launch { settings.setAutoBackup(v) }
 
     suspend fun verifyPin(pin: String) = settings.verifyPin(pin)
     fun setPin(pin: String) = viewModelScope.launch { settings.setPin(pin) }
