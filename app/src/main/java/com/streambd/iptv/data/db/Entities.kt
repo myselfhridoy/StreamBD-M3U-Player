@@ -57,3 +57,20 @@ data class ProviderEntity(
     val type: String = "M3U",
     val createdAt: Long = System.currentTimeMillis()
 )
+
+/**
+ * কোন মুভি/এপিসোড কতটুকু দেখা হয়েছে। [id] = ChannelEntity.id (FTP ফাইলের ক্ষেত্রে stableId("ftp:URL"))।
+ * প্লেলিস্ট রিফ্রেশে চ্যানেল আইডি একই থাকে, তাই অগ্রগতি হারায় না।
+ */
+@Entity(tableName = "watch_progress", indices = [Index("updatedAt")])
+data class WatchProgressEntity(
+    @PrimaryKey val id: Long,
+    val title: String,
+    val kind: String,
+    val url: String,
+    val logoUrl: String?,
+    val serverId: Long,
+    val positionMs: Long,
+    val durationMs: Long,
+    val updatedAt: Long,
+)
