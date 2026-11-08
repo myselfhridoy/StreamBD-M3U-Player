@@ -1,5 +1,6 @@
 package com.streambd.iptv.ui.screens.settings
 
+import com.streambd.iptv.Brand
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -54,7 +55,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private const val APP_VERSION = "1.0.0"
+private const val APP_VERSION = Brand.VERSION
 
 private sealed interface Sd {
     data object None : Sd
@@ -228,7 +229,7 @@ fun SettingsScreen(
             InfoRow("OS Version", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             InfoRow("Activation Code", active?.code ?: "Not activated")
             InfoRow("Expiration Date", expiryText)
-            InfoRow("App", "StreamBD IPTV $APP_VERSION")
+            InfoRow("App", "${Brand.NAME} $APP_VERSION")
             ActionRow("Licenses", onClick = { dlg = Sd.Licenses })
 
             Spacer(Modifier.height(48.dp))
@@ -380,7 +381,7 @@ fun SettingsScreen(
 
         Sd.Help -> ConfirmDialog(
             title = "Help",
-            body = "StreamBD IPTV plays playlists you own. Use Settings to change PIN, aspect ratio and buffer time. On TV, use D-pad to navigate; OK opens the player overlay; Back exits fullscreen.",
+            body = "${Brand.NAME} plays playlists you own. Use Settings to change PIN, aspect ratio and buffer time. On TV, use D-pad to navigate; OK opens the player overlay; Back exits fullscreen.",
             confirmLabel = "GOT IT",
             confirmIsDangerous = false,
             onCancel = { dlg = Sd.None },
@@ -398,7 +399,7 @@ fun SettingsScreen(
 
         Sd.OverlayPermission -> ConfirmDialog(
             title = "Allow auto-start",
-            body = "To open the app after the TV restarts, Android requires the \"Display over other apps\" permission. Tap CONTINUE, enable StreamBD IPTV, then come back.",
+            body = "To open the app after the TV restarts, Android requires the \"Display over other apps\" permission. Tap CONTINUE, enable ${Brand.NAME}, then come back.",
             confirmLabel = "CONTINUE",
             confirmIsDangerous = false,
             onCancel = { dlg = Sd.None },
