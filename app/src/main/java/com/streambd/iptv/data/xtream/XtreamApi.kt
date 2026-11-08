@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.xtream
 
+import com.streambd.iptv.Brand
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.ParsedChannel
 import kotlinx.coroutines.CancellationException
@@ -321,7 +322,7 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
                 .url(url)
                 .header(
                     "User-Agent",
-                    userAgent?.takeIf { it.isNotBlank() } ?: "StreamBD/1.0",
+                    userAgent?.takeIf { it.isNotBlank() } ?: Brand.USER_AGENT,
                 )
                 .header("Accept", "application/json")
                 .build()
