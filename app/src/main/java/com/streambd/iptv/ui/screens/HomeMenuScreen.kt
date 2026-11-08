@@ -1,5 +1,6 @@
 package com.streambd.iptv.ui.screens
 
+import com.streambd.iptv.Brand
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -125,7 +126,7 @@ fun HomeMenuScreen(onOpen: (String) -> Unit, onExit: () -> Unit) {
 
     if (showExitDialog) {
         ConfirmDialog(
-            title = "Exit StreamBD IPTV?",
+            title = "Exit ${Brand.NAME}?",
             body = "The app will close and playback will stop.",
             cancelLabel = "CANCEL",
             confirmLabel = "EXIT",
