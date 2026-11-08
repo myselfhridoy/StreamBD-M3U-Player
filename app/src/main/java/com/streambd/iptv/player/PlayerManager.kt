@@ -1,5 +1,6 @@
 package com.streambd.iptv.player
 
+import com.streambd.iptv.Brand
 import android.content.Context
 import android.media.MediaDrm
 import android.net.ConnectivityManager
@@ -64,7 +65,7 @@ class PlayerManager @Inject constructor(
         const val TAG = "PlayerManager"
         const val DEFAULT_BUFFER_MS = 2_500
         const val MAX_RETRIES = 3
-        const val USER_AGENT = "StreamBD/1.0"
+        const val USER_AGENT = Brand.USER_AGENT
         const val STALL_MS = 15_000L // এর বেশি বাফারিং হলে ব্যাকআপ সোর্সে যাবে
 
         val FORMAT_HINTS = listOf(
