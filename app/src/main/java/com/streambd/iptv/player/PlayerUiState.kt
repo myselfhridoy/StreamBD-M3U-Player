@@ -35,4 +35,6 @@ data class PlayerUiState(
     val sourceIndex: Int = 0,
     val sourceCount: Int = 1,
     val sourceNotice: String? = null,
+    /** সমস্যা খুঁজতে: DRM/ডিকোডার/নেটওয়ার্কের শেষ কয়েকটা ঘটনা (সময়সহ)। */
+    val diagLog: List<String> = emptyList(),
 )
