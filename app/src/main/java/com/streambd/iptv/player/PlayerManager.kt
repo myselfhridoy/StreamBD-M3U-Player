@@ -72,6 +72,7 @@ class PlayerManager @Inject constructor(
         const val MAX_RETRIES = 3
         const val USER_AGENT = Brand.USER_AGENT
         const val STALL_MS = 15_000L
+        const val SINGLE_SOURCE_STALL_MS = 30_000L
 
         val FORMAT_HINTS = listOf(
             MimeTypes.APPLICATION_M3U8,
@@ -226,6 +227,44 @@ class PlayerManager @Inject constructor(
             diag("audio codec error: ${audioCodecError.javaClass.simpleName}: ${audioCodecError.message}")
         }
 
+        override fun onLoadStarted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+        ) {
+            val host = loadEventInfo.uri.host
+            val path = loadEventInfo.uri.encodedPath.take(28)
+            diag("load start $host$path")
+        }
+
+        override fun onLoadCompleted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+        ) {
+            diag("load done ${loadEventInfo.bytesLoaded}B ${loadEventInfo.loadDurationMs}ms")
+        }
+
+        override fun onLoadCanceled(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+        ) {
+            diag("load cancel")
+        }
+
+        override fun onDownstreamFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            mediaLoadData: MediaLoadData,
+        ) {
+            val f = mediaLoadData.trackFormat ?: return
+            if (mediaLoadData.trackType == C.TRACK_TYPE_VIDEO ||
+                mediaLoadData.trackType == C.TRACK_TYPE_AUDIO
+            ) {
+                diag("fmt ${f.sampleMimeType} ${f.width}x${f.height} drm=${f.drmInitData != null}")
+            }
+        }
+
         override fun onLoadError(
             eventTime: AnalyticsListener.EventTime,
             loadEventInfo: LoadEventInfo,
@@ -334,17 +373,37 @@ class PlayerManager @Inject constructor(
                     sinceSave = 0
                     if (player.isPlaying) saveProgress()
                 }
-                if (sources.size > 1 && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
+
+                // ─────────────────────────────────────────────────────────
+                // Stall watchdog — now also handles single-source channels.
+                // Multi-source: 15 s stall → failover to next source.
+                // Single-source: 30 s stall → surface a retryable error so the
+                // user isn't stuck on an infinite spinner (this is exactly
+                // what happens on streams that are actually CENC-encrypted
+                // or blocked by the CDN).
+                // ─────────────────────────────────────────────────────────
+                if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
                     val now = SystemClock.elapsedRealtime()
-                    if (bufferingSince == 0L) {
-                        bufferingSince = now
-                    } else if (now - bufferingSince >= STALL_MS) {
+                    if (bufferingSince == 0L) bufferingSince = now
+                    val stalledMs = now - bufferingSince
+
+                    if (stalledMs >= STALL_MS && sources.size > 1) {
                         bufferingSince = 0L
                         tryFailover("stalled")
+                    } else if (stalledMs >= SINGLE_SOURCE_STALL_MS && sources.size <= 1) {
+                        bufferingSince = 0L
+                        diag("stalled ${SINGLE_SOURCE_STALL_MS / 1000}s single source — surfacing error")
+                        _state.update {
+                            it.copy(
+                                error = "Stream is stuck. The source may be encrypted, geo-blocked, or unreachable.",
+                                isBuffering = false,
+                            )
+                        }
                     }
                 } else {
                     bufferingSince = 0L
                 }
+
                 delay(500L)
             }
         }
@@ -580,24 +639,11 @@ class PlayerManager @Inject constructor(
 
             val frameworkSupported = MediaDrm.isCryptoSchemeSupported(uuid)
 
-            // ─────────────────────────────────────────────────────────────
-            // FIX (TX3 Mini / Amlogic without libdrmclearkeyplugin.so):
-            //
-            // These boxes ship without a system ClearKey CDM, so
-            // `MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)` returns
-            // false and the old code threw "This device does not support
-            // clearkey DRM" before ExoPlayer ever got a chance to play.
-            //
-            // In practice most IPTV "ClearKey" channels (KODIPROP metadata)
-            // are transmitted with clear samples — the DRM label is just a
-            // legacy hint for older players. On such streams, skipping DRM
-            // lets ExoPlayer feed the samples straight to MediaCodec, which
-            // is exactly what OTT Navigator does on the same hardware.
-            //
-            // If the stream really is CENC-encrypted (samples are actually
-            // AES-encrypted), MediaCodec will report a crypto error later
-            // — a clear, honest failure instead of a DRM setup failure.
-            // ─────────────────────────────────────────────────────────────
+            // ClearKey on devices without the system CDM (TX3 Mini / Amlogic):
+            // most IPTV ClearKey labels are just KODIPROP metadata and the
+            // stream samples are actually clear, so play as plain. If the
+            // stream really is CENC-encrypted, MediaCodec will surface a
+            // crypto error later — an honest failure, not a DRM setup one.
             if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
                 Log.i(
                     TAG,
@@ -666,7 +712,6 @@ class PlayerManager @Inject constructor(
         val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
         return when {
             ok -> "$name (supported)"
-            // FIX: report the new behaviour instead of scaring the user with "NOT supported"
             uuid == C.CLEARKEY_UUID -> "$name (software fallback — playing as clear)"
             else -> "$name (NOT supported)"
         }
