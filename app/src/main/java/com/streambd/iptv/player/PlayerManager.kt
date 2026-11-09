@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -26,7 +27,11 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import java.io.IOException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.StreamSource
@@ -182,13 +187,83 @@ class PlayerManager @Inject constructor(
     }
 
     // স্ট্রিম তথ্য ওভারলের জন্য: কোন ডিকোডার চলছে ও কত ফ্রেম বাদ পড়ছে
+    // ───────── সমস্যা খোঁজার লাইভ লগ (Stream info ওভারলে দেখায়) ─────────
+    private val diagBuf = ArrayDeque<String>()
+    private var diagT0 = SystemClock.elapsedRealtime()
+
+    private fun diag(msg: String) {
+        val t = (SystemClock.elapsedRealtime() - diagT0) / 1000f
+        val line = String.format(java.util.Locale.US, "%5.1fs %s", t, msg.replace('\n', ' ').take(150))
+        synchronized(diagBuf) {
+            diagBuf.addLast(line)
+            while (diagBuf.size > 14) diagBuf.removeFirst()
+            val snap = diagBuf.toList()
+            _state.update { it.copy(diagLog = snap) }
+        }
+    }
+
+    private fun diagReset() {
+        synchronized(diagBuf) {
+            diagBuf.clear()
+            diagT0 = SystemClock.elapsedRealtime()
+            _state.update { it.copy(diagLog = emptyList()) }
+        }
+    }
+
     private val analyticsListener = object : AnalyticsListener {
+        override fun onDrmSessionAcquired(eventTime: AnalyticsListener.EventTime, state: Int) {
+            diag("drm session acquired")
+        }
+
+        override fun onDrmKeysLoaded(eventTime: AnalyticsListener.EventTime) {
+            diag("drm keys loaded")
+        }
+
+        override fun onDrmSessionManagerError(eventTime: AnalyticsListener.EventTime, error: Exception) {
+            diag("drm manager error: ${error.javaClass.simpleName}: ${error.message}")
+        }
+
+        override fun onVideoCodecError(eventTime: AnalyticsListener.EventTime, videoCodecError: Exception) {
+            diag("video codec error: ${videoCodecError.javaClass.simpleName}: ${videoCodecError.message}")
+        }
+
+        override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
+            diag("audio codec error: ${audioCodecError.javaClass.simpleName}: ${audioCodecError.message}")
+        }
+
+        override fun onLoadError(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+            error: IOException,
+            wasCanceled: Boolean,
+        ) {
+            diag("load error ${loadEventInfo.uri.host}: ${error.javaClass.simpleName} ${error.message ?: ""}")
+        }
+
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: DecoderReuseEvaluation?,
+        ) {
+            diag("video ${format.sampleMimeType} ${format.width}x${format.height} codecs=${format.codecs} drm=${format.drmInitData != null}")
+        }
+
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: DecoderReuseEvaluation?,
+        ) {
+            diag("audio ${format.sampleMimeType} ch=${format.channelCount} drm=${format.drmInitData != null}")
+        }
+
         override fun onVideoDecoderInitialized(
             eventTime: AnalyticsListener.EventTime,
             decoderName: String,
             initializedTimestampMs: Long,
             initializationDurationMs: Long,
         ) {
+            diag("video decoder $decoderName")
             _state.update { it.copy(videoDecoder = decoderName) }
         }
 
@@ -341,6 +416,7 @@ class PlayerManager @Inject constructor(
 
         saveProgress() // আগের মুভির অগ্রগতি রেখে নতুনটা শুরু
 
+        diagReset()
         sources = channel.allSources()
         // সব সোর্স ব্যর্থ হওয়ার পর Retry হলে আবার মূল সোর্স থেকে; নইলে এই সেশনে যেটা চলেছিল সেটা
         if (force && same && _state.value.error != null) lastGoodSource.remove(channel.id)
@@ -411,6 +487,7 @@ class PlayerManager @Inject constructor(
             buildMediaItem(channel.id.toString(), rawUrl, cleanHeaders, drmScheme, drmLicense, subtitles)
         } catch (e: DrmSetupException) {
             Log.e(TAG, "DRM setup failed: ${e.message}")
+            diag("DRM setup failed: ${e.message}")
             // এই ডিভাইসে এই DRM চলে না: ব্যাকআপ (হয়তো DRM ছাড়া) থাকলে সেটায় যাই
             if (tryFailover("drm setup")) return
             fail(e.message ?: "DRM setup failed")
@@ -423,6 +500,7 @@ class PlayerManager @Inject constructor(
         }
 
         currentItem = item
+        diag("start src ${idx + 1}/${sources.size} drm=${drmScheme ?: "none"} alt=$drmAlt host=${rawUrl.substringAfter("://").substringBefore('/')}")
         applyLanguagePrefs()
         if (resumeAtMs != C.TIME_UNSET) player.setMediaItem(item, resumeAtMs) else player.setMediaItem(item)
         player.prepare()
@@ -730,6 +808,7 @@ class PlayerManager @Inject constructor(
 
     private fun handleError(error: PlaybackException) {
         Log.e(TAG, "Player error ${error.errorCodeName}: ${error.cause?.message}", error)
+        diag("ERROR ${error.errorCodeName}${causeDetail(error)}")
         retryJob?.cancel()
 
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
