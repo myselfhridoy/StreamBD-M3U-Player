@@ -659,19 +659,35 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
             // stream samples are actually clear, so play as plain. If the
             // stream really is CENC-encrypted, MediaCodec will surface a
             // crypto error later — an honest failure, not a DRM setup one.
-            if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
-                Log.i(
-                    TAG,
-                    "ClearKey CDM unavailable on this device — playing as clear " +
-                        "(drm=$drmScheme, license=${if (drmLicense.length > 40) drmLicense.take(20) + "…" else "***"})",
-                )
-                diag("clearkey unsupported — playing as clear")
-                return builder.build()
-            }
+if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
+    // CDM নেই — DataSource-level CENC decryption-এ যাই
+    val licenseText = drmLicense.substringBefore('|').trim()
+    val licenseJson = ClearKeys.toLicenseJson(licenseText)
+        ?: throw DrmSetupException("Invalid ClearKey. Use kid:key (32 hex characters each).")
+    val keyBytes = ClearKeys.parseKeyMap(licenseJson)
+        ?: throw DrmSetupException("ClearKey license missing usable key.")
 
-            if (!frameworkSupported) {
-                throw DrmSetupException("This device does not support $drmScheme DRM.")
-            }
+    drmProvider.setClearKeys(mediaId, licenseJson)
+    cencContext.set(keyBytes)
+    Log.i(
+        TAG,
+        "ClearKey CDM unavailable — enabling software CENC decryption " +
+            "(key=${keyBytes.size}B, model=${Build.MODEL})",
+    )
+    diag("clearkey CDM missing — software decryptor enabled")
+    // DrmConfiguration set করি — provider passthrough manager return করবে
+    builder.setDrmConfiguration(
+        MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+            .setMultiSession(drmAlt)
+            .setPlayClearContentWithoutKey(true)
+            .build(),
+    )
+    return builder.build()
+}
+
+if (!frameworkSupported) {
+    throw DrmSetupException("This device does not support $drmScheme DRM.")
+}
 
             val license = drmLicense.substringBefore('|').trim()
             val isUrl = license.startsWith("http://", ignoreCase = true) ||
