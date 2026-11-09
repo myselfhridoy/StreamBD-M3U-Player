@@ -118,6 +118,10 @@ class PlayerManager @Inject constructor(
     private var autoBackup = true
     private var sources: List<StreamSource> = emptyList()
     private var sourceIdx = 0
+    // DRM: প্রথম চেষ্টায় ClearKey=single-session, Widevine/PlayReady=multi-session; DRM এরর হলে একবার উল্টোটা
+    private var drmAlt = false
+    private var drmAltTried = false
+    private var drmAltPending = false
     private var failoverCount = 0          // শেষ সফল চালুর পর কতবার সরা হয়েছে
     private var bufferingSince = 0L
     private val lastGoodSource = HashMap<Long, Int>() // এই সেশনে যে সোর্স চলেছিল
@@ -363,6 +367,12 @@ class PlayerManager @Inject constructor(
         hintIndex = 0
         restoredForMediaId = null
         lastSubtitles = subtitles
+        if (drmAltPending) {
+            drmAltPending = false // DRM-বিকল্প চেষ্টা: drmAlt অপরিবর্তিত
+        } else {
+            drmAlt = false
+            drmAltTried = false
+        }
 
         val (rawUrl, rawHeaders) = splitHeaders(src.url)
 
@@ -528,7 +538,8 @@ class PlayerManager @Inject constructor(
                 drmProvider.setClearKeys(mediaId, json)
                 builder.setDrmConfiguration(
                     MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                        .setMultiSession(true)
+                        .setMultiSession(drmAlt)
+                        .setPlayClearContentWithoutKey(true)
                         .build(),
                 )
             } else {
@@ -536,7 +547,8 @@ class PlayerManager @Inject constructor(
                     MediaItem.DrmConfiguration.Builder(uuid)
                         .setLicenseUri(license)
                         .setLicenseRequestHeaders(headers)
-                        .setMultiSession(true)
+                        .setMultiSession(!drmAlt)
+                        .setPlayClearContentWithoutKey(true)
                         .build(),
                 )
             }
@@ -742,6 +754,21 @@ class PlayerManager @Inject constructor(
             }
         }
 
+        // DRM এরর হলে আগে একবার বিকল্প সেশন-মোডে একই সোর্স আবার চেষ্টা (কিছু ডিভাইসে একটা মোডই চলে)
+        val hasDrm = item?.localConfiguration?.drmConfiguration != null
+        val drmError = error.errorCode in 6000..6999 &&
+            error.errorCode != PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED
+        val cur = _state.value.current
+        if (hasDrm && drmError && !drmAltTried && cur != null) {
+            drmAltTried = true
+            drmAlt = !drmAlt
+            drmAltPending = true
+            Log.w(TAG, "DRM error ${error.errorCodeName}: retrying with alternate session mode (alt=$drmAlt)")
+            val resume = if (!player.isCurrentMediaItemLive && player.currentPosition > 5_000L) player.currentPosition else C.TIME_UNSET
+            startSource(cur, sourceIdx, resume, lastSubtitles, notice = null)
+            return
+        }
+
         // ব্যাকআপ সোর্স থাকলে নিজে থেকে পরেরটায়। ডিভাইস অফলাইন হলে নয়, তখন আগের মতো নেটওয়ার্ক-রিট্রাই।
         val connectionError = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
@@ -790,11 +817,25 @@ class PlayerManager @Inject constructor(
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                 "Can't reach the stream. Check your connection."
             error.errorCode == PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED ->
-                "DRM error: could not get the license."
+                "DRM error: could not get the license." + causeDetail(error)
             error.errorCode in 6000..6999 ->
-                "DRM error (${error.errorCodeName})"
-            else -> "Playback failed (${error.errorCodeName})"
+                "DRM error (${error.errorCodeName})" + causeDetail(error)
+            else -> "Playback failed (${error.errorCodeName})" + causeDetail(error)
         }
+    }
+
+    /** সমস্যা খুঁজতে: ত্রুটির সবচেয়ে ভেতরের কারণ (ছোট করে)। যেমন " [MediaDrmStateException: ...]"। */
+    private fun causeDetail(error: PlaybackException): String {
+        var t: Throwable? = error.cause
+        var last: Throwable? = null
+        var depth = 0
+        while (t != null && depth++ < 8) {
+            last = t
+            t = t.cause
+        }
+        val root = last ?: return ""
+        val msg = (root.message ?: "").replace('\n', ' ').trim().take(110)
+        return " [${root.javaClass.simpleName}${if (msg.isNotEmpty()) ": $msg" else ""}]"
     }
 
     /**
