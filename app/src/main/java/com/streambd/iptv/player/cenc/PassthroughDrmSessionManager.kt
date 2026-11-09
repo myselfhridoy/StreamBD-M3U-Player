@@ -4,8 +4,8 @@ import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.decoder.CryptoConfig
 import androidx.media3.exoplayer.analytics.PlayerId
-import androidx.media3.exoplayer.drm.CryptoConfig
 import androidx.media3.exoplayer.drm.DrmSession
 import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.exoplayer.drm.DrmSessionManager
@@ -40,6 +40,7 @@ class PassthroughDrmSessionManager : DrmSessionManager {
         override fun getError(): DrmSession.DrmSessionException? = null
         override fun getSchemeUuid(): UUID = C.CLEARKEY_UUID
         override fun getCryptoConfig(): CryptoConfig? = null
+        override fun requiresSecureDecoder(mimeType: String): Boolean = false
         override fun queryKeyStatus(): Map<String, String>? = null
         override fun acquire(eventDispatcher: DrmSessionEventListener.EventDispatcher?) {}
         override fun release(eventDispatcher: DrmSessionEventListener.EventDispatcher?) {}
