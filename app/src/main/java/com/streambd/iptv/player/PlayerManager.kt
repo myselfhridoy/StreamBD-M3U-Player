@@ -495,6 +495,17 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
         val src = sources.getOrNull(idx) ?: StreamSource(channel.streamUrl, channel.drmScheme, channel.drmLicense)
         sourceIdx = idx.coerceIn(0, (sources.size - 1).coerceAtLeast(0))
 
+        // Non-ClearKey fallback হলে cencContext clear করি
+if (drmScheme.isNullOrBlank() || !drmScheme.lowercase().contains("clearkey")) {
+    cencContext.set(null)
+}
+// যদি ClearKey কিন্তু CDM supported, tap-through, context clear
+if (!drmScheme.isNullOrBlank() && drmScheme.lowercase().contains("clearkey")) {
+    val cdmSupported = runCatching {
+        MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)
+    }.getOrDefault(false)
+    if (cdmSupported) cencContext.set(null)
+}
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
         networkRetries = 0
