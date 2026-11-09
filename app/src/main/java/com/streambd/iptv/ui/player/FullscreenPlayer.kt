@@ -368,7 +368,7 @@ fun FullscreenPlayer(
             )
         }
 
-        if (showInfo) {
+        if (showInfo || state.error != null) {
             StreamInfoOverlay(
                 player = player,
                 state = state,
@@ -794,9 +794,9 @@ private fun StreamInfoOverlay(player: ExoPlayer, state: PlayerUiState, modifier:
         modifier
             .displayCutoutPadding()
             .padding(24.dp)
-            .widthIn(max = 460.dp)
+            .widthIn(max = 620.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.72f))
+            .background(Color.Black.copy(alpha = 0.78f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text("STREAM INFO", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
@@ -805,6 +805,13 @@ private fun StreamInfoOverlay(player: ExoPlayer, state: PlayerUiState, modifier:
             Row {
                 Text(label, color = TextMuted, fontSize = 11.sp, modifier = Modifier.width(96.dp))
                 Text(value, color = TextPrimary, fontSize = 11.sp, modifier = Modifier.weight(1f, fill = false))
+            }
+        }
+        if (state.diagLog.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text("LOG", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            for (line in state.diagLog) {
+                Text(line, color = TextMuted, fontSize = 9.sp, lineHeight = 11.sp)
             }
         }
     }
