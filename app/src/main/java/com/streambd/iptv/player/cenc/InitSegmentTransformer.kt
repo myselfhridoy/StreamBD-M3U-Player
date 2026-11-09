@@ -5,11 +5,8 @@ import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
 /**
- * Init segment (moov) থেকে stsd-এর ভেতরের `sinf` box সরিয়ে দেয় এবং
- * `encv`/`enca`-কে আসল format-এ (`avc1`/`mp4a`/`hvc1`/...) rename করে।
- *
- * এর ফলে ExoPlayer FragmentedMp4Extractor এই track-কে plain হিসেবে দেখে এবং
- * MediaCodec clear mode-এ চলে। sample-level ডিক্রিপশন DataSource করে।
+ * Init segment (moov) থেকে stsd-এর `sinf` box এবং moov/trak-level `pssh` box সরিয়ে দেয়,
+ * `encv`/`enca`-কে আসল format-এ (`avc1`/`mp4a`/...) rename করে।
  */
 internal object InitSegmentTransformer {
 
@@ -30,14 +27,14 @@ internal object InitSegmentTransformer {
                 val moovPayload = data.copyOfRange(header.payloadStart, header.payloadEnd)
                 val newMoov = transformMoov(moovPayload)
                 if (newMoov.contentEquals(moovPayload)) {
-                    Log.d(TAG, "Init: moov unchanged (no encryption)")
+                    Log.d(TAG, "Init: moov unchanged")
                     return data
                 }
                 val out = ByteArrayOutputStream(data.size)
                 out.write(data, 0, header.start)
                 writeBox(out, "moov", newMoov)
                 out.write(data, header.payloadEnd, data.size - header.payloadEnd)
-                Log.i(TAG, "Init: moov rewritten, size ${moovPayload.size} → ${newMoov.size}")
+                Log.i(TAG, "Init: moov rewritten ${moovPayload.size}B → ${newMoov.size}B")
                 return out.toByteArray()
             }
             pos += header.size
@@ -51,17 +48,24 @@ internal object InitSegmentTransformer {
         var pos = 0
         while (pos + 8 <= moovPayload.size) {
             val header = CencByteUtils.readBoxHeader(moovPayload, pos) ?: break
-            if (header.type == "trak") {
-                val trakPayload = moovPayload.copyOfRange(header.payloadStart, header.payloadEnd)
-                val newTrak = transformTrak(trakPayload)
-                if (newTrak.contentEquals(trakPayload)) {
-                    out.write(moovPayload, header.start, header.size)
-                } else {
-                    writeBox(out, "trak", newTrak)
+            when (header.type) {
+                "pssh" -> {
+                    // moov-level pssh — strip
+                    Log.i(TAG, "Init: stripped moov/pssh (${header.size}B)")
+                    writeFreeBox(out, header.size)
                     changed = true
                 }
-            } else {
-                out.write(moovPayload, header.start, header.size)
+                "trak" -> {
+                    val trakPayload = moovPayload.copyOfRange(header.payloadStart, header.payloadEnd)
+                    val newTrak = transformTrak(trakPayload)
+                    if (newTrak.contentEquals(trakPayload)) {
+                        out.write(moovPayload, header.start, header.size)
+                    } else {
+                        writeBox(out, "trak", newTrak)
+                        changed = true
+                    }
+                }
+                else -> out.write(moovPayload, header.start, header.size)
             }
             pos += header.size
         }
@@ -69,22 +73,28 @@ internal object InitSegmentTransformer {
     }
 
     private fun transformTrak(trakPayload: ByteArray): ByteArray {
+        var changed = false
         val out = ByteArrayOutputStream(trakPayload.size)
         var pos = 0
-        var changed = false
         while (pos + 8 <= trakPayload.size) {
             val header = CencByteUtils.readBoxHeader(trakPayload, pos) ?: break
-            if (header.type == "mdia") {
-                val mdiaPayload = trakPayload.copyOfRange(header.payloadStart, header.payloadEnd)
-                val newMdia = transformMdia(mdiaPayload)
-                if (newMdia.contentEquals(mdiaPayload)) {
-                    out.write(trakPayload, header.start, header.size)
-                } else {
-                    writeBox(out, "mdia", newMdia)
+            when (header.type) {
+                "pssh" -> {
+                    Log.i(TAG, "Init: stripped trak/pssh (${header.size}B)")
+                    writeFreeBox(out, header.size)
                     changed = true
                 }
-            } else {
-                out.write(trakPayload, header.start, header.size)
+                "mdia" -> {
+                    val mdiaPayload = trakPayload.copyOfRange(header.payloadStart, header.payloadEnd)
+                    val newMdia = transformMdia(mdiaPayload)
+                    if (newMdia.contentEquals(mdiaPayload)) {
+                        out.write(trakPayload, header.start, header.size)
+                    } else {
+                        writeBox(out, "mdia", newMdia)
+                        changed = true
+                    }
+                }
+                else -> out.write(trakPayload, header.start, header.size)
             }
             pos += header.size
         }
@@ -92,9 +102,9 @@ internal object InitSegmentTransformer {
     }
 
     private fun transformMdia(mdiaPayload: ByteArray): ByteArray {
+        var changed = false
         val out = ByteArrayOutputStream(mdiaPayload.size)
         var pos = 0
-        var changed = false
         while (pos + 8 <= mdiaPayload.size) {
             val header = CencByteUtils.readBoxHeader(mdiaPayload, pos) ?: break
             if (header.type == "minf") {
@@ -103,8 +113,7 @@ internal object InitSegmentTransformer {
                 if (newMinf.contentEquals(minfPayload)) {
                     out.write(mdiaPayload, header.start, header.size)
                 } else {
-                    writeBox(out, "minf", newMinf)
-                    changed = true
+                    writeBox(out, "minf", newMinf); changed = true
                 }
             } else {
                 out.write(mdiaPayload, header.start, header.size)
@@ -115,9 +124,9 @@ internal object InitSegmentTransformer {
     }
 
     private fun transformMinf(minfPayload: ByteArray): ByteArray {
+        var changed = false
         val out = ByteArrayOutputStream(minfPayload.size)
         var pos = 0
-        var changed = false
         while (pos + 8 <= minfPayload.size) {
             val header = CencByteUtils.readBoxHeader(minfPayload, pos) ?: break
             if (header.type == "stbl") {
@@ -126,8 +135,7 @@ internal object InitSegmentTransformer {
                 if (newStbl.contentEquals(stblPayload)) {
                     out.write(minfPayload, header.start, header.size)
                 } else {
-                    writeBox(out, "stbl", newStbl)
-                    changed = true
+                    writeBox(out, "stbl", newStbl); changed = true
                 }
             } else {
                 out.write(minfPayload, header.start, header.size)
@@ -138,9 +146,9 @@ internal object InitSegmentTransformer {
     }
 
     private fun transformStbl(stblPayload: ByteArray): ByteArray {
+        var changed = false
         val out = ByteArrayOutputStream(stblPayload.size)
         var pos = 0
-        var changed = false
         while (pos + 8 <= stblPayload.size) {
             val header = CencByteUtils.readBoxHeader(stblPayload, pos) ?: break
             if (header.type == "stsd") {
@@ -149,8 +157,7 @@ internal object InitSegmentTransformer {
                 if (newStsd.contentEquals(stsdPayload)) {
                     out.write(stblPayload, header.start, header.size)
                 } else {
-                    writeBox(out, "stsd", newStsd)
-                    changed = true
+                    writeBox(out, "stsd", newStsd); changed = true
                 }
             } else {
                 out.write(stblPayload, header.start, header.size)
@@ -161,10 +168,9 @@ internal object InitSegmentTransformer {
     }
 
     private fun transformStsd(stsdPayload: ByteArray): ByteArray {
-        // stsd: 4 version+flags, 4 entry_count, entries
         if (stsdPayload.size < 8) return stsdPayload
         val out = ByteArrayOutputStream(stsdPayload.size)
-        out.write(stsdPayload, 0, 8)  // prefix preserved
+        out.write(stsdPayload, 0, 8)
 
         var pos = 8
         var changed = false
@@ -187,10 +193,6 @@ internal object InitSegmentTransformer {
         return if (changed) out.toByteArray() else stsdPayload
     }
 
-    /**
-     * Sample entry থেকে `sinf` সরিয়ে original format-এ rename করে।
-     * @return (newType, newPayload) অথবা null যদি পরিবর্তন না লাগে।
-     */
     private fun transformSampleEntry(entryType: String, payload: ByteArray): Pair<String, ByteArray>? {
         val prefixLen = SAMPLE_ENTRY_PREFIX[entryType] ?: return null
         if (payload.size < prefixLen) return null
@@ -198,10 +200,8 @@ internal object InitSegmentTransformer {
         val prefix = payload.copyOfRange(0, prefixLen)
         val childrenStart = prefixLen
 
-        // Walk child boxes to find 'sinf' and 'frma'
         var originalType: String? = null
         var sinfStart = -1
-        var sinfSize = 0
         var pos = childrenStart
         while (pos + 8 <= payload.size) {
             val h = CencByteUtils.readBoxHeader(payload, pos) ?: break
@@ -209,7 +209,6 @@ internal object InitSegmentTransformer {
                 val sinfPayload = payload.copyOfRange(h.payloadStart, h.payloadEnd)
                 originalType = findFrma(sinfPayload)
                 sinfStart = h.start
-                sinfSize = h.size
                 break
             }
             pos += h.size
@@ -219,7 +218,6 @@ internal object InitSegmentTransformer {
 
         val out = ByteArrayOutputStream(payload.size)
         out.write(prefix)
-        // child boxes — sinf বাদ দিয়ে
         pos = childrenStart
         while (pos + 8 <= payload.size) {
             val h = CencByteUtils.readBoxHeader(payload, pos) ?: break
@@ -229,7 +227,7 @@ internal object InitSegmentTransformer {
             pos += h.size
         }
 
-        Log.i(TAG, "Init: $entryType → $originalType, stripped sinf ($sinfSize bytes)")
+        Log.i(TAG, "Init: $entryType → $originalType (sinf stripped)")
         return originalType to out.toByteArray()
     }
 
@@ -239,9 +237,7 @@ internal object InitSegmentTransformer {
             val h = CencByteUtils.readBoxHeader(sinfPayload, pos) ?: break
             if (h.type == "frma") {
                 val len = h.payloadEnd - h.payloadStart
-                if (len >= 4) {
-                    return String(sinfPayload, h.payloadStart, 4, StandardCharsets.US_ASCII)
-                }
+                if (len >= 4) return String(sinfPayload, h.payloadStart, 4, StandardCharsets.US_ASCII)
             }
             pos += h.size
         }
@@ -252,5 +248,11 @@ internal object InitSegmentTransformer {
         CencByteUtils.writeUInt32(out, (8 + payload.size).toLong())
         out.write(type.toByteArray(StandardCharsets.US_ASCII))
         out.write(payload)
+    }
+
+    private fun writeFreeBox(out: ByteArrayOutputStream, size: Int) {
+        CencByteUtils.writeUInt32(out, size.toLong())
+        out.write("free".toByteArray(StandardCharsets.US_ASCII))
+        for (i in 8 until size) out.write(0)
     }
 }
