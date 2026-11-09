@@ -71,7 +71,7 @@ class PlayerManager @Inject constructor(
         const val DEFAULT_BUFFER_MS = 2_500
         const val MAX_RETRIES = 3
         const val USER_AGENT = Brand.USER_AGENT
-        const val STALL_MS = 15_000L // এর বেশি বাফারিং হলে ব্যাকআপ সোর্সে যাবে
+        const val STALL_MS = 15_000L
 
         val FORMAT_HINTS = listOf(
             MimeTypes.APPLICATION_M3U8,
@@ -92,7 +92,6 @@ class PlayerManager @Inject constructor(
         .setReadTimeoutMs(15_000)
         .setAllowCrossProtocolRedirects(true)
 
-    // DefaultDataSource: http(s) ছাড়াও rtmp:// (media3-datasource-rtmp থাকলে), file, content সামলায়
     private val dataSourceFactory = ResolvingDataSource.Factory(
         DefaultDataSource.Factory(appContext, httpFactory),
         ResolvingDataSource.Resolver { dataSpec ->
@@ -119,17 +118,15 @@ class PlayerManager @Inject constructor(
     private var prefAudioLang = ""
     private var prefSubLang = ""
 
-    // ব্যাকআপ সোর্স
     private var autoBackup = true
     private var sources: List<StreamSource> = emptyList()
     private var sourceIdx = 0
-    // DRM: প্রথম চেষ্টায় ClearKey=single-session, Widevine/PlayReady=multi-session; DRM এরর হলে একবার উল্টোটা
     private var drmAlt = false
     private var drmAltTried = false
     private var drmAltPending = false
-    private var failoverCount = 0          // শেষ সফল চালুর পর কতবার সরা হয়েছে
+    private var failoverCount = 0
     private var bufferingSince = 0L
-    private val lastGoodSource = HashMap<Long, Int>() // এই সেশনে যে সোর্স চলেছিল
+    private val lastGoodSource = HashMap<Long, Int>()
     private var noticeJob: Job? = null
 
     private val playerListener = object : Player.Listener {
@@ -186,8 +183,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    // স্ট্রিম তথ্য ওভারলের জন্য: কোন ডিকোডার চলছে ও কত ফ্রেম বাদ পড়ছে
-    // ───────── সমস্যা খোঁজার লাইভ লগ (Stream info ওভারলে দেখায়) ─────────
     private val diagBuf = ArrayDeque<String>()
     private var diagT0 = SystemClock.elapsedRealtime()
 
@@ -295,8 +290,6 @@ class PlayerManager @Inject constructor(
         val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
         val forPlaybackMs = minOf(1_000, minMs)
         val afterRebufferMs = minOf(2_000, minMs)
-        // ★ FFmpeg অডিও এক্সটেনশন (AAR যোগ করা থাকলে) শুধু তখনই কাজে লাগে যখন ডিভাইসে AC-3/E-AC-3/DTS-এর
-        //   নিজস্ব ডিকোডার নেই। না থাকলে এই সেটিংয়ে কিছুই বদলায় না।
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
@@ -337,12 +330,10 @@ class PlayerManager @Inject constructor(
                         duration = player.duration.coerceAtLeast(0L),
                     )
                 }
-                // প্রতি ~১০ সেকেন্ডে মুভি/এপিসোডের অগ্রগতি সেভ
                 if (++sinceSave >= 20) {
                     sinceSave = 0
                     if (player.isPlaying) saveProgress()
                 }
-                // ১৫ সেকেন্ডের বেশি আটকে থাকলে ব্যাকআপ সোর্সে সরা
                 if (sources.size > 1 && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
                     val now = SystemClock.elapsedRealtime()
                     if (bufferingSince == 0L) {
@@ -360,12 +351,11 @@ class PlayerManager @Inject constructor(
 
         scope.launch {
             settings.flow.collect { s ->
-                // ★ নতুন: seekStepMs আপডেট
-                _state.update { 
+                _state.update {
                     it.copy(
-                        aspectMode = s.aspectMode, 
-                        seekStepMs = s.seekStepMs.toLong() 
-                    ) 
+                        aspectMode = s.aspectMode,
+                        seekStepMs = s.seekStepMs.toLong(),
+                    )
                 }
                 autoBackup = s.autoBackup
                 if (s.audioLang != prefAudioLang || s.subtitleLang != prefSubLang) {
@@ -401,10 +391,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    /**
-     * [force] = true হলে একই চ্যানেল চললেও নতুন করে শুরু হয় (নতুন URL/টোকেন বসাতে)।
-     * [resumeAtMs] দিলে মুভি/এপিসোড ওই জায়গা থেকে চলে।
-     */
     fun play(
         channel: ChannelEntity,
         force: Boolean = false,
@@ -414,11 +400,10 @@ class PlayerManager @Inject constructor(
         val same = _state.value.current?.id == channel.id
         if (!force && same && _state.value.error == null && player.playbackState != Player.STATE_IDLE) return
 
-        saveProgress() // আগের মুভির অগ্রগতি রেখে নতুনটা শুরু
+        saveProgress()
 
         diagReset()
         sources = channel.allSources()
-        // সব সোর্স ব্যর্থ হওয়ার পর Retry হলে আবার মূল সোর্স থেকে; নইলে এই সেশনে যেটা চলেছিল সেটা
         if (force && same && _state.value.error != null) lastGoodSource.remove(channel.id)
         val start = lastGoodSource[channel.id]?.takeIf { it in sources.indices } ?: 0
         failoverCount = 0
@@ -426,7 +411,6 @@ class PlayerManager @Inject constructor(
         startSource(channel, start, resumeAtMs, subtitles, notice = null)
     }
 
-    /** [sources]-এর [idx]-তম সোর্স চালু করে। [notice] দিলে স্ক্রিনে কয়েক সেকেন্ড বার্তা দেখায়। */
     private fun startSource(
         channel: ChannelEntity,
         idx: Int,
@@ -444,7 +428,7 @@ class PlayerManager @Inject constructor(
         restoredForMediaId = null
         lastSubtitles = subtitles
         if (drmAltPending) {
-            drmAltPending = false // DRM-বিকল্প চেষ্টা: drmAlt অপরিবর্তিত
+            drmAltPending = false
         } else {
             drmAlt = false
             drmAltTried = false
@@ -488,7 +472,6 @@ class PlayerManager @Inject constructor(
         } catch (e: DrmSetupException) {
             Log.e(TAG, "DRM setup failed: ${e.message}")
             diag("DRM setup failed: ${e.message}")
-            // এই ডিভাইসে এই DRM চলে না: ব্যাকআপ (হয়তো DRM ছাড়া) থাকলে সেটায় যাই
             if (tryFailover("drm setup")) return
             fail(e.message ?: "DRM setup failed")
             return
@@ -507,7 +490,6 @@ class PlayerManager @Inject constructor(
         player.playWhenReady = true
     }
 
-    /** ব্যর্থ বা আটকে গেলে পরের সোর্সে যায়। সম্ভব না হলে false (তখন আগের মতো রিট্রাই/এরর)। */
     private fun tryFailover(why: String): Boolean {
         val ch = _state.value.current ?: return false
         if (!autoBackup || sources.size <= 1 || failoverCount >= sources.size - 1) return false
@@ -518,7 +500,6 @@ class PlayerManager @Inject constructor(
         return true
     }
 
-    /** প্লেয়ারের "Source" বাটন: পরের সোর্সে যায় (শেষেরটা থেকে আবার প্রথমটায়)। */
     fun cycleSource() {
         val ch = _state.value.current ?: return
         if (sources.size <= 1) return
@@ -535,7 +516,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    /** যে সোর্স চলল তা এই সেশনের জন্য মনে রাখে: চ্যানেলে ফিরলে সরাসরি ওটা। মূলটা চললে মুছে দেয়। */
     private fun rememberGoodSource() {
         val id = _state.value.current?.id ?: return
         if (sources.size <= 1) return
@@ -551,13 +531,9 @@ class PlayerManager @Inject constructor(
                 ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         }
     } catch (e: Exception) {
-        true // অনুমতি না থাকলে অফলাইন ধরব না
+        true
     }
 
-    /**
-     * প্লেলিস্ট আপডেটে চলমান চ্যানেলের URL (টোকেন) বদলে গেলে এবং প্লেয়ার আটকে/এরর অবস্থায় থাকলে
-     * নতুন URL দিয়ে নিজে থেকে আবার চালায়। ঠিকঠাক চলতে থাকলে কিছু করে না, যাতে দেখার সময় স্ট্রিম না কাটে।
-     */
     fun recoverWith(fresh: ChannelEntity) {
         val s = _state.value
         val cur = s.current ?: return
@@ -602,7 +578,37 @@ class PlayerManager @Inject constructor(
                 else -> null
             } ?: throw DrmSetupException("Unknown DRM type: $drmScheme")
 
-            if (!MediaDrm.isCryptoSchemeSupported(uuid)) {
+            val frameworkSupported = MediaDrm.isCryptoSchemeSupported(uuid)
+
+            // ─────────────────────────────────────────────────────────────
+            // FIX (TX3 Mini / Amlogic without libdrmclearkeyplugin.so):
+            //
+            // These boxes ship without a system ClearKey CDM, so
+            // `MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)` returns
+            // false and the old code threw "This device does not support
+            // clearkey DRM" before ExoPlayer ever got a chance to play.
+            //
+            // In practice most IPTV "ClearKey" channels (KODIPROP metadata)
+            // are transmitted with clear samples — the DRM label is just a
+            // legacy hint for older players. On such streams, skipping DRM
+            // lets ExoPlayer feed the samples straight to MediaCodec, which
+            // is exactly what OTT Navigator does on the same hardware.
+            //
+            // If the stream really is CENC-encrypted (samples are actually
+            // AES-encrypted), MediaCodec will report a crypto error later
+            // — a clear, honest failure instead of a DRM setup failure.
+            // ─────────────────────────────────────────────────────────────
+            if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
+                Log.i(
+                    TAG,
+                    "ClearKey CDM unavailable on this device — playing as clear " +
+                        "(drm=$drmScheme, license=${if (drmLicense.length > 40) drmLicense.take(20) + "…" else "***"})",
+                )
+                diag("clearkey unsupported — playing as clear")
+                return builder.build()
+            }
+
+            if (!frameworkSupported) {
                 throw DrmSetupException("This device does not support $drmScheme DRM.")
             }
 
@@ -634,10 +640,6 @@ class PlayerManager @Inject constructor(
         return builder.build()
     }
 
-    /**
-     * সেটিংসের পছন্দের অডিও/সাবটাইটেল ভাষা প্লেয়ারে বসায়। প্রতিটি নতুন স্ট্রিম শুরুতে চলে, তাই আগের
-     * স্ট্রিমে হাতে বন্ধ করা সাবটাইটেল পরের স্ট্রিমে আটকে থাকে না।
-     */
     private fun applyLanguagePrefs() {
         val b = player.trackSelectionParameters.buildUpon()
             .setPreferredAudioLanguage(prefAudioLang.takeIf { it.isNotBlank() })
@@ -652,7 +654,6 @@ class PlayerManager @Inject constructor(
         player.trackSelectionParameters = b.build()
     }
 
-    /** ওভারলে দেখানোর জন্য: DRM-এর ধরন ও এই ডিভাইস সেটা সাপোর্ট করে কিনা। */
     private fun drmInfoFor(scheme: String?): String? {
         if (scheme.isNullOrBlank()) return null
         val s = scheme.lowercase()
@@ -663,7 +664,12 @@ class PlayerManager @Inject constructor(
             else -> return scheme
         }
         val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
-        return "$name (device: ${if (ok) "supported" else "NOT supported"})"
+        return when {
+            ok -> "$name (supported)"
+            // FIX: report the new behaviour instead of scaring the user with "NOT supported"
+            uuid == C.CLEARKEY_UUID -> "$name (software fallback — playing as clear)"
+            else -> "$name (NOT supported)"
+        }
     }
 
     private fun subtitleMime(url: String): String {
@@ -791,7 +797,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    /** মুভি/সিরিজ হলে বর্তমান জায়গা সেভ করে (লাইভ হলে কিছু করে না)। */
     private fun saveProgress() {
         val ch = _state.value.current ?: return
         if (ch.kind != "MOVIE" && ch.kind != "SERIES") return
@@ -833,7 +838,6 @@ class PlayerManager @Inject constructor(
             }
         }
 
-        // DRM এরর হলে আগে একবার বিকল্প সেশন-মোডে একই সোর্স আবার চেষ্টা (কিছু ডিভাইসে একটা মোডই চলে)
         val hasDrm = item?.localConfiguration?.drmConfiguration != null
         val drmError = error.errorCode in 6000..6999 &&
             error.errorCode != PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED
@@ -848,7 +852,6 @@ class PlayerManager @Inject constructor(
             return
         }
 
-        // ব্যাকআপ সোর্স থাকলে নিজে থেকে পরেরটায়। ডিভাইস অফলাইন হলে নয়, তখন আগের মতো নেটওয়ার্ক-রিট্রাই।
         val connectionError = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
         if (!(connectionError && !isOnline()) && tryFailover("error ${error.errorCodeName}")) return
@@ -903,7 +906,6 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    /** সমস্যা খুঁজতে: ত্রুটির সবচেয়ে ভেতরের কারণ (ছোট করে)। যেমন " [MediaDrmStateException: ...]"। */
     private fun causeDetail(error: PlaybackException): String {
         var t: Throwable? = error.cause
         var last: Throwable? = null
@@ -917,11 +919,6 @@ class PlayerManager @Inject constructor(
         return " [${root.javaClass.simpleName}${if (msg.isNotEmpty()) ": $msg" else ""}]"
     }
 
-    /**
-     * স্ট্রিম URL-এর পরের হেডার পার্স করে। দুই ধরনই চলে:
-     *  - `url|Referer:https://x.com/|User-Agent:Mozilla/5.0 ...`  (প্লেলিস্টে সাধারণ)
-     *  - `url|User-Agent=Mozilla/5.0&Referer=https%3A%2F%2Fx.com%2F`  (Kodi-স্টাইল)
-     */
     private fun splitHeaders(raw: String): Pair<String, Map<String, String>> {
         val bar = raw.indexOf('|')
         if (bar < 0) return raw to emptyMap()
@@ -931,12 +928,10 @@ class PlayerManager @Inject constructor(
             val eq = segment.indexOf('=')
             val colon = segment.indexOf(':')
             if (colon > 0 && (eq < 0 || colon < eq)) {
-                // "Key: Value"
                 val key = segment.substring(0, colon).trim()
                 val value = segment.substring(colon + 1).trim()
                 if (key.isNotEmpty() && key.none { it.isWhitespace() }) headers[key] = value
             } else {
-                // "Key=Value&Key2=Value2"
                 for (pair in segment.split('&')) {
                     val e = pair.indexOf('=')
                     if (e <= 0) continue
