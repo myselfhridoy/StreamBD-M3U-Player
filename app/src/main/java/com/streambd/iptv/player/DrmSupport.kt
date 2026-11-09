@@ -42,6 +42,8 @@ class AppDrmProvider(licenseHttpFactory: DataSource.Factory) : DrmSessionManager
                 return DefaultDrmSessionManager.Builder()
                     .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
                     .setMultiSession(drm.multiSession)
+                    // শুধু অংশ এনক্রিপ্টেড স্ট্রিমে (যেমন ক্লিয়ার অডিও + এনক্রিপ্টেড ভিডিও) কী আসার আগেই ক্লিয়ার অংশ চলে
+                    .setPlayClearSamplesWithoutKeys(true)
                     .build(LocalMediaDrmCallback(json))
             }
         }
@@ -93,3 +95,4 @@ object ClearKeys {
         return null
     }
 }
+
