@@ -24,6 +24,7 @@ internal class CencDecryptingDataSource(
 
     private enum class Kind { MPD, ISO_BMFF_INIT, ISO_BMFF_MEDIA, OTHER }
 
+    // প্রতিটি `open()` কলে এই ফিল্ডগুলো রিসেট হবে
     private var buffered: ByteArrayInputStream? = null
     private var uri: Uri? = null
 
@@ -32,14 +33,20 @@ internal class CencDecryptingDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        // আগের `open()` থেকে কোনো রিসোর্স খোলা থাকলে তা বন্ধ করা হচ্ছে
+        closeQuietly()
+
         this.uri = dataSpec.uri
         val url = dataSpec.uri.toString()
 
+        // আপস্ট্রিম ডেটাসোর্সটি এই ব্লকে শুধুমাত্র একবার খোলা এবং বন্ধ হবে
         val raw = try {
             val length = upstream.open(dataSpec)
             readAll(upstream, length)
+        } catch (e: IOException) {
+            throw e
         } finally {
-            try { upstream.close() } catch (_: Exception) {}
+            upstream.close()
         }
 
         val kind = classify(raw)
@@ -83,9 +90,13 @@ internal class CencDecryptingDataSource(
     override fun getUri(): Uri? = uri
 
     override fun close() {
-        buffered?.close()
-        buffered = null
+        closeQuietly()
         try { upstream.close() } catch (_: Exception) {}
+    }
+
+    private fun closeQuietly() {
+        try { buffered?.close() } catch (_: Exception) {}
+        buffered = null
     }
 
     private fun readAll(source: DataSource, declaredLength: Long): ByteArray {
@@ -95,11 +106,7 @@ internal class CencDecryptingDataSource(
         val buf = ByteArray(64 * 1024)
         var total = 0
         while (true) {
-            val read = try {
-                source.read(buf, 0, buf.size)
-            } catch (e: IOException) {
-                throw e
-            }
+            val read = source.read(buf, 0, buf.size)
             if (read == C.RESULT_END_OF_INPUT) break
             if (read < 0) break
             total += read
@@ -112,10 +119,9 @@ internal class CencDecryptingDataSource(
     private fun classify(data: ByteArray): Kind {
         if (data.size < 16) return Kind.OTHER
 
-        // ISO BMFF box check
+        // ISO BMFF বক্স চেক
         val boxType = runCatching { CencByteUtils.boxType(data, 0) }.getOrNull()
         if (boxType in setOf("ftyp", "styp", "moof", "moov", "sidx", "emsg", "free", "mdat")) {
-            // Init segment has 'moov', media segment has 'moof'
             var pos = 0
             while (pos + 8 <= data.size) {
                 val h = CencByteUtils.readBoxHeader(data, pos) ?: break
@@ -125,10 +131,10 @@ internal class CencDecryptingDataSource(
                 }
                 pos += h.size
             }
-            return Kind.ISO_BMFF_MEDIA  // fallback
+            return Kind.ISO_BMFF_MEDIA
         }
 
-        // XML/MPD check
+        // XML/MPD চেক
         val head = runCatching {
             String(data, 0, minOf(data.size, 512), Charsets.UTF_8)
         }.getOrNull()
