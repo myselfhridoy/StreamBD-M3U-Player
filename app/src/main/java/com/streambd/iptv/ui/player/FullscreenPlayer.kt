@@ -56,7 +56,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import dagger.hilt.android.EntryPointAccessors
 import com.streambd.iptv.data.epg.NowNext
-import com.streambd.iptv.data.settings.formatSeekStep // ★ নতুন ইমপোর্ট
+import com.streambd.iptv.data.settings.formatSeekStep
 import com.streambd.iptv.player.PlayerManagerEntryPoint
 import com.streambd.iptv.player.PlayerUiState
 import com.streambd.iptv.ui.theme.*
@@ -67,9 +67,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onStart
 import kotlin.math.abs
 
-/**
- * ZalTV-স্টাইল ফুলস্ক্রিন প্লেয়ার।
- */
 @Composable
 fun FullscreenPlayer(
     player: ExoPlayer,
@@ -97,13 +94,11 @@ fun FullscreenPlayer(
     val hasList = listContent != null
     val view = LocalView.current
     val focusManager = LocalFocusManager.current
-    // ব্যাকআপ সোর্স বদলাতে PlayerManager (প্রতিটি স্ক্রিনের কল না বদলেই)
     val appContext = LocalContext.current.applicationContext
     val sourceSwitcher = remember(appContext) {
         EntryPointAccessors.fromApplication(appContext, PlayerManagerEntryPoint::class.java).playerManager()
     }
 
-    // স্ক্রিন জাগিয়ে রাখা
     DisposableEffect(view) {
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
@@ -114,7 +109,7 @@ fun FullscreenPlayer(
     var controlsVisible by remember { mutableStateOf(false) }
     var interactive by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
-    
+
     val listActivity = remember {
         MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     }
@@ -134,7 +129,6 @@ fun FullscreenPlayer(
     val hasListNow by rememberUpdatedState(hasList)
     val listChangeNow by rememberUpdatedState(onListOpenChange)
 
-    // ৪ সেকেন্ড পর অটো-হাইড
     LaunchedEffect(controlsVisible, tick, state.isPlaying) {
         if (controlsVisible && state.isPlaying) {
             delay(4_000L)
@@ -149,7 +143,7 @@ fun FullscreenPlayer(
     LaunchedEffect(state.error) {
         if (state.error != null) showControls()
     }
-    
+
     LaunchedEffect(listOpen) {
         hideControls()
     }
@@ -185,13 +179,9 @@ fun FullscreenPlayer(
         }
     }
 
-    // ★ নতুন: Buffer Time বদলালে নতুন প্লেয়ারে সিক হওয়ার জন্য rememberUpdatedState
     val playerNow by rememberUpdatedState(player)
-    
-    // ★ নতুন: ডাবল-ট্যাপের ল্যাম্বডায় পুরনো মান আসা রোধ করতে
     val stepNow by rememberUpdatedState(state.seekStepMs)
 
-    // ── সাবটাইটেল (ভিডিওর ভেতরের বা বাইরে থেকে জোড়া): আছে কিনা ও চালু কিনা ──
     var subtitleCount by remember { mutableIntStateOf(0) }
     var subtitleOn by remember { mutableStateOf(false) }
     DisposableEffect(player) {
@@ -209,10 +199,8 @@ fun FullscreenPlayer(
         onDispose { player.removeListener(listener) }
     }
 
-    // স্ট্রিম তথ্য ওভারলে (রিমোটের INFO বাটন বা কন্ট্রোলের (i) আইকন)
     var showInfo by remember { mutableStateOf(false) }
 
-    /** বন্ধ → সাবটাইটেল ১ → ২ … → বন্ধ, এভাবে ঘোরে। */
     fun cycleSubtitle() {
         val p = playerNow
         val groups = p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
@@ -242,7 +230,6 @@ fun FullscreenPlayer(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // ★ ডাবল-ট্যাপে ফরওয়ার্ড/রিওয়াইন্ড (লাইভে বন্ধ, শুধু মুভি/সিরিজে)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = if (onStep == null) { offset ->
@@ -277,7 +264,7 @@ fun FullscreenPlayer(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (controlsVisible) tick++
-                
+
                 if (listOpen) listActivity.tryEmit(Unit)
 
                 if (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_INFO) {
@@ -291,7 +278,6 @@ fun FullscreenPlayer(
                     Key.MediaPause -> { if (state.isPlaying) onTogglePlay(); return@onPreviewKeyEvent true }
                     Key.ChannelUp -> { stepOrSeek(1); return@onPreviewKeyEvent true }
                     Key.ChannelDown -> { stepOrSeek(-1); return@onPreviewKeyEvent true }
-                    // ★ নতুন: রিমোটের FF/REW কী হ্যান্ডলিং
                     Key.MediaFastForward, Key.MediaSkipForward ->
                         if (onStep == null) { seekBy(state.seekStepMs); return@onPreviewKeyEvent true }
                     Key.MediaRewind, Key.MediaSkipBackward ->
@@ -316,7 +302,6 @@ fun FullscreenPlayer(
                         if (inControls) {
                             false
                         } else {
-                            // ★ নতুন: লং-প্রেস করলে সিকিং স্পিড বাড়বে (Base -> x3 -> x6)
                             if (onStep == null) {
                                 val count = event.nativeKeyEvent.repeatCount
                                 val base = state.seekStepMs
@@ -411,8 +396,7 @@ fun FullscreenPlayer(
                     showFavoriteLock = showFavoriteLock,
                     playFocus = controlsFocus,
                     onSeek = { ms -> player.seekTo(ms); tick++ },
-                    // ★ নতুন: মাল্টিপ্লায়ার (-1L বা 1L) পাস করা হচ্ছে
-                    onSeekBy = { seekBy(it * state.seekStepMs) }, 
+                    onSeekBy = { seekBy(it * state.seekStepMs) },
                     onTogglePlay = { tick++; onTogglePlay() },
                     onToggleFavorite = { tick++; onToggleFavorite() },
                     onToggleLock = { tick++; onToggleLock() },
@@ -466,7 +450,7 @@ private fun ControlsPanel(
     showFavoriteLock: Boolean = true,
     playFocus: FocusRequester,
     onSeek: (Long) -> Unit,
-    onSeekBy: (Long) -> Unit, // ★ নতুন: মাল্টিপ্লায়ার (-1L বা 1L) নেবে
+    onSeekBy: (Long) -> Unit,
     onTogglePlay: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleLock: () -> Unit,
@@ -521,20 +505,19 @@ private fun ControlsPanel(
                 modifier = Modifier.focusRequester(playFocus),
                 onClick = onTogglePlay,
             )
-            
-            // ★ নতুন: ডাইনামিক FastRewind / FastForward বাটন
+
             if (state.duration > 0L) {
                 Spacer(Modifier.width(4.dp))
                 ControlButton(Icons.Filled.FastRewind, "Rewind") { onSeekBy(-1L) }
                 Text(
-                    formatSeekStep(state.seekStepMs.toInt()), 
-                    color = TextMuted, 
+                    formatSeekStep(state.seekStepMs.toInt()),
+                    color = TextMuted,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
                 ControlButton(Icons.Filled.FastForward, "Fast forward") { onSeekBy(1L) }
                 Spacer(Modifier.width(8.dp))
-                
+
                 ThinSeekBar(
                     position = state.position,
                     duration = state.duration,
@@ -776,6 +759,7 @@ private fun aspectLabel(aspect: Float): String? {
     return if (nearest != null && abs(nearest.first - aspect) < 0.06f) nearest.second
     else "%.2f:1".format(aspect)
 }
+
 /* ---------------------------- stream info ----------------------------- */
 
 @Composable
@@ -845,7 +829,16 @@ private fun buildInfoRows(player: ExoPlayer, state: PlayerUiState): List<Pair<St
         )
 
     out += "Dropped frames" to state.droppedFrames.toString()
-    out += "Buffered" to "${f1(player.totalBufferedDuration / 1000f)} s"
+
+    // FIX: C.TIME_UNSET (Long.MIN_VALUE) and absurd values used to print
+    // as 9223372013568.0 s. Clamp to a sane range and show "—" otherwise.
+    val bufferedMs = player.totalBufferedDuration
+    out += "Buffered" to when {
+        bufferedMs < 0L -> "—"
+        bufferedMs > 3_600_000L -> "—"   // > 1 hour of buffer ⇒ sentinel / not ready
+        else -> "${f1(bufferedMs / 1000f)} s"
+    }
+
     state.drmInfo?.let { out += "DRM" to it }
     if (state.sourceCount > 1) out += "Source" to "${state.sourceIndex + 1} / ${state.sourceCount}"
     return out
