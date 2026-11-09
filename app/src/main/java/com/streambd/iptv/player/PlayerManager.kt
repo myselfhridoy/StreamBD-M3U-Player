@@ -742,22 +742,22 @@ if (!frameworkSupported) {
         player.trackSelectionParameters = b.build()
     }
 
-    private fun drmInfoFor(scheme: String?): String? {
-        if (scheme.isNullOrBlank()) return null
-        val s = scheme.lowercase()
-        val (name, uuid) = when {
-            s.contains("widevine") -> "Widevine" to C.WIDEVINE_UUID
-            s.contains("playready") -> "PlayReady" to C.PLAYREADY_UUID
-            s.contains("clearkey") -> "ClearKey" to C.CLEARKEY_UUID
-            else -> return scheme
-        }
-        val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
-        return when {
-            ok -> "$name (supported)"
-            uuid == C.CLEARKEY_UUID -> "$name (software fallback — playing as clear)"
-            else -> "$name (NOT supported)"
-        }
+private fun drmInfoFor(scheme: String?): String? {
+    if (scheme.isNullOrBlank()) return null
+    val s = scheme.lowercase()
+    val (name, uuid) = when {
+        s.contains("widevine") -> "Widevine" to C.WIDEVINE_UUID
+        s.contains("playready") -> "PlayReady" to C.PLAYREADY_UUID
+        s.contains("clearkey") -> "ClearKey" to C.CLEARKEY_UUID
+        else -> return scheme
     }
+    val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
+    return when {
+        ok -> "$name (device supported)"
+        uuid == C.CLEARKEY_UUID -> "$name (software decryptor)"
+        else -> "$name (NOT supported)"
+    }
+}
 
     private fun subtitleMime(url: String): String {
         val path = url.lowercase().substringBefore('?').substringBefore('#')
@@ -850,6 +850,7 @@ if (!frameworkSupported) {
         sourceIdx = 0
         failoverCount = 0
         player.stop()
+        cencContext.set(null)
         player.clearMediaItems()
         _state.update {
             it.copy(
