@@ -9,13 +9,8 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import java.io.ByteArrayInputStream
 import java.io.IOException
-import java.io.InputStream
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Upstream DataSource-কে wrap করে CENC-encrypted fMP4 segment গুলো decrypt করে।
- * Plain manifest/text ফাইল হলে pass-through।
- */
 @UnstableApi
 internal class CencDecryptingDataSource(
     private val upstream: DataSource,
@@ -27,7 +22,8 @@ internal class CencDecryptingDataSource(
         const val MAX_SEGMENT_BYTES = 64 * 1024 * 1024
     }
 
-    private var dataSpec: DataSpec? = null
+    private enum class Kind { MPD, ISO_BMFF_INIT, ISO_BMFF_MEDIA, OTHER }
+
     private var buffered: ByteArrayInputStream? = null
     private var uri: Uri? = null
 
@@ -36,49 +32,51 @@ internal class CencDecryptingDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        this.dataSpec = dataSpec
         this.uri = dataSpec.uri
-
-        val contentType = dataSpec.httpMethod.let { null }
         val url = dataSpec.uri.toString()
 
-        // MPD, m3u8, text ফাইল — pass-through
-        if (url.endsWith(".mpd", true) || url.endsWith(".m3u8", true) ||
-            url.endsWith(".xml", true) || url.endsWith(".ism", true)) {
-            return upstream.open(dataSpec)
+        val raw = try {
+            val length = upstream.open(dataSpec)
+            readAll(upstream, length)
+        } finally {
+            try { upstream.close() } catch (_: Exception) {}
         }
 
-        // Full segment read
-        val length = upstream.open(dataSpec)
-        val bytes = readAll(upstream, length)
-        upstream.close()
+        val kind = classify(raw)
+        Log.d(TAG, "classify ${raw.size}B ${kind.name} → $url")
 
-        val key = keyRef.get()
-        if (key == null) {
-            Log.w(TAG, "No CENC key — passing through ${bytes.size} bytes from $url")
-            buffered = ByteArrayInputStream(bytes)
-            return bytes.size.toLong()
-        }
-
-        val transformed = try {
-            when {
-                // Init segment — moov box থাকে
-                looksLikeInitSegment(bytes) -> InitSegmentTransformer.transform(bytes)
-                // Media segment — moof + mdat
-                looksLikeMediaSegment(bytes) -> MediaSegmentTransformer.transform(bytes, key)
-                else -> bytes
+        val out = when (kind) {
+            Kind.MPD -> {
+                val text = String(raw, Charsets.UTF_8)
+                val stripped = MpdStripper.stripContentProtection(text)
+                Log.i(TAG, "MPD stripped: ${text.length}B → ${stripped.length}B")
+                stripped.toByteArray(Charsets.UTF_8)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Transform failed for $url: ${e.message}", e)
-            bytes
+            Kind.ISO_BMFF_INIT -> {
+                try { InitSegmentTransformer.transform(raw) } catch (e: Exception) {
+                    Log.e(TAG, "Init transform failed: ${e.message}", e); raw
+                }
+            }
+            Kind.ISO_BMFF_MEDIA -> {
+                val key = keyRef.get()
+                if (key == null) {
+                    Log.w(TAG, "Media segment but no CENC key — passthrough")
+                    raw
+                } else {
+                    try { MediaSegmentTransformer.transform(raw, key) } catch (e: Exception) {
+                        Log.e(TAG, "Media transform failed: ${e.message}", e); raw
+                    }
+                }
+            }
+            Kind.OTHER -> raw
         }
 
-        buffered = ByteArrayInputStream(transformed)
-        return transformed.size.toLong()
+        buffered = ByteArrayInputStream(out)
+        return out.size.toLong()
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        val b = buffered ?: return upstream.read(buffer, offset, length)
+        val b = buffered ?: return C.RESULT_END_OF_INPUT
         return b.read(buffer, offset, length)
     }
 
@@ -97,8 +95,13 @@ internal class CencDecryptingDataSource(
         val buf = ByteArray(64 * 1024)
         var total = 0
         while (true) {
-            val read = source.read(buf, 0, buf.size)
+            val read = try {
+                source.read(buf, 0, buf.size)
+            } catch (e: IOException) {
+                throw e
+            }
             if (read == C.RESULT_END_OF_INPUT) break
+            if (read < 0) break
             total += read
             if (total > MAX_SEGMENT_BYTES) throw IOException("Segment too large: $total bytes")
             out.write(buf, 0, read)
@@ -106,24 +109,55 @@ internal class CencDecryptingDataSource(
         return out.toByteArray()
     }
 
-    private fun looksLikeInitSegment(b: ByteArray): Boolean {
-        var pos = 0
-        while (pos + 8 <= b.size) {
-            val h = CencByteUtils.readBoxHeader(b, pos) ?: return false
-            if (h.type == "moov") return true
-            if (h.type == "moof") return false
-            pos += h.size
-        }
-        return false
-    }
+    private fun classify(data: ByteArray): Kind {
+        if (data.size < 16) return Kind.OTHER
 
-    private fun looksLikeMediaSegment(b: ByteArray): Boolean {
-        var pos = 0
-        while (pos + 8 <= b.size) {
-            val h = CencByteUtils.readBoxHeader(b, pos) ?: return false
-            if (h.type == "moof") return true
-            pos += h.size
+        // ISO BMFF box check
+        val boxType = runCatching { CencByteUtils.boxType(data, 0) }.getOrNull()
+        if (boxType in setOf("ftyp", "styp", "moof", "moov", "sidx", "emsg", "free", "mdat")) {
+            // Init segment has 'moov', media segment has 'moof'
+            var pos = 0
+            while (pos + 8 <= data.size) {
+                val h = CencByteUtils.readBoxHeader(data, pos) ?: break
+                when (h.type) {
+                    "moov" -> return Kind.ISO_BMFF_INIT
+                    "moof" -> return Kind.ISO_BMFF_MEDIA
+                }
+                pos += h.size
+            }
+            return Kind.ISO_BMFF_MEDIA  // fallback
         }
-        return false
+
+        // XML/MPD check
+        val head = runCatching {
+            String(data, 0, minOf(data.size, 512), Charsets.UTF_8)
+        }.getOrNull()
+        if (head != null) {
+            val trimmed = head.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+            if (trimmed.startsWith("<?xml", ignoreCase = true) ||
+                trimmed.startsWith("<MPD", ignoreCase = true) ||
+                "<MPD" in head.take(200)
+            ) {
+                return Kind.MPD
+            }
+        }
+
+        return Kind.OTHER
     }
+}
+
+/** MPD থেকে সমস্ত `<ContentProtection>` element সরায়। */
+internal object MpdStripper {
+
+    private val paired = Regex(
+        """<ContentProtection\b[^>]*>.*?</ContentProtection>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
+    private val selfClosing = Regex(
+        """<ContentProtection\b[^>]*/>""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun stripContentProtection(mpd: String): String =
+        selfClosing.replace(paired.replace(mpd, ""), "")
 }
