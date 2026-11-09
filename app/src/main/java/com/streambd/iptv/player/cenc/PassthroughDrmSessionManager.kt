@@ -8,7 +8,6 @@ import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.drm.DrmSession
 import androidx.media3.exoplayer.drm.DrmSessionEventListener
 import androidx.media3.exoplayer.drm.DrmSessionManager
-import androidx.media3.exoplayer.drm.ExoMediaCrypto
 
 /**
  * Fake DrmSessionManager — CDM ছাড়া device-এ DRM-labeled stream চালানোর জন্য।
@@ -31,20 +30,15 @@ class PassthroughDrmSessionManager : DrmSessionManager {
         format: Format,
     ): DrmSession = session
 
-    override fun preacquireSession(
-        eventDispatcher: DrmSessionEventListener.EventDispatcher?,
-        format: Format,
-    ): DrmSessionManager.DrmSessionReference = DrmSessionManager.DrmSessionReference.NO_OP
-
     override fun getCryptoType(format: Format): Int = C.CRYPTO_TYPE_FRAMEWORK
 
     private class PassthroughSession : DrmSession {
         override fun getState(): Int = DrmSession.STATE_OPENED_WITH_KEYS
-        override fun getError(): DrmSessionException? = null
-        override fun getMediaCrypto(): ExoMediaCrypto? = null
+        override fun getError(): DrmSession.DrmSessionException? = null
+        override fun getMediaCrypto() = null   // inferred as ExoMediaCrypto?
         override fun requiresSecureDecoderComponent(mimeType: String): Boolean = false
-        override fun acquire() {}
-        override fun release() {}
+        override fun acquire(eventDispatcher: DrmSessionEventListener.EventDispatcher?) {}
+        override fun release(eventDispatcher: DrmSessionEventListener.EventDispatcher?) {}
         override fun getOfflineLicenseKeySetId(): ByteArray? = null
     }
 }
