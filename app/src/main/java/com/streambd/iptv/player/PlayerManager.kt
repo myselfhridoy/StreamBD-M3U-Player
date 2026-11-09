@@ -55,6 +55,8 @@ import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.streambd.iptv.player.cenc.CencDecryptingDataSource
+import java.util.concurrent.atomic.AtomicReference
 
 /** ভিডিওর সাথে বাইরে থেকে জোড়া সাবটাইটেল (SRT/VTT/ASS)। */
 data class ExternalSubtitle(val url: String, val label: String?, val language: String?)
@@ -93,18 +95,31 @@ class PlayerManager @Inject constructor(
         .setReadTimeoutMs(15_000)
         .setAllowCrossProtocolRedirects(true)
 
-    private val dataSourceFactory = ResolvingDataSource.Factory(
-        DefaultDataSource.Factory(appContext, httpFactory),
-        ResolvingDataSource.Resolver { dataSpec ->
-            val headers = requestHeaders
-            val hasUserAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
-            dataSpec.withAdditionalHeaders(
-                if (hasUserAgent) headers else headers + ("User-Agent" to USER_AGENT),
-            )
-        },
-    )
+// আগের:
+// private val dataSourceFactory = ResolvingDataSource.Factory(
+//     DefaultDataSource.Factory(appContext, httpFactory),
+//     ResolvingDataSource.Resolver { ... }
+// )
+
+// নতুন:
+private val dataSourceFactory = ResolvingDataSource.Factory(
+    DataSource.Factory {
+        val base = DefaultDataSource.Factory(appContext, httpFactory).createDataSource()
+        val ctx = cencContext.get()
+        if (ctx != null) CencDecryptingDataSource(base, cencContext) else base
+    },
+    ResolvingDataSource.Resolver { dataSpec ->
+        val headers = requestHeaders
+        val hasUserAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
+        dataSpec.withAdditionalHeaders(
+            if (hasUserAgent) headers else headers + ("User-Agent" to USER_AGENT),
+        )
+    },
+)
 
     private val drmProvider = AppDrmProvider(dataSourceFactory)
+
+    private val cencContext = AtomicReference<ByteArray?>(null)
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
