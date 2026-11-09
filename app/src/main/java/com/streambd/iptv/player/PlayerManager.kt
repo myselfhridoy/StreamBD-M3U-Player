@@ -228,14 +228,14 @@ class PlayerManager @Inject constructor(
         }
 
         override fun onLoadStarted(
-            eventTime: AnalyticsListener.EventTime,
-            loadEventInfo: LoadEventInfo,
-            mediaLoadData: MediaLoadData,
-        ) {
-            val host = loadEventInfo.uri.host
-            val path = loadEventInfo.uri.encodedPath.take(28)
-            diag("load start $host$path")
-        }
+    eventTime: AnalyticsListener.EventTime,
+    loadEventInfo: LoadEventInfo,
+    mediaLoadData: MediaLoadData,
+) {
+    val host = loadEventInfo.uri.host.orEmpty()
+    val path = loadEventInfo.uri.encodedPath?.take(28) ?: ""
+    diag("load start $host$path")
+}
 
         override fun onLoadCompleted(
             eventTime: AnalyticsListener.EventTime,
