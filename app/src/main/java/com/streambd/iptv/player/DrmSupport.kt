@@ -1,5 +1,6 @@
 package com.streambd.iptv.player
 
+import android.media.MediaDrm
 import android.os.Looper
 import android.util.Base64
 import androidx.media3.common.DrmInitData
@@ -17,6 +18,7 @@ import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
+import com.streambd.iptv.player.cenc.PassthroughDrmSessionManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.ByteBuffer
@@ -24,10 +26,6 @@ import java.nio.ByteOrder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * ClearKey (কী সরাসরি দেওয়া) হলে নেটওয়ার্কে লাইসেন্স না চেয়ে [LocalMediaDrmCallback] দেয়।
- * বাকি স্কিম (Widevine, PlayReady, URL-ভিত্তিক ClearKey) ExoPlayer-এর ডিফল্ট পথে যায়।
- */
 @UnstableApi
 class AppDrmProvider(licenseHttpFactory: DataSource.Factory) : DrmSessionManagerProvider {
 
@@ -37,8 +35,15 @@ class AppDrmProvider(licenseHttpFactory: DataSource.Factory) : DrmSessionManager
         setDrmHttpDataSourceFactory(licenseHttpFactory)
     }
 
+    private var passthroughManager: PassthroughDrmSessionManager? = null
+
     fun setClearKeys(mediaId: String, json: ByteArray) {
         clearKeyJson[mediaId] = json
+    }
+
+    /** CENC fallback হলে এই manager return করব। */
+    fun usePassthrough(): PassthroughDrmSessionManager {
+        return passthroughManager ?: PassthroughDrmSessionManager().also { passthroughManager = it }
     }
 
     override fun get(mediaItem: MediaItem): DrmSessionManager {
@@ -48,14 +53,22 @@ class AppDrmProvider(licenseHttpFactory: DataSource.Factory) : DrmSessionManager
         if (drm.scheme == C.CLEARKEY_UUID) {
             val json = clearKeyJson[mediaItem.mediaId]
             if (json != null) {
+                // CDM support চেক
+                val supported = runCatching {
+                    MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)
+                }.getOrDefault(false)
+
+                if (!supported) {
+                    // CDM নেই → Passthrough manager (DataSource decrypt করবে)
+                    return usePassthrough()
+                }
+
+                // Normal CDM path
                 val base = DefaultDrmSessionManager.Builder()
                     .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
                     .setMultiSession(drm.multiSession)
-                    // শুধু অংশ এনক্রিপ্টেড স্ট্রিমে (যেমন ক্লিয়ার অডিও + এনক্রিপ্টেড ভিডিও) কী আসার আগেই ক্লিয়ার অংশ চলে
                     .setPlayClearSamplesWithoutKeys(true)
                     .build(LocalMediaDrmCallback(json))
-                // ম্যানিফেস্টে ClearKey PSSH না থাকলেও (শুধু Widevine/PlayReady/mp4protection) চলার জন্য
-                // আমাদের কী-র KID থেকে বানানো PSSH ইনজেক্ট করি।
                 val kids = ClearKeys.kidsOf(json)
                 return if (kids.isEmpty()) base
                 else ClearKeyInjectingDrmSessionManager(base, ClearKeys.syntheticDrmInitData(kids))
@@ -67,10 +80,6 @@ class AppDrmProvider(licenseHttpFactory: DataSource.Factory) : DrmSessionManager
 
 object ClearKeys {
 
-    /**
-     * লাইসেন্স স্ট্রিং থেকে ClearKey JSON (লাইসেন্স-রেসপন্স) বানায়। না পারলে null।
-     * সমর্থিত: "kid:key", "kid1:key1,kid2:key2" (hex বা base64url), অথবা তৈরি {"keys":[...]} JSON।
-     */
     fun toLicenseJson(license: String): ByteArray? {
         val text = license.trim()
         if (text.isEmpty()) return null
@@ -96,7 +105,6 @@ object ClearKeys {
         return JSONObject().put("keys", keys).put("type", "temporary").toString().toByteArray()
     }
 
-    /** লাইসেন্স JSON-এর `keys[].kid` থেকে ১৬ বাইটের KID তালিকা। */
     fun kidsOf(json: ByteArray): List<ByteArray> = runCatching {
         val arr = JSONObject(String(json, Charsets.UTF_8)).getJSONArray("keys")
         buildList {
@@ -109,22 +117,34 @@ object ClearKeys {
         }
     }.getOrDefault(emptyList())
 
-    /** ISO/IEC 23001-7 v1 PSSH box (শুধু KID তালিকা, ডেটা নেই)। */
+    /**
+     * ClearKey JSON থেকে map<KID hex, KEY bytes>।
+     * CENC decryption-এ ব্যবহার হবে।
+     */
+    fun parseKeyMap(json: ByteArray): ByteArray? = runCatching {
+        val arr = JSONObject(String(json, Charsets.UTF_8)).getJSONArray("keys")
+        if (arr.length() == 0) return null
+        // প্রথম key-টাই ব্যবহার (single-key stream)
+        val obj = arr.getJSONObject(0)
+        val k = obj.optString("k")
+        if (k.isEmpty()) return null
+        Base64.decode(k, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    }.getOrNull()
+
     fun buildPsshBox(systemUuid: UUID, kids: List<ByteArray>): ByteArray {
         val size = 36 + 16 * kids.size
         val buf = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN)
         buf.putInt(size)
         buf.put("pssh".toByteArray(Charsets.US_ASCII))
-        buf.putInt(0x01000000) // version 1, flags 0
+        buf.putInt(0x01000000)
         buf.putLong(systemUuid.mostSignificantBits)
         buf.putLong(systemUuid.leastSignificantBits)
         buf.putInt(kids.size)
         kids.forEach { buf.put(it) }
-        buf.putInt(0) // data size
+        buf.putInt(0)
         return buf.array()
     }
 
-    /** ClearKey ও Common PSSH দুটোই (সব KID একসাথে, একাধিক হলে প্রতিটার আলাদাও)। */
     fun syntheticDrmInitData(kids: List<ByteArray>): DrmInitData {
         val list = ArrayList<DrmInitData.SchemeData>()
         list += DrmInitData.SchemeData(C.CLEARKEY_UUID, "video/mp4", buildPsshBox(C.CLEARKEY_UUID, kids))
@@ -138,7 +158,6 @@ object ClearKeys {
         return DrmInitData(list)
     }
 
-    /** ১৬ বাইটের hex (৩২ অক্ষর) বা ইতোমধ্যে base64/base64url (২২ অক্ষর) → base64url (প্যাডিং ছাড়া)। */
     private fun toBase64Url(value: String): String? {
         val v = value.trim()
         if (v.length == 32 && v.all { Character.digit(it, 16) >= 0 }) {
@@ -152,11 +171,6 @@ object ClearKeys {
     }
 }
 
-/**
- * প্রতিটি ফরম্যাটের drmInitData-তে আমাদের তৈরি ClearKey/Common PSSH সবার আগে বসায়, যাতে ম্যানিফেস্টে
- * ClearKey ঘোষণা না থাকলেও DefaultDrmSessionManager ব্যবহারযোগ্য scheme data পায়।
- * ম্যানিফেস্টের নিজস্ব ডেটা (খালি placeholder বাদে) পরে যুক্ত থাকে।
- */
 @UnstableApi
 private class ClearKeyInjectingDrmSessionManager(
     private val delegate: DrmSessionManager,
@@ -189,7 +203,6 @@ private class ClearKeyInjectingDrmSessionManager(
         if (original != null) {
             for (i in 0 until original.schemeDataCount) {
                 val s = original.get(i)
-                // ডেটাহীন placeholder (শুধু default_KID) বাদ
                 if ((s.matches(C.COMMON_PSSH_UUID) || s.matches(C.CLEARKEY_UUID)) && s.data == null) continue
                 merged += s
             }
@@ -199,4 +212,3 @@ private class ClearKeyInjectingDrmSessionManager(
             .build()
     }
 }
-
