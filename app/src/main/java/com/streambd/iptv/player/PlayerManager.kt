@@ -471,17 +471,6 @@ class PlayerManager @Inject constructor(
         val src = sources.getOrNull(idx) ?: StreamSource(channel.streamUrl, channel.drmScheme, channel.drmLicense)
         sourceIdx = idx.coerceIn(0, (sources.size - 1).coerceAtLeast(0))
 
-        val sourceDrmScheme = src.drmScheme
-        if (sourceDrmScheme.isNullOrBlank() ||
-            !sourceDrmScheme.lowercase().contains("clearkey")) {
-            cencContext.set(null)
-        } else {
-            val cdmSupported = runCatching {
-                MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)
-            }.getOrDefault(false)
-            if (cdmSupported) cencContext.set(null)
-        }
-
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
         networkRetries = 0
@@ -495,17 +484,39 @@ class PlayerManager @Inject constructor(
             drmAltTried = false
         }
 
+        // ⭐ Parse URL headers FIRST, then compute EFFECTIVE drmScheme/drmLicense
+        // (URL override takes priority over entity fields — that's exactly
+        // what buildMediaItem() will use downstream).
         val (rawUrl, rawHeaders) = splitHeaders(src.url)
 
-        val drmScheme = rawHeaders.entries.firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
+        val drmScheme = rawHeaders.entries
+            .firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
             ?: src.drmScheme
-        val drmLicense = rawHeaders.entries.firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
+        val drmLicense = rawHeaders.entries
+            .firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
             ?: src.drmLicense
 
         val cleanHeaders = rawHeaders.filterKeys {
-            !it.equals("drmScheme", ignoreCase = true) && !it.equals("drmLicense", ignoreCase = true)
+            !it.equals("drmScheme", ignoreCase = true) &&
+                !it.equals("drmLicense", ignoreCase = true)
         }
         requestHeaders = cleanHeaders
+
+        // ⭐ Reset cencContext using the EFFECTIVE scheme, not src.drmScheme.
+        // Rules:
+        //   • Non-ClearKey               → reset to null
+        //   • ClearKey + CDM present     → reset (CDM handles decryption)
+        //   • ClearKey + CDM absent      → DO NOT reset
+        //                                  (buildMediaItem will set the key)
+        val isClearKey = !drmScheme.isNullOrBlank() &&
+            drmScheme.lowercase().contains("clearkey")
+        val cdmSupported = isClearKey && runCatching {
+            MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)
+        }.getOrDefault(false)
+
+        if (!isClearKey || cdmSupported) {
+            cencContext.set(null)
+        }
 
         _state.update {
             it.copy(
@@ -645,8 +656,6 @@ class PlayerManager @Inject constructor(
             //   1. inline hex:      "kidhex:keyhex" or "kid1:key1,kid2:key2"
             //   2. inline JSON/JWK: "{\"keys\":[...]}"
             //   3. license URL:     "https://host/clearkey/results.php?keyid=..&key=.."
-            //      (like aqfadtv.xyz — key is embedded in query params,
-            //       no network round-trip needed)
             if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
                 val licenseText = drmLicense.substringBefore('|').trim()
                 val isUrlLicense = licenseText.startsWith("http://", ignoreCase = true) ||
@@ -654,12 +663,9 @@ class PlayerManager @Inject constructor(
 
                 val keyBytes: ByteArray
                 if (isUrlLicense) {
-                    // URL license — try to extract inline kid+key from query params
                     val fromUrl = ClearKeys.parseKeyMapFromLicenseUrl(licenseText)
                     if (fromUrl != null) {
                         keyBytes = fromUrl
-                        // Also build a JSON representation for CDM-based devices
-                        // if the same session ever switches to a CDM device.
                         ClearKeys.buildLicenseJsonFromUrl(licenseText)?.let {
                             drmProvider.setClearKeys(mediaId, it)
                         }
@@ -669,9 +675,6 @@ class PlayerManager @Inject constructor(
                                 "(keyid/key in query, key=${keyBytes.size}B)",
                         )
                     } else {
-                        // URL has no inline kid/key → real license server that
-                        // expects a POST with the KID list. Cannot be handled
-                        // synchronously here without blocking the play path.
                         Log.w(
                             TAG,
                             "ClearKey URL license has no inline kid/key: $licenseText",
@@ -683,7 +686,6 @@ class PlayerManager @Inject constructor(
                         )
                     }
                 } else {
-                    // Inline kid:key or JSON format (the original working path)
                     val licenseJson = ClearKeys.toLicenseJson(licenseText)
                         ?: throw DrmSetupException(
                             "Invalid ClearKey. Use kid:key (32 hex characters each) " +
