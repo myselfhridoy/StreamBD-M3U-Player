@@ -1,6 +1,5 @@
 package com.streambd.iptv.player
 
-import com.streambd.iptv.BuildConfig
 import com.streambd.iptv.Brand
 import android.content.Context
 import android.media.MediaDrm
@@ -673,13 +672,7 @@ if (sourceDrmScheme.isNullOrBlank() ||
             // stream samples are actually clear, so play as plain. If the
             // stream really is CENC-encrypted, MediaCodec will surface a
             // crypto error later — an honest failure, not a DRM setup one.
-// ⭐ debug: force software decryptor even when CDM available (for testing)
-val forceSwDecrypt = BuildConfig.DEBUG && runCatching {
-    Runtime.getRuntime().exec("getprop debug.cenc.force")
-        .inputStream.bufferedReader().readText().trim() == "1"
-}.getOrDefault(false)
-
-if ((!frameworkSupported || forceSwDecrypt) && uuid == C.CLEARKEY_UUID) {
+if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
     // CDM নেই — DataSource-level CENC decryption-এ যাই
     val licenseText = drmLicense.substringBefore('|').trim()
     val licenseJson = ClearKeys.toLicenseJson(licenseText)
