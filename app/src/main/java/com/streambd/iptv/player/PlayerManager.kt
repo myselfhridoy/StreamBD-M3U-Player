@@ -193,21 +193,9 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // DIAG (disabled — see approach 1+2)
-    //
-    // diag()/diagReset() are now no-ops:
-    //  • STREAM INFO overlay no longer shows the log block
-    //  • No per-callback state updates, no CPU/memory churn
-    //  • All existing diag("...") call sites stay intact so you can
-    //    re-enable by uncommenting the implementation below.
-    //
-    // To restore logging: uncomment the body of diag() and diagReset(),
-    // and re-add the LOG block in FullscreenPlayer.kt's StreamInfoOverlay.
-    // ─────────────────────────────────────────────────────────────────────
-
-    private val diagBuf = ArrayDeque<String>()   // unused; kept for easy restore
-    private var diagT0 = SystemClock.elapsedRealtime()  // unused; kept for easy restore
+    // DIAG disabled (approach 1+2). Re-enable body to restore logging.
+    private val diagBuf = ArrayDeque<String>()
+    private var diagT0 = SystemClock.elapsedRealtime()
 
     private fun diag(msg: String) {
         // no-op
@@ -652,19 +640,67 @@ class PlayerManager @Inject constructor(
 
             val frameworkSupported = MediaDrm.isCryptoSchemeSupported(uuid)
 
+            // ClearKey on devices without the system CDM (TX3 Mini / Amlogic):
+            // route to software CENC decryption. Handles THREE license_key formats:
+            //   1. inline hex:      "kidhex:keyhex" or "kid1:key1,kid2:key2"
+            //   2. inline JSON/JWK: "{\"keys\":[...]}"
+            //   3. license URL:     "https://host/clearkey/results.php?keyid=..&key=.."
+            //      (like aqfadtv.xyz — key is embedded in query params,
+            //       no network round-trip needed)
             if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
                 val licenseText = drmLicense.substringBefore('|').trim()
-                val licenseJson = ClearKeys.toLicenseJson(licenseText)
-                    ?: throw DrmSetupException("Invalid ClearKey. Use kid:key (32 hex characters each).")
-                val keyBytes = ClearKeys.parseKeyMap(licenseJson)
-                    ?: throw DrmSetupException("ClearKey license missing usable key.")
+                val isUrlLicense = licenseText.startsWith("http://", ignoreCase = true) ||
+                    licenseText.startsWith("https://", ignoreCase = true)
 
-                drmProvider.setClearKeys(mediaId, licenseJson)
+                val keyBytes: ByteArray
+                if (isUrlLicense) {
+                    // URL license — try to extract inline kid+key from query params
+                    val fromUrl = ClearKeys.parseKeyMapFromLicenseUrl(licenseText)
+                    if (fromUrl != null) {
+                        keyBytes = fromUrl
+                        // Also build a JSON representation for CDM-based devices
+                        // if the same session ever switches to a CDM device.
+                        ClearKeys.buildLicenseJsonFromUrl(licenseText)?.let {
+                            drmProvider.setClearKeys(mediaId, it)
+                        }
+                        Log.i(
+                            TAG,
+                            "ClearKey URL license parsed inline " +
+                                "(keyid/key in query, key=${keyBytes.size}B)",
+                        )
+                    } else {
+                        // URL has no inline kid/key → real license server that
+                        // expects a POST with the KID list. Cannot be handled
+                        // synchronously here without blocking the play path.
+                        Log.w(
+                            TAG,
+                            "ClearKey URL license has no inline kid/key: $licenseText",
+                        )
+                        throw DrmSetupException(
+                            "This ClearKey license uses a POST-based server " +
+                                "which requires the system ClearKey CDM. " +
+                                "Not supported on this device.",
+                        )
+                    }
+                } else {
+                    // Inline kid:key or JSON format (the original working path)
+                    val licenseJson = ClearKeys.toLicenseJson(licenseText)
+                        ?: throw DrmSetupException(
+                            "Invalid ClearKey. Use kid:key (32 hex characters each) " +
+                                "or a license URL with ?keyid=..&key=.. params.",
+                        )
+                    val parsed = ClearKeys.parseKeyMap(licenseJson)
+                        ?: throw DrmSetupException("ClearKey license missing usable key.")
+                    keyBytes = parsed
+                    drmProvider.setClearKeys(mediaId, licenseJson)
+                    Log.i(TAG, "ClearKey inline license parsed (key=${keyBytes.size}B)")
+                }
+
                 cencContext.set(keyBytes)
                 Log.i(
                     TAG,
                     "ClearKey CDM unavailable — enabling software CENC decryption " +
-                        "(key=${keyBytes.size}B, model=${Build.MODEL})",
+                        "(model=${Build.MODEL})",
                 )
                 builder.setDrmConfiguration(
                     MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
