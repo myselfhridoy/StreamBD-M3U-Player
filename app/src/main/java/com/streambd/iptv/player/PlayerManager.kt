@@ -1,5 +1,6 @@
 package com.streambd.iptv.player
 
+import com.streambd.iptv.BuildConfig
 import com.streambd.iptv.Brand
 import android.content.Context
 import android.media.MediaDrm
