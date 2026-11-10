@@ -118,8 +118,7 @@ object ClearKeys {
     }.getOrDefault(emptyList())
 
     /**
-     * ClearKey JSON থেকে map<KID hex, KEY bytes>।
-     * CENC decryption-এ ব্যবহার হবে।
+     * ClearKey JSON থেকে key bytes। CENC decryption-এ ব্যবহার হবে।
      */
     fun parseKeyMap(json: ByteArray): ByteArray? = runCatching {
         val arr = JSONObject(String(json, Charsets.UTF_8)).getJSONArray("keys")
@@ -130,6 +129,79 @@ object ClearKeys {
         if (k.isEmpty()) return null
         Base64.decode(k, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
     }.getOrNull()
+
+    /**
+     * ClearKey license URL থেকে key bytes বের করে, যেখানে kid+key query
+     * parameter হিসেবে থাকে — যেমন:
+     *   https://example.com/clearkey/results.php?keyid=<hex>&key=<hex>
+     *
+     * এটা CDM-এর মতো network round-trip করে না; URL-এই key থাকে, তাই
+     * সরাসরি parse করি। TX3 Mini-র software decryptor এই bytes ব্যবহার করে।
+     *
+     * @return 16-byte AES key, অথবা null যদি URL-এ keyid/key না থাকে।
+     */
+    fun parseKeyMapFromLicenseUrl(licenseUrl: String): ByteArray? {
+        if (licenseUrl.isBlank()) return null
+        return runCatching {
+            val uri = android.net.Uri.parse(licenseUrl)
+            val keyHex = uri.getQueryParameter("key")
+                ?: uri.getQueryParameter("k")
+                ?: uri.getQueryParameter("content_key")
+                ?: return null
+            hexToBytes16(keyHex) ?: return null
+        }.getOrNull()
+    }
+
+    /**
+     * URL থেকে পাওয়া kid+key hex দিয়ে Android-compatible ClearKey JSON
+     * বানায় (drmProvider.setClearKeys()-এ ব্যবহারের জন্য)।
+     */
+    fun buildLicenseJsonFromUrl(licenseUrl: String): ByteArray? {
+        if (licenseUrl.isBlank()) return null
+        return runCatching {
+            val uri = android.net.Uri.parse(licenseUrl)
+            val kidHex = uri.getQueryParameter("keyid")
+                ?: uri.getQueryParameter("kid")
+                ?: uri.getQueryParameter("key_id")
+                ?: return null
+            val keyHex = uri.getQueryParameter("key")
+                ?: uri.getQueryParameter("k")
+                ?: uri.getQueryParameter("content_key")
+                ?: return null
+            val kidBytes = hexToBytes16(kidHex) ?: return null
+            val keyBytes = hexToBytes16(keyHex) ?: return null
+            val kidB64 = Base64.encodeToString(
+                kidBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+            )
+            val keyB64 = Base64.encodeToString(
+                keyBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+            )
+            JSONObject()
+                .put(
+                    "keys",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("kty", "oct")
+                            .put("kid", kidB64)
+                            .put("k", keyB64),
+                    ),
+                )
+                .put("type", "temporary")
+                .toString()
+                .toByteArray()
+        }.getOrNull()
+    }
+
+    private fun hexToBytes16(hex: String): ByteArray? {
+        val clean = hex.trim()
+            .replace("urn:uuid:", "")
+            .replace("-", "")
+            .replace(" ", "")
+            .lowercase()
+        if (clean.length != 32) return null
+        if (!clean.all { Character.digit(it, 16) >= 0 }) return null
+        return ByteArray(16) { i -> clean.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+    }
 
     fun buildPsshBox(systemUuid: UUID, kids: List<ByteArray>): ByteArray {
         val size = 36 + 16 * kids.size
