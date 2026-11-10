@@ -31,10 +31,10 @@ internal object MediaSegmentTransformer {
         val moofHeader = headers.firstOrNull { it.type == "moof" } ?: return data
         val mdatHeader = headers.firstOrNull { it.type == "mdat" } ?: return data
 
-        val tracks = parseMoof(data, moofHeader, mdatHeader)
+        val tracks = parseMoof(data, moofHeader)
         val encTracks = tracks.filter { it.sampleEncryption != null }
         if (encTracks.isEmpty()) {
-            Log.d(TAG, "Media: no senc — pass through")
+            Log.d(TAG, "no senc — passthrough")
             return data
         }
 
@@ -44,79 +44,67 @@ internal object MediaSegmentTransformer {
         for (t in encTracks) {
             val enc = t.sampleEncryption ?: continue
 
-            // trun.data_offset is relative to moof box start.
-            // If absent, spec says "immediately after previous run" — for the
-            // first run this means "right after moof", which is mdat payload start.
             val relativeOffset = if (t.hasExplicitDataOffset) {
                 t.trunDataOffset
             } else {
-                // Fall back: samples start right after moof box (mdat payload)
                 (mdatHeader.payloadStart - moofHeader.start).toLong()
             }
-
             val absoluteSampleStart = moofHeader.start + relativeOffset
             var dataOffset = (absoluteSampleStart - mdatHeader.payloadStart).toInt()
 
-            Log.i(
+            Log.d(
                 TAG,
-                "Media: track=${t.trackId} hasOffset=${t.hasExplicitDataOffset} " +
-                    "trunOff=${t.trunDataOffset} rel=$relativeOffset " +
-                    "moofStart=${moofHeader.start} mdatPayStart=${mdatHeader.payloadStart} " +
-                    "→ dataOffset=$dataOffset mdatSize=${mdatPayload.size}",
+                "trk=${t.trackId} off=${t.trunDataOffset} rel=$relativeOffset " +
+                    "→ dataOff=$dataOffset mdatSize=${mdatPayload.size}",
             )
 
             if (dataOffset < 0 || dataOffset >= mdatPayload.size) {
-                Log.e(TAG, "Media: ABORT — dataOffset=$dataOffset out of range for track=${t.trackId}")
+                Log.e(TAG, "ABORT offset out of range trk=${t.trackId}")
                 return data
             }
 
-            var samplesInThisTrack = 0
+            var decrypted = 0
             for (i in 0 until enc.sampleCount) {
                 val size = t.sampleSizes.getOrNull(i) ?: run {
-                    Log.e(TAG, "Media: ABORT — missing size for sample $i")
-                    return data
+                    Log.e(TAG, "ABORT missing size sample=$i"); return data
                 }
                 if (dataOffset + size > mdatPayload.size) {
-                    Log.e(TAG, "Media: ABORT — sample $i overflow")
-                    return data
+                    Log.e(TAG, "ABORT sample $i overflow"); return data
                 }
 
                 val encBytes = mdatPayload.copyOfRange(dataOffset, dataOffset + size)
                 val iv = enc.ivs[i] ?: run {
-                    Log.e(TAG, "Media: ABORT — missing IV for sample $i")
-                    return data
+                    Log.e(TAG, "ABORT missing IV sample=$i"); return data
                 }
                 val subs = enc.subsamples[i]
 
                 if (i == 0) {
                     Log.d(
                         TAG,
-                        "Media: sample0 size=$size ivSize=${iv.size} " +
-                            "subs=${subs?.size ?: 0} encFirst4=${hex4(encBytes)}",
+                        "s0 sz=$size iv=${iv.size}B subs=${subs?.size ?: 0} " +
+                            "enc=${hex4(encBytes)}",
                     )
                 }
 
                 val clear = try {
                     CencDecryptor.decryptSample(key, iv, encBytes, subs)
                 } catch (e: Throwable) {
-                    Log.e(TAG, "Media: ABORT — decrypt failed at sample $i", e)
+                    Log.e(TAG, "ABORT decrypt failed sample=$i", e)
                     return data
                 }
 
-                if (i == 0) {
-                    Log.d(TAG, "Media: sample0 clearFirst4=${hex4(clear)}")
-                }
+                if (i == 0) Log.d(TAG, "s0 clear=${hex4(clear)}")
 
                 clear.copyInto(mdatPayload, dataOffset)
                 dataOffset += size
-                samplesInThisTrack++
+                decrypted++
                 totalDecrypted += size
             }
-            Log.i(TAG, "Media: track ${t.trackId} decrypted $samplesInThisTrack samples")
+            Log.i(TAG, "trk=${t.trackId} decrypted $decrypted samples")
         }
 
         if (totalDecrypted == 0) {
-            Log.w(TAG, "Media: nothing decrypted — passthrough")
+            Log.w(TAG, "nothing decrypted — passthrough")
             return data
         }
 
@@ -135,11 +123,7 @@ internal object MediaSegmentTransformer {
     private fun hex4(b: ByteArray): String =
         if (b.size < 4) "??" else String.format("%02x%02x%02x%02x", b[0], b[1], b[2], b[3])
 
-    private fun parseMoof(
-        data: ByteArray,
-        moofHeader: CencByteUtils.BoxHeader,
-        mdatHeader: CencByteUtils.BoxHeader,
-    ): List<TrackInfo> {
+    private fun parseMoof(data: ByteArray, moofHeader: CencByteUtils.BoxHeader): List<TrackInfo> {
         val moofPayload = data.copyOfRange(moofHeader.payloadStart, moofHeader.payloadEnd)
         val tracks = mutableListOf<TrackInfo>()
         var pos = 0
@@ -195,15 +179,18 @@ internal object MediaSegmentTransformer {
         }
 
         if (trackId < 0) return null
-        val ivSize = 8
-        val encryption = sencPayload?.let {
-            try {
-                SencParser.parse(it, ivSize)
-            } catch (e: Throwable) {
-                Log.w(TAG, "senc parse failed track=$trackId: ${e.message}")
-                null
+
+        // ⭐ IV size auto-detect: 8 first (most common), then 16.
+        // SencParser-এর size mismatch check-এর কারণে ভুল size হলে exception
+        // throw হবে, আর পরেরটায় চেষ্টা করব।
+        val encryption = sencPayload?.let { payload ->
+            listOf(8, 16).firstNotNullOfOrNull { ivSize ->
+                runCatching { SencParser.parse(payload, ivSize) }
+                    .onFailure { Log.d(TAG, "senc parse@$ivSize failed trk=$trackId: ${it.message}") }
+                    .getOrNull()
             }
         }
+
         return TrackInfo(trackId, trunDataOffset, hasExplicitDataOffset, sampleSizes, encryption)
     }
 
