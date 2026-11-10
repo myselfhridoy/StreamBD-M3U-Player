@@ -37,21 +37,49 @@ internal object MediaSegmentTransformer {
 
         val mdatPayload = data.copyOfRange(mdatHeader.payloadStart, mdatHeader.payloadEnd)
 
+        // ⭐ CRITICAL FIX: trun.data_offset is relative to moof start (usually 0).
+        // Convert to offset within mdatPayload by subtracting mdat payload start.
+        val moofStart = moofHeader.start  // usually 0
+        val mdatPayloadStart = mdatHeader.payloadStart
+
         for (t in encTracks) {
             val enc = t.sampleEncryption ?: continue
-            var dataOffset = t.trunDataOffset.toInt()
+
+            // trun.data_offset is absolute position from moof start
+            // Convert: absolute_segment_position - mdatPayloadStart = offset in mdatPayload
+            val absoluteOffset = moofStart + t.trunDataOffset
+            var dataOffset = (absoluteOffset - mdatPayloadStart).toInt()
+
+            Log.d(
+                TAG,
+                "Media: track=${t.trackId} trunOffset=${t.trunDataOffset} " +
+                    "moofStart=$moofStart mdatPayloadStart=$mdatPayloadStart → dataOffset=$dataOffset",
+            )
+
             if (dataOffset < 0 || dataOffset > mdatPayload.size) {
-                Log.w(TAG, "Media: bad data_offset $dataOffset track=${t.trackId}")
+                Log.w(TAG, "Media: bad dataOffset $dataOffset for track ${t.trackId}")
                 continue
             }
+
             for (i in 0 until enc.sampleCount) {
                 val size = t.sampleSizes.getOrNull(i) ?: break
-                if (dataOffset + size > mdatPayload.size) break
+                if (dataOffset + size > mdatPayload.size) {
+                    Log.w(TAG, "Media: sample $i exceeds payload at $dataOffset+$size")
+                    break
+                }
                 val encBytes = mdatPayload.copyOfRange(dataOffset, dataOffset + size)
+                val iv = enc.ivs[i]
+                val subs = enc.subsamples[i]
+
+                if (i == 0) {
+                    Log.d(TAG, "Media: sample 0 size=$size ivSize=${iv.size} subs=${subs?.size ?: 0}")
+                }
+
                 val clear = try {
-                    CencDecryptor.decryptSample(key, enc.ivs[i], encBytes, enc.subsamples[i])
-                } catch (e: Exception) {
-                    Log.e(TAG, "Decrypt sample $i failed: ${e.message}"); return data
+                    CencDecryptor.decryptSample(key, iv, encBytes, subs)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Media: decrypt sample $i failed", e)
+                    return data
                 }
                 clear.copyInto(mdatPayload, dataOffset)
                 dataOffset += size
@@ -100,7 +128,9 @@ internal object MediaSegmentTransformer {
                     val flags = (CencByteUtils.readUInt32(traf, t0) and 0xFFFFFF).toInt()
                     val sampleCount = CencByteUtils.readUInt32(traf, t0 + 4).toInt()
                     var p = t0 + 8
-                    if (flags and 0x01 != 0) { trunDataOffset = CencByteUtils.readUInt32(traf, p); p += 4 }
+                    if (flags and 0x01 != 0) {
+                        trunDataOffset = CencByteUtils.readUInt32(traf, p); p += 4
+                    }
                     if (flags and 0x04 != 0) p += 4
                     val hasDur = flags and 0x100 != 0
                     val hasSize = flags and 0x200 != 0
@@ -108,7 +138,9 @@ internal object MediaSegmentTransformer {
                     val hasCto = flags and 0x800 != 0
                     for (i in 0 until sampleCount) {
                         if (hasDur) p += 4
-                        if (hasSize) { sampleSizes.add(CencByteUtils.readUInt32(traf, p).toInt()); p += 4 }
+                        if (hasSize) {
+                            sampleSizes.add(CencByteUtils.readUInt32(traf, p).toInt()); p += 4
+                        }
                         if (hasFlags) p += 4
                         if (hasCto) p += 4
                     }
@@ -121,9 +153,11 @@ internal object MediaSegmentTransformer {
         if (trackId < 0) return null
         val ivSize = 8
         val encryption = sencPayload?.let {
-            try { SencParser.parse(it, ivSize) }
-            catch (e: Exception) {
-                Log.w(TAG, "senc parse failed track=$trackId: ${e.message}"); null
+            try {
+                SencParser.parse(it, ivSize)
+            } catch (e: Throwable) {
+                Log.w(TAG, "senc parse failed track=$trackId: ${e.message}")
+                null
             }
         }
         return TrackInfo(trackId, trunDataOffset, sampleSizes, encryption)
@@ -139,10 +173,7 @@ internal object MediaSegmentTransformer {
                     val trafPayload = moofPayload.copyOfRange(h.payloadStart, h.payloadEnd)
                     writeBox(out, "traf", stripInTraf(trafPayload))
                 }
-                "pssh" -> {
-                    Log.i(TAG, "Media: stripped moof/pssh")
-                    writeFreeBox(out, h.size)
-                }
+                "pssh" -> writeFreeBox(out, h.size)
                 else -> out.write(moofPayload, h.start, h.size)
             }
             pos += h.size
@@ -155,11 +186,8 @@ internal object MediaSegmentTransformer {
         var pos = 0
         while (pos + 8 <= trafPayload.size) {
             val h = CencByteUtils.readBoxHeader(trafPayload, pos) ?: break
-            if (h.type in ENCRYPTION_BOXES) {
-                writeFreeBox(out, h.size)
-            } else {
-                out.write(trafPayload, h.start, h.size)
-            }
+            if (h.type in ENCRYPTION_BOXES) writeFreeBox(out, h.size)
+            else out.write(trafPayload, h.start, h.size)
             pos += h.size
         }
         return out.toByteArray()
