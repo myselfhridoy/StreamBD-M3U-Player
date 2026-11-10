@@ -20,11 +20,11 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -54,10 +54,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.streambd.iptv.player.cenc.CencDecryptingDataSource
-import java.util.concurrent.atomic.AtomicReference
+import okhttp3.OkHttpClient
 
 /** ভিডিওর সাথে বাইরে থেকে জোড়া সাবটাইটেল (SRT/VTT/ASS)। */
 data class ExternalSubtitle(val url: String, val label: String?, val language: String?)
@@ -68,6 +70,7 @@ class PlayerManager @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val settings: SettingsStore,
     private val progress: WatchProgressRepository,
+    private val okHttp: OkHttpClient,
 ) {
     private companion object {
         const val TAG = "PlayerManager"
@@ -76,6 +79,16 @@ class PlayerManager @Inject constructor(
         const val USER_AGENT = Brand.USER_AGENT
         const val STALL_MS = 15_000L
         const val SINGLE_SOURCE_STALL_MS = 30_000L
+
+        // ⭐ Software CENC decryptor needs big buffer + live offset.
+        const val SW_DECRYPT_MIN_BUFFER_MS = 20_000
+        const val SW_DECRYPT_MAX_BUFFER_MS = 60_000
+        const val FOR_PLAYBACK_MS = 2_500
+        const val AFTER_REBUFFER_MS = 5_000
+
+        // ⭐ Live offset for software-decrypt streams. Gives 15s of buffer
+        // headroom so a 2-3s segment download doesn't stall playback.
+        const val SW_DECRYPT_LIVE_OFFSET_MS = 15_000L
 
         val FORMAT_HINTS = listOf(
             MimeTypes.APPLICATION_M3U8,
@@ -91,36 +104,38 @@ class PlayerManager @Inject constructor(
     @Volatile
     private var requestHeaders: Map<String, String> = emptyMap()
 
-    private val httpFactory = DefaultHttpDataSource.Factory()
-        .setConnectTimeoutMs(15_000)
-        .setReadTimeoutMs(15_000)
-        .setAllowCrossProtocolRedirects(true)
+    // ⭐ cencContext MUST be declared BEFORE dataSourceFactory.
+    private val cencContext = AtomicReference<ByteArray?>(null)
 
-// আগের:
-// private val dataSourceFactory = ResolvingDataSource.Factory(
-//     DefaultDataSource.Factory(appContext, httpFactory),
-//     ResolvingDataSource.Resolver { ... }
-// )
-
-// নতুন:
-private val dataSourceFactory = ResolvingDataSource.Factory(
-    DataSource.Factory {
-        val base = DefaultDataSource.Factory(appContext, httpFactory).createDataSource()
-        val ctx = cencContext.get()
-        if (ctx != null) CencDecryptingDataSource(base, cencContext) else base
-    },
-    ResolvingDataSource.Resolver { dataSpec ->
-        val headers = requestHeaders
-        val hasUserAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
-        dataSpec.withAdditionalHeaders(
-            if (hasUserAgent) headers else headers + ("User-Agent" to USER_AGENT),
+    // ⭐ Reuse the Hilt-provided singleton OkHttpClient. It has connection
+    // pooling and HTTP/2 that DefaultHttpDataSource lacks on older Android.
+    private val httpFactory: OkHttpDataSource.Factory =
+        OkHttpDataSource.Factory(
+            okHttp.newBuilder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .retryOnConnectionFailure(true)
+                .build(),
         )
-    },
-)
+
+    private val dataSourceFactory = ResolvingDataSource.Factory(
+        DataSource.Factory {
+            val base = DefaultDataSource.Factory(appContext, httpFactory).createDataSource()
+            val ctx = cencContext.get()
+            if (ctx != null) CencDecryptingDataSource(base, cencContext) else base
+        },
+        ResolvingDataSource.Resolver { dataSpec ->
+            val headers = requestHeaders
+            val hasUserAgent = headers.keys.any { it.equals("User-Agent", ignoreCase = true) }
+            dataSpec.withAdditionalHeaders(
+                if (hasUserAgent) headers else headers + ("User-Agent" to USER_AGENT),
+            )
+        },
+    )
 
     private val drmProvider = AppDrmProvider(dataSourceFactory)
-
-    private val cencContext = AtomicReference<ByteArray?>(null)
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -244,14 +259,14 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
         }
 
         override fun onLoadStarted(
-    eventTime: AnalyticsListener.EventTime,
-    loadEventInfo: LoadEventInfo,
-    mediaLoadData: MediaLoadData,
-) {
-    val host = loadEventInfo.uri.host.orEmpty()
-    val path = loadEventInfo.uri.encodedPath?.take(28) ?: ""
-    diag("load start $host$path")
-}
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+        ) {
+            val host = loadEventInfo.uri.host.orEmpty()
+            val path = loadEventInfo.uri.encodedPath?.take(28) ?: ""
+            diag("load start $host$path")
+        }
 
         override fun onLoadCompleted(
             eventTime: AnalyticsListener.EventTime,
@@ -341,10 +356,13 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
         private set
 
     private fun createPlayer(bufferMs: Int): ExoPlayer {
-        val minMs = bufferMs.coerceAtLeast(1_000)
-        val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
-        val forPlaybackMs = minOf(1_000, minMs)
-        val afterRebufferMs = minOf(2_000, minMs)
+        // ⭐ Software CENC path needs bigger rolling buffer.
+        val userMin = bufferMs.coerceAtLeast(1_000)
+        val minMs = maxOf(userMin, SW_DECRYPT_MIN_BUFFER_MS)
+        val maxMs = maxOf(minMs * 2, SW_DECRYPT_MAX_BUFFER_MS)
+        val forPlaybackMs = minOf(FOR_PLAYBACK_MS, minMs)
+        val afterRebufferMs = minOf(AFTER_REBUFFER_MS, minMs)
+
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
@@ -356,6 +374,7 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(minMs, maxMs, forPlaybackMs, afterRebufferMs)
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build(),
             )
             .setAudioAttributes(
@@ -390,14 +409,6 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
                     if (player.isPlaying) saveProgress()
                 }
 
-                // ─────────────────────────────────────────────────────────
-                // Stall watchdog — now also handles single-source channels.
-                // Multi-source: 15 s stall → failover to next source.
-                // Single-source: 30 s stall → surface a retryable error so the
-                // user isn't stuck on an infinite spinner (this is exactly
-                // what happens on streams that are actually CENC-encrypted
-                // or blocked by the CDN).
-                // ─────────────────────────────────────────────────────────
                 if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
                     val now = SystemClock.elapsedRealtime()
                     if (bufferingSince == 0L) bufferingSince = now
@@ -496,18 +507,17 @@ private val dataSourceFactory = ResolvingDataSource.Factory(
         val src = sources.getOrNull(idx) ?: StreamSource(channel.streamUrl, channel.drmScheme, channel.drmLicense)
         sourceIdx = idx.coerceIn(0, (sources.size - 1).coerceAtLeast(0))
 
-// cencContext reset — src.drmScheme ব্যবহার করছি যাতে block কোথাও বসালেও compile হয়
-val sourceDrmScheme = src.drmScheme
-if (sourceDrmScheme.isNullOrBlank() ||
-    !sourceDrmScheme.lowercase().contains("clearkey")) {
-    cencContext.set(null)
-} else {
-    // ClearKey source: CDM থাকলে software decryptor দরকার নেই
-    val cdmSupported = runCatching {
-        MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)
-    }.getOrDefault(false)
-    if (cdmSupported) cencContext.set(null)
-}
+        val sourceDrmScheme = src.drmScheme
+        if (sourceDrmScheme.isNullOrBlank() ||
+            !sourceDrmScheme.lowercase().contains("clearkey")) {
+            cencContext.set(null)
+        } else {
+            val cdmSupported = runCatching {
+                MediaDrm.isCryptoSchemeSupported(C.CLEARKEY_UUID)
+            }.getOrDefault(false)
+            if (cdmSupported) cencContext.set(null)
+        }
+
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
         networkRetries = 0
@@ -667,40 +677,45 @@ if (sourceDrmScheme.isNullOrBlank() ||
 
             val frameworkSupported = MediaDrm.isCryptoSchemeSupported(uuid)
 
-            // ClearKey on devices without the system CDM (TX3 Mini / Amlogic):
-            // most IPTV ClearKey labels are just KODIPROP metadata and the
-            // stream samples are actually clear, so play as plain. If the
-            // stream really is CENC-encrypted, MediaCodec will surface a
-            // crypto error later — an honest failure, not a DRM setup one.
-if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
-    // CDM নেই — DataSource-level CENC decryption-এ যাই
-    val licenseText = drmLicense.substringBefore('|').trim()
-    val licenseJson = ClearKeys.toLicenseJson(licenseText)
-        ?: throw DrmSetupException("Invalid ClearKey. Use kid:key (32 hex characters each).")
-    val keyBytes = ClearKeys.parseKeyMap(licenseJson)
-        ?: throw DrmSetupException("ClearKey license missing usable key.")
+            if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
+                val licenseText = drmLicense.substringBefore('|').trim()
+                val licenseJson = ClearKeys.toLicenseJson(licenseText)
+                    ?: throw DrmSetupException("Invalid ClearKey. Use kid:key (32 hex characters each).")
+                val keyBytes = ClearKeys.parseKeyMap(licenseJson)
+                    ?: throw DrmSetupException("ClearKey license missing usable key.")
 
-    drmProvider.setClearKeys(mediaId, licenseJson)
-    cencContext.set(keyBytes)
-    Log.i(
-        TAG,
-        "ClearKey CDM unavailable — enabling software CENC decryption " +
-            "(key=${keyBytes.size}B, model=${Build.MODEL})",
-    )
-    diag("clearkey CDM missing — software decryptor enabled")
-    // DrmConfiguration set করি — provider passthrough manager return করবে
-    builder.setDrmConfiguration(
-        MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-            .setMultiSession(drmAlt)
-            .setPlayClearContentWithoutKey(true)
-            .build(),
-    )
-    return builder.build()
-}
+                drmProvider.setClearKeys(mediaId, licenseJson)
+                cencContext.set(keyBytes)
+                Log.i(
+                    TAG,
+                    "ClearKey CDM unavailable — enabling software CENC decryption " +
+                        "(key=${keyBytes.size}B, model=${Build.MODEL})",
+                )
+                diag("clearkey CDM missing — software decryptor enabled")
 
-if (!frameworkSupported) {
-    throw DrmSetupException("This device does not support $drmScheme DRM.")
-}
+                // ⭐ Live offset for software-decrypt streams.
+                // Without this, playback sits at live edge with zero buffer,
+                // and every 2-3s segment download causes a stall.
+                // 15s offset gives enough headroom for decryption + CDN jitter.
+                // (Ignored automatically by VOD content — safe to set always.)
+                builder.setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder()
+                        .setTargetOffsetMs(SW_DECRYPT_LIVE_OFFSET_MS)
+                        .build(),
+                )
+
+                builder.setDrmConfiguration(
+                    MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                        .setMultiSession(drmAlt)
+                        .setPlayClearContentWithoutKey(true)
+                        .build(),
+                )
+                return builder.build()
+            }
+
+            if (!frameworkSupported) {
+                throw DrmSetupException("This device does not support $drmScheme DRM.")
+            }
 
             val license = drmLicense.substringBefore('|').trim()
             val isUrl = license.startsWith("http://", ignoreCase = true) ||
@@ -744,22 +759,22 @@ if (!frameworkSupported) {
         player.trackSelectionParameters = b.build()
     }
 
-private fun drmInfoFor(scheme: String?): String? {
-    if (scheme.isNullOrBlank()) return null
-    val s = scheme.lowercase()
-    val (name, uuid) = when {
-        s.contains("widevine") -> "Widevine" to C.WIDEVINE_UUID
-        s.contains("playready") -> "PlayReady" to C.PLAYREADY_UUID
-        s.contains("clearkey") -> "ClearKey" to C.CLEARKEY_UUID
-        else -> return scheme
+    private fun drmInfoFor(scheme: String?): String? {
+        if (scheme.isNullOrBlank()) return null
+        val s = scheme.lowercase()
+        val (name, uuid) = when {
+            s.contains("widevine") -> "Widevine" to C.WIDEVINE_UUID
+            s.contains("playready") -> "PlayReady" to C.PLAYREADY_UUID
+            s.contains("clearkey") -> "ClearKey" to C.CLEARKEY_UUID
+            else -> return scheme
+        }
+        val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
+        return when {
+            ok -> "$name (device supported)"
+            uuid == C.CLEARKEY_UUID -> "$name (software decryptor)"
+            else -> "$name (NOT supported)"
+        }
     }
-    val ok = runCatching { MediaDrm.isCryptoSchemeSupported(uuid) }.getOrDefault(false)
-    return when {
-        ok -> "$name (device supported)"
-        uuid == C.CLEARKEY_UUID -> "$name (software decryptor)"
-        else -> "$name (NOT supported)"
-    }
-}
 
     private fun subtitleMime(url: String): String {
         val path = url.lowercase().substringBefore('?').substringBefore('#')
