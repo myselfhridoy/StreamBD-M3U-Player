@@ -1,14 +1,19 @@
 package com.streambd.iptv.player.cenc
 
 /**
- * Sample Encryption Box ('senc') পার্স করে। CENC spec-এ (ISO/IEC 23001-7):
+ * Sample Encryption Box ('senc') পার্সার। CENC spec (ISO/IEC 23001-7 § 7.2):
  *
  * senc:
- *   4 bytes: version+flags
+ *   4 bytes: version(1) + flags(3)
  *   4 bytes: sample_count
- *   for each sample:
- *     if flags & 0x01: [defaultIvSize bytes IV]
- *     if flags & 0x02: 2 bytes subsample_count, then each subsample 2+4 bytes
+ *   প্রতি sample-এ:
+ *      IV[defaultIvSize]                  ← সবসময় থাকে, কোন flag-ই বলার দরকার নেই
+ *      if (flags & 0x02):
+ *          2 bytes: subsample_count
+ *          প্রতি subsample-এ 2+4 bytes
+ *
+ * ⭐ Bug ছিল: আগে IV পড়া হত শুধু `flags & 0x01` হলে। কিন্তু flags=0x02 হলে IV
+ *    পড়া হত না — IV-এর বাইটগুলো subsample_count হিসেবে পড়া হচ্ছিল, সব garbage।
  */
 internal object SencParser {
 
@@ -18,15 +23,13 @@ internal object SencParser {
         val subsamples: Array<List<Pair<Int, Int>>?>,
     )
 
-    fun parse(
-        sencPayload: ByteArray,   // senc box-এর payload (header বাদ দিয়ে)
-        defaultIvSize: Int,       // tenc থেকে আসে, সাধারণত 8
-    ): SampleEncryption {
-        if (sencPayload.size < 8) throw IllegalStateException("senc too short: ${sencPayload.size}")
+    fun parse(sencPayload: ByteArray, defaultIvSize: Int): SampleEncryption {
+        if (sencPayload.size < 8) {
+            throw IllegalStateException("senc too short: ${sencPayload.size}")
+        }
 
         val versionAndFlags = CencByteUtils.readUInt32(sencPayload, 0)
         val flags = (versionAndFlags and 0xFFFFFF).toInt()
-        val hasIvOverride = (flags and 0x01) != 0
         val hasSubsample = (flags and 0x02) != 0
 
         var pos = 4
@@ -41,13 +44,13 @@ internal object SencParser {
         val subsamples = arrayOfNulls<List<Pair<Int, Int>>>(sampleCount)
 
         for (i in 0 until sampleCount) {
-            if (hasIvOverride) {
-                if (pos + defaultIvSize > sencPayload.size) {
-                    throw IllegalStateException("senc IV truncated at sample $i")
-                }
-                ivs[i] = sencPayload.copyOfRange(pos, pos + defaultIvSize)
-                pos += defaultIvSize
+            // ⭐ IV সবসময় থাকে
+            if (pos + defaultIvSize > sencPayload.size) {
+                throw IllegalStateException("senc IV truncated at sample $i (pos=$pos, size=${sencPayload.size})")
             }
+            ivs[i] = sencPayload.copyOfRange(pos, pos + defaultIvSize)
+            pos += defaultIvSize
+
             if (hasSubsample) {
                 if (pos + 2 > sencPayload.size) {
                     throw IllegalStateException("senc subsample_count truncated at sample $i")
@@ -67,6 +70,11 @@ internal object SencParser {
                 }
                 subsamples[i] = list
             }
+        }
+
+        // ⭐ পুরো box ঠিকঠাক consume হয়েছে কিনা verify — ভুল IV size ধরার জন্য
+        if (pos != sencPayload.size) {
+            throw IllegalStateException("senc size mismatch: read $pos, payload ${sencPayload.size}")
         }
 
         return SampleEncryption(sampleCount, ivs, subsamples)
