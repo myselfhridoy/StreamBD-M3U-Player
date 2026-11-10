@@ -791,13 +791,17 @@ private fun StreamInfoOverlay(player: ExoPlayer, state: PlayerUiState, modifier:
                 Text(value, color = TextPrimary, fontSize = 11.sp, modifier = Modifier.weight(1f, fill = false))
             }
         }
-        if (state.diagLog.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            Text("LOG", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            for (line in state.diagLog) {
-                Text(line, color = TextMuted, fontSize = 9.sp, lineHeight = 11.sp)
-            }
-        }
+        // LOG block removed — see approach 1+2. diag() in PlayerManager is
+        // now a no-op; if you want to re-enable, uncomment below and restore
+        // diag()/diagReset() in PlayerManager.kt:
+        //
+        // if (state.diagLog.isNotEmpty()) {
+        //     Spacer(Modifier.height(6.dp))
+        //     Text("LOG", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        //     for (line in state.diagLog) {
+        //         Text(line, color = TextMuted, fontSize = 9.sp, lineHeight = 11.sp)
+        //     }
+        // }
     }
 }
 
@@ -830,12 +834,10 @@ private fun buildInfoRows(player: ExoPlayer, state: PlayerUiState): List<Pair<St
 
     out += "Dropped frames" to state.droppedFrames.toString()
 
-    // FIX: C.TIME_UNSET (Long.MIN_VALUE) and absurd values used to print
-    // as 9223372013568.0 s. Clamp to a sane range and show "—" otherwise.
     val bufferedMs = player.totalBufferedDuration
     out += "Buffered" to when {
         bufferedMs < 0L -> "—"
-        bufferedMs > 3_600_000L -> "—"   // > 1 hour of buffer ⇒ sentinel / not ready
+        bufferedMs > 3_600_000L -> "—"
         else -> "${f1(bufferedMs / 1000f)} s"
     }
 
