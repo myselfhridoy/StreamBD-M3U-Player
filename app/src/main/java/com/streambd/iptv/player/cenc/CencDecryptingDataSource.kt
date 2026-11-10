@@ -24,7 +24,6 @@ internal class CencDecryptingDataSource(
 
     private enum class Kind { MPD, ISO_BMFF_INIT, ISO_BMFF_MEDIA, OTHER }
 
-    @Volatile private var upstreamOpened = false
     private var buffered: ByteArrayInputStream? = null
     private var uri: Uri? = null
 
@@ -33,80 +32,39 @@ internal class CencDecryptingDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        closeQuietly()
-
+        closeBuffered()
         this.uri = dataSpec.uri
-        try {
-            val url = dataSpec.uri.toString()
+        val url = dataSpec.uri.toString()
 
-            // ---- 1. Open upstream ----
-            upstreamOpened = true
-            val length = try {
-                upstream.open(dataSpec)
-            } catch (e: Throwable) {
-                Log.e(TAG, "upstream.open() failed for $url", e)
-                throw e
-            }
-
-            // ---- 2. Read full segment ----
-            val raw = try {
+        // ---- Read the entire segment from upstream ----
+        val raw = try {
+            val length = upstream.open(dataSpec)
+            try {
                 readAll(upstream, length)
-            } catch (e: Throwable) {
-                Log.e(TAG, "readAll() failed for $url", e)
-                throw e
+            } finally {
+                try {
+                    upstream.close()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "upstream.close failed for $url", e)
+                }
             }
+        } catch (e: Throwable) {
+            Log.e(TAG, "upstream read failed for $url", e)
+            throw if (e is IOException) e else IOException("upstream failed: ${e.message}", e)
+        }
 
-            // ---- 3. Classify ----
+        // ---- Classify + transform ----
+        val out = try {
             val kind = classify(raw)
             Log.d(TAG, "classify ${raw.size}B ${kind.name} → $url")
-
-            // ---- 4. Transform ----
-            val out = when (kind) {
-                Kind.MPD -> {
-                    val text = String(raw, Charsets.UTF_8)
-                    val stripped = MpdStripper.stripContentProtection(text)
-                    Log.i(TAG, "MPD stripped: ${text.length}B → ${stripped.length}B")
-                    stripped.toByteArray(Charsets.UTF_8)
-                }
-                Kind.ISO_BMFF_INIT -> {
-                    try {
-                        val transformed = InitSegmentTransformer.transform(raw)
-                        if (transformed.size != raw.size) {
-                            Log.d(TAG, "Init transformed ${raw.size}B → ${transformed.size}B")
-                        }
-                        transformed
-                    } catch (e: Throwable) {
-                        Log.e(TAG, "Init transform failed, passthrough: ${e.message}", e)
-                        raw
-                    }
-                }
-                Kind.ISO_BMFF_MEDIA -> {
-                    val key = keyRef.get()
-                    if (key == null) {
-                        Log.w(TAG, "Media segment but no CENC key — passthrough")
-                        raw
-                    } else {
-                        try {
-                            val transformed = MediaSegmentTransformer.transform(raw, key)
-                            if (transformed.size != raw.size) {
-                                Log.w(TAG, "Media transform changed size: ${raw.size}B → ${transformed.size}B")
-                            }
-                            transformed
-                        } catch (e: Throwable) {
-                            Log.e(TAG, "Media transform failed, passthrough: ${e.message}", e)
-                            raw
-                        }
-                    }
-                }
-                Kind.OTHER -> raw
-            }
-
-            buffered = ByteArrayInputStream(out)
-            return out.size.toLong()
+            transformSafe(kind, raw, url)
         } catch (e: Throwable) {
-            Log.e(TAG, "open() failed for ${dataSpec.uri}", e)
-            throw e
+            Log.e(TAG, "transform failed for $url", e)
+            raw  // fall through with raw bytes
         }
+
+        buffered = ByteArrayInputStream(out)
+        return out.size.toLong()
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -117,20 +75,38 @@ internal class CencDecryptingDataSource(
     override fun getUri(): Uri? = uri
 
     override fun close() {
-        closeQuietly()
-        if (upstreamOpened) {
-            try {
-                upstream.close()
-            } catch (e: Throwable) {
-                Log.w(TAG, "upstream.close() failed", e)
-            }
-            upstreamOpened = false
-        }
+        closeBuffered()
     }
 
-    private fun closeQuietly() {
+    private fun closeBuffered() {
         try { buffered?.close() } catch (_: Throwable) {}
         buffered = null
+    }
+
+    private fun transformSafe(kind: Kind, raw: ByteArray, url: String): ByteArray = when (kind) {
+        Kind.MPD -> {
+            val text = String(raw, Charsets.UTF_8)
+            val stripped = MpdStripper.stripContentProtection(text)
+            Log.i(TAG, "MPD stripped: ${text.length}B → ${stripped.length}B")
+            stripped.toByteArray(Charsets.UTF_8)
+        }
+        Kind.ISO_BMFF_INIT -> try {
+            InitSegmentTransformer.transform(raw)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Init transform failed for $url", e); raw
+        }
+        Kind.ISO_BMFF_MEDIA -> {
+            val key = keyRef.get()
+            if (key == null) {
+                Log.w(TAG, "Media segment but no CENC key — passthrough")
+                raw
+            } else try {
+                MediaSegmentTransformer.transform(raw, key)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Media transform failed for $url", e); raw
+            }
+        }
+        Kind.OTHER -> raw
     }
 
     private fun readAll(source: DataSource, declaredLength: Long): ByteArray {
@@ -143,7 +119,7 @@ internal class CencDecryptingDataSource(
             if (read == C.RESULT_END_OF_INPUT) break
             if (read < 0) break
             total += read
-            if (total > MAX_SEGMENT_BYTES) throw IOException("Segment too large: $total bytes")
+            if (total > MAX_SEGMENT_BYTES) throw IOException("Segment too large: $total")
             out.write(buf, 0, read)
         }
         return out.toByteArray()
@@ -174,11 +150,8 @@ internal class CencDecryptingDataSource(
             if (trimmed.startsWith("<?xml", ignoreCase = true) ||
                 trimmed.startsWith("<MPD", ignoreCase = true) ||
                 "<MPD" in head.take(200)
-            ) {
-                return Kind.MPD
-            }
+            ) return Kind.MPD
         }
-
         return Kind.OTHER
     }
 }
@@ -193,17 +166,12 @@ internal object MpdStripper {
         """<ContentProtection\b[^>]*/>""",
         RegexOption.IGNORE_CASE,
     )
-    // codecs="encv.avc1.64001F" → codecs="avc1.64001F"
-    private val encCodecPrefix = Regex(
-        """(codecs\s*=\s*["'])enc[vVaA]\.([^"']+)""",
-    )
+    private val encCodecPrefix = Regex("""(codecs\s*=\s*["'])enc[vVaA]\.([^"']+)""")
 
     fun stripContentProtection(mpd: String): String {
-        var result = paired.replace(mpd, "")
-        result = selfClosing.replace(result, "")
-        result = encCodecPrefix.replace(result) { m ->
-            "${m.groupValues[1]}${m.groupValues[2]}"
-        }
-        return result
+        var r = paired.replace(mpd, "")
+        r = selfClosing.replace(r, "")
+        r = encCodecPrefix.replace(r) { m -> "${m.groupValues[1]}${m.groupValues[2]}" }
+        return r
     }
 }
