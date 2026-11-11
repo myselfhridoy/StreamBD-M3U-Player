@@ -21,10 +21,10 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -43,17 +43,23 @@ import com.streambd.iptv.data.settings.TrackMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import java.net.URLDecoder
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.streambd.iptv.player.cenc.CencDecryptingDataSource
@@ -62,16 +68,19 @@ import java.util.concurrent.atomic.AtomicReference
 /** ভিডিওর সাথে বাইরে থেকে জোড়া সাবটাইটেল (SRT/VTT/ASS)। */
 data class ExternalSubtitle(val url: String, val label: String?, val language: String?)
 
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, FlowPreview::class)
 @Singleton
 class PlayerManager @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val settings: SettingsStore,
     private val progress: WatchProgressRepository,
+    private val okHttp: OkHttpClient,
 ) {
     private companion object {
         const val TAG = "PlayerManager"
-        const val DEFAULT_BUFFER_MS = 2_500
+
+        /** SettingsStore-এর ডিফল্টের সাথে একই রাখতে হবে (10 s)। */
+        const val DEFAULT_BUFFER_MS = 10_000
         const val MAX_RETRIES = 3
         const val USER_AGENT = Brand.USER_AGENT
         const val STALL_MS = 15_000L
@@ -91,10 +100,17 @@ class PlayerManager @Inject constructor(
     @Volatile
     private var requestHeaders: Map<String, String> = emptyMap()
 
-    private val httpFactory = DefaultHttpDataSource.Factory()
-        .setConnectTimeoutMs(15_000)
-        .setReadTimeoutMs(15_000)
-        .setAllowCrossProtocolRedirects(true)
+    /** সফটওয়্যার CENC ডিক্রিপশনের key। null হলে ডিক্রিপশন বন্ধ। */
+    private val cencContext = AtomicReference<ByteArray?>(null)
+
+    // OkHttp: কানেকশন পুল + HTTP/2 + TLS session reuse। HttpURLConnection-এর চেয়ে
+    // প্রতি রিকোয়েস্টের শুরুর দেরি অনেক কম, যা TX3 Mini-র মতো বক্সে বড় পার্থক্য আনে।
+    private val httpFactory = OkHttpDataSource.Factory(
+        okHttp.newBuilder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build(),
+    )
 
     private val dataSourceFactory = ResolvingDataSource.Factory(
         DataSource.Factory {
@@ -112,8 +128,6 @@ class PlayerManager @Inject constructor(
     )
 
     private val drmProvider = AppDrmProvider(dataSourceFactory)
-
-    private val cencContext = AtomicReference<ByteArray?>(null)
 
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -193,10 +207,7 @@ class PlayerManager @Inject constructor(
         }
     }
 
-    // DIAG disabled (approach 1+2). Re-enable body to restore logging.
-    private val diagBuf = ArrayDeque<String>()
-    private var diagT0 = SystemClock.elapsedRealtime()
-
+    // DIAG disabled. Re-enable body to restore logging.
     private fun diag(msg: String) {
         // no-op
     }
@@ -323,11 +334,17 @@ class PlayerManager @Inject constructor(
     var player: ExoPlayer = createPlayer(bufferMs)
         private set
 
+    /**
+     * Settings-এর "Buffer Time" = cushion (জমানো বাফারের গভীরতা)।
+     *  - চালু হওয়ার গতি (forPlayback) স্লাইডারে বাঁধা নয়: সবসময় ~১ সেকেন্ডেই শুরু।
+     *  - min = স্লাইডারের মান, max = তার দ্বিগুণ (সর্বোচ্চ ৬০ s)।
+     *  - মেমোরি সীমা ৬৪ MB, যাতে ছোট RAM-এর বক্সে OOM না হয়।
+     */
     private fun createPlayer(bufferMs: Int): ExoPlayer {
-        val minMs = bufferMs.coerceAtLeast(1_000)
-        val maxMs = (bufferMs * 2).coerceAtLeast(minMs + 1_000)
+        val minMs = bufferMs.coerceAtLeast(2_000)
+        val maxMs = (minMs * 2).coerceAtMost(60_000).coerceAtLeast(minMs)
         val forPlaybackMs = minOf(1_000, minMs)
-        val afterRebufferMs = minOf(2_000, minMs)
+        val afterRebufferMs = minOf(2_500, minMs)
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
@@ -339,6 +356,7 @@ class PlayerManager @Inject constructor(
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(minMs, maxMs, forPlaybackMs, afterRebufferMs)
+                    .setTargetBufferBytes(64 * 1024 * 1024)
                     .build(),
             )
             .setAudioAttributes(
@@ -413,11 +431,22 @@ class PlayerManager @Inject constructor(
                     prefSubLang = s.subtitleLang
                     applyLanguagePrefs()
                 }
-                if (s.bufferTimeMs != bufferMs) {
-                    bufferMs = s.bufferTimeMs
-                    rebuildPlayer()
-                }
             }
+        }
+
+        // Buffer Time বদলালে প্লেয়ার নতুন করে বানাতে হয়। স্লাইডারে D-pad চেপে ধরলে
+        // বারবার rebuild ঠেকাতে debounce: মান থামার ৬০০ ms পরে একবারই।
+        scope.launch {
+            settings.flow
+                .map { it.bufferTimeMs }
+                .distinctUntilChanged()
+                .debounce(600L)
+                .collect { ms ->
+                    if (ms != bufferMs) {
+                        bufferMs = ms
+                        rebuildPlayer()
+                    }
+                }
         }
     }
 
@@ -484,9 +513,8 @@ class PlayerManager @Inject constructor(
             drmAltTried = false
         }
 
-        // ⭐ Parse URL headers FIRST, then compute EFFECTIVE drmScheme/drmLicense
-        // (URL override takes priority over entity fields — that's exactly
-        // what buildMediaItem() will use downstream).
+        // URL header আগে পার্স করে EFFECTIVE drmScheme/drmLicense বের করা
+        // (URL-এর override entity-র ফিল্ডের চেয়ে অগ্রাধিকার পায়)।
         val (rawUrl, rawHeaders) = splitHeaders(src.url)
 
         val drmScheme = rawHeaders.entries
@@ -502,12 +530,10 @@ class PlayerManager @Inject constructor(
         }
         requestHeaders = cleanHeaders
 
-        // ⭐ Reset cencContext using the EFFECTIVE scheme, not src.drmScheme.
-        // Rules:
-        //   • Non-ClearKey               → reset to null
-        //   • ClearKey + CDM present     → reset (CDM handles decryption)
-        //   • ClearKey + CDM absent      → DO NOT reset
-        //                                  (buildMediaItem will set the key)
+        // cencContext রিসেট:
+        //   • ClearKey নয়              → null
+        //   • ClearKey + CDM আছে        → null (CDM নিজেই ডিক্রিপ্ট করে)
+        //   • ClearKey + CDM নেই        → রিসেট নয় (buildMediaItem key বসাবে)
         val isClearKey = !drmScheme.isNullOrBlank() &&
             drmScheme.lowercase().contains("clearkey")
         val cdmSupported = isClearKey && runCatching {
@@ -651,9 +677,9 @@ class PlayerManager @Inject constructor(
 
             val frameworkSupported = MediaDrm.isCryptoSchemeSupported(uuid)
 
-            // ClearKey on devices without the system CDM (TX3 Mini / Amlogic):
-            // route to software CENC decryption. Handles THREE license_key formats:
-            //   1. inline hex:      "kidhex:keyhex" or "kid1:key1,kid2:key2"
+            // CDM ছাড়া ডিভাইসে (TX3 Mini / Amlogic) ClearKey → সফটওয়্যার CENC ডিক্রিপশন।
+            // license_key-এর তিনটি রূপ সমর্থিত:
+            //   1. inline hex:      "kidhex:keyhex" বা "kid1:key1,kid2:key2"
             //   2. inline JSON/JWK: "{\"keys\":[...]}"
             //   3. license URL:     "https://host/clearkey/results.php?keyid=..&key=.."
             if (!frameworkSupported && uuid == C.CLEARKEY_UUID) {
@@ -704,6 +730,16 @@ class PlayerManager @Inject constructor(
                     "ClearKey CDM unavailable — enabling software CENC decryption " +
                         "(model=${Build.MODEL})",
                 )
+
+                // লাইভ এজ থেকে একটু পেছনে চালানো: বাফার জমার জায়গা থাকে, আর পুরনো
+                // সেগমেন্ট CDN ক্যাশে থাকে বলে দ্রুত নামে। Buffer Time স্লাইডারের সাথে বাড়ে।
+                val liveOffsetMs = (bufferMs + 10_000L).coerceAtMost(45_000L)
+                builder.setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder()
+                        .setTargetOffsetMs(liveOffsetMs)
+                        .build(),
+                )
+
                 builder.setDrmConfiguration(
                     MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
                         .setMultiSession(drmAlt)
