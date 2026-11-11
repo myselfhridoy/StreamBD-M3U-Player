@@ -10,12 +10,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 
-/**
- * Dynamic HLS URLs (`.php?extension=m3u8`, `.jsp?extension=m3u8` ইত্যাদি)
- * detect করে explicit `HlsMediaSource.Factory` + `RedirectSafeHlsParserFactory`
- * দিয়ে route করে। বাকি সব URL default path-এ (DASH/ClearKey/progressive
- * অপরিবর্তিত)।
- */
 @UnstableApi
 class RedirectAwareMediaSourceFactory(
     private val dataSourceFactory: DataSource.Factory,
@@ -45,25 +39,54 @@ class RedirectAwareMediaSourceFactory(
         val uri = mediaItem.localConfiguration?.uri
             ?: return delegate.createMediaSource(mediaItem)
 
-        if (!isDynamicHls(uri)) {
-            // Plain .m3u8, .mpd, .ts, .mp4 — default ExoPlayer behavior unchanged
+        if (!isStalkerPhpHls(uri)) {
+            // সবকিছু default — plain .m3u8, .mpd, .ts, .mp4, generic .php,
+            // .php?mac=..&stream=.. (extension ছাড়া), ইত্যাদি অপরিবর্তিত।
             return delegate.createMediaSource(mediaItem)
         }
 
-        // Stalker/dynamic HLS: force HlsMediaSource with redirect-safe parser
+        // শুধু exact Stalker pattern: .php + mac + stream + extension=m3u8
         return HlsMediaSource.Factory(dataSourceFactory)
             .setPlaylistParserFactory(RedirectSafeHlsParserFactory(uri))
             .createMediaSource(mediaItem)
     }
 
     /**
-     * `extension=m3u8` / `extension=m3u` / `extension=hls` query param থাকলে
-     * dynamic HLS ধরা হয়। Plain `.m3u8` URLs এই check-এ পড়ে না।
+     * Strict Stalker Portal detection — "same to same" match.
+     *
+     * Intercept হয় যদি এবং কেবল যদি **এই চারটাই একসাথে** সত্যি হয়:
+     *   1. path ".php"-এ শেষ (case-insensitive)
+     *   2. query-এ `mac` param + non-blank value
+     *   3. query-এ `stream` param + non-blank value
+     *   4. query-এ `extension` param + value exactly "m3u8"
+     *
+     * সব কিছু — plain .m3u8, .mpd, .ts, .mp4, `.php?foo=bar`, বা `.php`
+     * যেখানে mac/stream আছে কিন্তু extension নেই/ভিন্ন — pass through,
+     * অর্থাৎ DefaultMediaSourceFactory-ই হ্যান্ডেল করবে।
      */
-    private fun isDynamicHls(uri: Uri): Boolean {
-        val url = uri.toString().lowercase()
-        return url.contains("extension=m3u8") ||
-            url.contains("extension=m3u") ||
-            url.contains("extension=hls")
+    private fun isStalkerPhpHls(uri: Uri): Boolean {
+        val path = (uri.path ?: "").lowercase()
+        if (!path.endsWith(".php")) return false
+
+        val names = uri.queryParameterNames
+        if (names.isEmpty()) return false
+
+        var mac: String? = null
+        var stream: String? = null
+        var extension: String? = null
+
+        for (name in names) {
+            val value = uri.getQueryParameter(name) ?: continue
+            when {
+                name.equals("mac", ignoreCase = true) && mac == null -> mac = value
+                name.equals("stream", ignoreCase = true) && stream == null -> stream = value
+                name.equals("extension", ignoreCase = true) && extension == null -> extension = value
+            }
+        }
+
+        if (mac.isNullOrBlank()) return false
+        if (stream.isNullOrBlank()) return false
+        if (!extension.trim().equals("m3u8", ignoreCase = true)) return false
+        return true
     }
 }
