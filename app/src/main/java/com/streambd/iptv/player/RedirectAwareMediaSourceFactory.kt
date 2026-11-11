@@ -15,10 +15,6 @@ import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
  * detect করে explicit `HlsMediaSource.Factory` + `RedirectSafeHlsParserFactory`
  * দিয়ে route করে। বাকি সব URL default path-এ (DASH/ClearKey/progressive
  * অপরিবর্তিত)।
- *
- * তোমার auto-mode test প্রমাণ করেছে এই explicit routing জরুরি — কারণ
- * `MediaItem.fromUri(.php)` ExoPlayer-কে HLS বোঝায় না, immediately
- * `PARSING_CONTAINER_UNSUPPORTED` দেয়।
  */
 @UnstableApi
 class RedirectAwareMediaSourceFactory(
@@ -30,14 +26,14 @@ class RedirectAwareMediaSourceFactory(
         .setDrmSessionManagerProvider(drmProvider)
 
     override fun setDrmSessionManagerProvider(
-        provider: DrmSessionManagerProvider?,
+        provider: DrmSessionManagerProvider,
     ): MediaSource.Factory {
         delegate.setDrmSessionManagerProvider(provider)
         return this
     }
 
     override fun setLoadErrorHandlingPolicy(
-        policy: LoadErrorHandlingPolicy?,
+        policy: LoadErrorHandlingPolicy,
     ): MediaSource.Factory {
         delegate.setLoadErrorHandlingPolicy(policy)
         return this
@@ -62,9 +58,7 @@ class RedirectAwareMediaSourceFactory(
 
     /**
      * `extension=m3u8` / `extension=m3u` / `extension=hls` query param থাকলে
-     * dynamic HLS ধরা হয়। এই param unambigous signal — Stalker/Xtream
-     * panels সবাই এটা দেয়। Plain `.m3u8` URLs এই check-এ পড়ে না (তাদের
-     * `extension=` param নেই), তাই default path-এ যায় — অপরিবর্তিত।
+     * dynamic HLS ধরা হয়। Plain `.m3u8` URLs এই check-এ পড়ে না।
      */
     private fun isDynamicHls(uri: Uri): Boolean {
         val url = uri.toString().lowercase()
