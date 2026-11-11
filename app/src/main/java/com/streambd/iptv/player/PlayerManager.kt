@@ -348,11 +348,10 @@ class PlayerManager @Inject constructor(
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
-        return ExoPlayer.Builder(appContext, renderersFactory)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(dataSourceFactory)
-                    .setDrmSessionManagerProvider(drmProvider),
-            )
+return ExoPlayer.Builder(appContext, renderersFactory)
+    .setMediaSourceFactory(
+        RedirectAwareMediaSourceFactory(dataSourceFactory, drmProvider),
+    )
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(minMs, maxMs, forPlaybackMs, afterRebufferMs)
