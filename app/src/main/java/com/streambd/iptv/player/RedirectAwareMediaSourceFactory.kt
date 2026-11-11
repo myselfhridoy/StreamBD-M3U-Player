@@ -40,19 +40,16 @@ class RedirectAwareMediaSourceFactory(
             ?: return delegate.createMediaSource(mediaItem)
 
         if (!isStalkerPhpHls(uri)) {
-            // সবকিছু default — plain .m3u8, .mpd, .ts, .mp4, generic .php,
-            // .php?mac=..&stream=.. (extension ছাড়া), ইত্যাদি অপরিবর্তিত।
             return delegate.createMediaSource(mediaItem)
         }
 
-        // শুধু exact Stalker pattern: .php + mac + stream + extension=m3u8
         return HlsMediaSource.Factory(dataSourceFactory)
             .setPlaylistParserFactory(RedirectSafeHlsParserFactory(uri))
             .createMediaSource(mediaItem)
     }
 
     /**
-     * Strict Stalker Portal detection — "same to same" match.
+     * Strict Stalker Portal detection — "same to same" match only.
      *
      * Intercept হয় যদি এবং কেবল যদি **এই চারটাই একসাথে** সত্যি হয়:
      *   1. path ".php"-এ শেষ (case-insensitive)
@@ -60,9 +57,9 @@ class RedirectAwareMediaSourceFactory(
      *   3. query-এ `stream` param + non-blank value
      *   4. query-এ `extension` param + value exactly "m3u8"
      *
-     * সব কিছু — plain .m3u8, .mpd, .ts, .mp4, `.php?foo=bar`, বা `.php`
-     * যেখানে mac/stream আছে কিন্তু extension নেই/ভিন্ন — pass through,
-     * অর্থাৎ DefaultMediaSourceFactory-ই হ্যান্ডেল করবে।
+     * এছাড়া সব URLs — plain .m3u8, .mpd, .ts, .mp4, generic .php,
+     * `.php?mac=X&stream=Y` (extension ছাড়া), `.php?foo=bar` — সব
+     * pass-through, DefaultMediaSourceFactory-ই হ্যান্ডেল করবে।
      */
     private fun isStalkerPhpHls(uri: Uri): Boolean {
         val path = (uri.path ?: "").lowercase()
@@ -73,20 +70,24 @@ class RedirectAwareMediaSourceFactory(
 
         var mac: String? = null
         var stream: String? = null
-        var extension: String? = null
+        var extensionValue: String? = null
 
         for (name in names) {
             val value = uri.getQueryParameter(name) ?: continue
             when {
                 name.equals("mac", ignoreCase = true) && mac == null -> mac = value
                 name.equals("stream", ignoreCase = true) && stream == null -> stream = value
-                name.equals("extension", ignoreCase = true) && extension == null -> extension = value
+                name.equals("extension", ignoreCase = true) && extensionValue == null -> extensionValue = value
             }
         }
 
-        if (mac.isNullOrBlank()) return false
-        if (stream.isNullOrBlank()) return false
-        if (!extension.trim().equals("m3u8", ignoreCase = true)) return false
-        return true
+        // null-safe access — এখানে সব params capture, now safe-cast
+        val m = mac ?: return false
+        val s = stream ?: return false
+        val e = extensionValue ?: return false
+
+        return m.isNotBlank() &&
+            s.isNotBlank() &&
+            e.trim().equals("m3u8", ignoreCase = true)
     }
 }
