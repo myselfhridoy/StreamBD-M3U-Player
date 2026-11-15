@@ -10,6 +10,8 @@ import com.streambd.iptv.data.db.MIGRATION_4_5
 import com.streambd.iptv.data.db.MIGRATION_5_6
 import com.streambd.iptv.data.db.MIGRATION_6_7
 import com.streambd.iptv.data.db.MIGRATION_7_8
+import com.streambd.iptv.data.db.MIGRATION_8_9
+import com.streambd.iptv.data.db.AddonDao
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.db.WatchProgressDao
 import dagger.Module
@@ -27,7 +29,7 @@ object AppModule {
     @Provides @Singleton
     fun provideDb(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "streambd.db")
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8) // ডেটা অক্ষত থাকে
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9) // ডেটা অক্ষত থাকে
             .fallbackToDestructiveMigration()
             .build()
 
@@ -36,6 +38,7 @@ object AppModule {
     @Provides fun provideEpgDao(db: AppDatabase): EpgDao = db.epg()
     @Provides fun provideProviderDao(db: AppDatabase): ProviderDao = db.providers() // নতুন
     @Provides fun provideWatchProgressDao(db: AppDatabase): WatchProgressDao = db.watchProgress()
+    @Provides fun provideAddonDao(db: AppDatabase): AddonDao = db.addons()
 
     @Provides @Singleton
     fun provideOkHttp(): OkHttpClient = OkHttpClient.Builder()
