@@ -13,7 +13,7 @@ import java.security.spec.X509EncodedKeySpec
  */
 object AddonSignature {
     /** `node gen-addon-key.mjs` এর PUBLIC অংশ এখানে বসান। খালি/ভুল হলে কোনো সিগনেচারই বৈধ হবে না। */
-    const val PUBLIC_KEY_B64 = "PASTE_PUBLIC_KEY_HERE"
+    const val PUBLIC_KEY_B64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1XF4h5iV71ENhPTVn8UoWjFCnbn9jhJkBdMg9oSHq/bjQxjQyooSiAc8f4a+N0SVYXK+MZsYXD69mShJCDowxw=="
 
     fun sha256Hex(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
