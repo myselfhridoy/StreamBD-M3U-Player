@@ -2,6 +2,7 @@ package com.streambd.iptv.data.repo
 
 import android.util.Log
 import com.streambd.iptv.data.activation.ActivationRepository
+import com.streambd.iptv.data.addon.AddonRepository
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.xtream.XtreamRepository
@@ -27,6 +28,7 @@ class AutoRefresher @Inject constructor(
     private val activation: ActivationRepository,
     private val providerDao: ProviderDao,
     private val xtream: XtreamRepository,
+    private val addons: AddonRepository,
 ) {
     private companion object {
         const val FIRST_DELAY_MS = 2_000L
@@ -127,6 +129,9 @@ class AutoRefresher @Inject constructor(
                                 xtream.sync(p, syncEpg = epgDue)
                                 if (epgDue) epgDue = sync.isEpgDue()
                             }
+
+                            // Add-on: নিজের manifest.refreshMinutes অনুযায়ী (টোকেন প্লে-টাইমে resolveStream() দিয়ে আসে)
+                            "ADDON" -> addons.refreshIfDue(p.id)
 
                             else -> {
                                 val synced = sync.syncPlaylist(p.url, providerId = p.id)
