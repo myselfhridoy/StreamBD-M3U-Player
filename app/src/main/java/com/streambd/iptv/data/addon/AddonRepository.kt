@@ -24,6 +24,10 @@ data class AddonPreview(
     val sourceUrl: String?,
     /** একই id-র Add-on আগে থেকে ইনস্টল থাকলে তার ভার্সন (আপডেট বোঝাতে)। */
     val installedVersion: String?,
+    /** "CUSTOM" (ইউজারের নিজের) বা "CATALOG" (অফিশিয়াল, সাইন করা)। */
+    val origin: String = "CUSTOM",
+    /** শুধু সিগনেচার যাচাই পাস করলেই true। */
+    val verified: Boolean = false,
 )
 
 @Singleton
@@ -85,6 +89,8 @@ class AddonRepository @Inject constructor(
                 existing.copy(
                     name = m.name, version = m.version, script = p.script, manifest = manifestJson,
                     sourceUrl = p.sourceUrl ?: existing.sourceUrl, updatedAt = now,
+                    // সাইন না করা কপি দিয়ে আপডেট করলে "verified" থাকে না
+                    origin = p.origin, verified = p.verified,
                 ),
             )
             providers.getById(existing.providerId)?.let { providers.update(it.copy(name = m.name)) }
@@ -95,12 +101,44 @@ class AddonRepository @Inject constructor(
         addons.insert(
             AddonEntity(
                 addonId = m.id, name = m.name, version = m.version, script = p.script, manifest = manifestJson,
-                settings = "{}", storage = "{}", enabled = true, origin = "CUSTOM", sourceUrl = p.sourceUrl,
-                verified = false, providerId = providerId, installedAt = now, updatedAt = now,
+                settings = "{}", storage = "{}", enabled = true, origin = p.origin, sourceUrl = p.sourceUrl,
+                verified = p.verified, providerId = providerId, installedAt = now, updatedAt = now,
                 lastRunAt = 0L, lastStatus = null, lastLog = null,
             ),
         )
         return providerId
+    }
+
+    /**
+     * ক্যাটালগ থেকে ইনস্টলের প্রিভিউ। সিগনেচার, সংস্করণ ও ম্যানিফেস্ট মিল যাচাই করে;
+     * কোনোটা ব্যর্থ হলে [AddonException]।
+     */
+    suspend fun previewCatalog(item: CatalogAddon): AddonPreview {
+        val e = item.entry
+        if (e.minAppVersion > com.streambd.iptv.BuildConfig.VERSION_CODE) {
+            throw AddonException("This add-on needs a newer version of the app.")
+        }
+        if (!AddonSignature.verify(e.id, e.version, item.script, e.signature)) {
+            throw AddonException("Signature check failed. This add-on was not installed.")
+        }
+        val manifest = engine.describe(item.script)
+        if (manifest.id != e.id || manifest.version != e.version) {
+            throw AddonException("The add-on does not match its catalog entry.")
+        }
+        val existing = addons.getByAddonId(manifest.id)
+        return AddonPreview(manifest, item.script, null, existing?.version, origin = "CATALOG", verified = true)
+    }
+
+    /** কিল-সুইচ: সার্ভার যেসব অফিশিয়াল Add-on বন্ধ করেছে, ইনস্টল থাকলে বন্ধ করে। কয়টা বন্ধ হলো ফেরত দেয়। */
+    suspend fun applyKillSwitch(blocked: Collection<String>): Int {
+        var n = 0
+        for (id in blocked) {
+            val a = addons.getByAddonId(id) ?: continue
+            if (a.origin != "CATALOG" || !a.enabled) continue
+            addons.update(a.copy(enabled = false, lastStatus = "Disabled by StreamBD"))
+            n++
+        }
+        return n
     }
 
     suspend fun saveSettings(addon: AddonEntity, values: Map<String, String>) {
