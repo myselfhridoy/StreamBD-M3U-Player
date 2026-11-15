@@ -141,6 +141,9 @@ interface AddonDao {
     @Query("UPDATE addons SET storage = :storage, lastRunAt = :at, lastStatus = :status, lastLog = :log WHERE id = :id")
     suspend fun setRunResult(id: Long, storage: String, at: Long, status: String?, log: String?)
 
+    @Query("UPDATE addons SET storage = :storage WHERE id = :id")
+    suspend fun setStorage(id: Long, storage: String)
+
     @Query("DELETE FROM addons WHERE id = :id")
     suspend fun deleteById(id: Long)
 }
