@@ -236,11 +236,13 @@ class AddonEngine @Inject constructor(
             return domains.any { h == it || h.endsWith(".$it") }
         }
 
-        val dns = Dns { host ->
-            if (!hostAllowed(host)) throw UnknownHostException("Blocked by add-on permissions: $host")
-            val list = Dns.SYSTEM.lookup(host)
-            if (!allowLocal && list.any { isPrivate(it) }) throw UnknownHostException("Blocked private address for $host")
-            list
+        val dns = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                if (!hostAllowed(hostname)) throw UnknownHostException("Blocked by add-on permissions: $hostname")
+                val list = Dns.SYSTEM.lookup(hostname)
+                if (!allowLocal && list.any { isPrivate(it) }) throw UnknownHostException("Blocked private address for $hostname")
+                return list
+            }
         }
 
         // IP-literal হোস্টে Dns চলে না, তাই প্রতিটা হপে (রিডাইরেক্টসহ) এখানেও যাচাই
