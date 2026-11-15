@@ -28,10 +28,13 @@ data class AddonManifest(
     val allowLocal: Boolean,
     val apiVersion: Int,
     val settings: List<AddonSetting>,
+    /** অটো-আপডেটের ব্যবধান (মিনিট)। 0 = অটো নয়। ডিফল্ট ৩৬০; ৩০–১৪৪০-এর মধ্যে সীমাবদ্ধ। */
+    val refreshMinutes: Int = DEFAULT_REFRESH_MINUTES,
 ) {
     val anyDomain: Boolean get() = domains.any { it == "*" }
 
     companion object {
+        const val DEFAULT_REFRESH_MINUTES = 360
         private val ID_RE = Regex("^[a-z0-9][a-z0-9._-]{2,63}$")
 
         /** স্ক্রিপ্টের `addon` অবজেক্টের JSON থেকে। ভুল হলে [AddonException]। */
@@ -78,6 +81,7 @@ data class AddonManifest(
                 allowLocal = o.optBoolean("allowLocal", false),
                 apiVersion = api,
                 settings = settings,
+                refreshMinutes = o.optInt("refreshMinutes", DEFAULT_REFRESH_MINUTES).let { if (it <= 0) 0 else it.coerceIn(30, 1440) },
             )
         }
     }

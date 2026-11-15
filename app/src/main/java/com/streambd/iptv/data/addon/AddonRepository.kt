@@ -158,6 +158,22 @@ class AddonRepository @Inject constructor(
         return summary
     }
 
+    /**
+     * অটো-রিফ্রেশের জন্য: manifest.refreshMinutes পার হলে (ব্যর্থ হলে ৩০ মিনিট পর আবার) রিফ্রেশ করে।
+     * @return রিফ্রেশ চালানো হয়ে থাকলে true; ব্যর্থ হলে [AddonException] ছোড়ে।
+     */
+    suspend fun refreshIfDue(providerId: Long): Boolean {
+        val a = addons.getByProviderId(providerId) ?: return false
+        if (!a.enabled) return false
+        val m = runCatching { AddonManifest.parse(a.manifest) }.getOrNull() ?: return false
+        if (m.refreshMinutes <= 0) return false
+        val failed = a.lastStatus?.startsWith("Error") == true
+        val minutes = if (failed) minOf(m.refreshMinutes, 30) else m.refreshMinutes
+        if (System.currentTimeMillis() - a.lastRunAt < minutes * 60_000L) return false
+        refresh(providerId)
+        return true
+    }
+
     /** Add-on, তার provider সারি ও চ্যানেল মুছে ফেলে। */
     suspend fun remove(providerId: Long) {
         addons.getByProviderId(providerId)?.let { addons.deleteById(it.id) }
@@ -170,6 +186,7 @@ class AddonRepository @Inject constructor(
         .put("description", m.description).put("author", m.author)
         .put("domains", org.json.JSONArray(m.domains))
         .put("allowLocal", m.allowLocal).put("apiVersion", m.apiVersion)
+        .put("refreshMinutes", m.refreshMinutes)
         .put(
             "settings",
             org.json.JSONArray().also { arr ->
