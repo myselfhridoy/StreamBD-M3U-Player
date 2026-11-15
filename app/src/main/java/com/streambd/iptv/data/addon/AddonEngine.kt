@@ -296,7 +296,7 @@ class AddonEngine @Inject constructor(
         }
         if (!hasUa) rb.header("User-Agent", Brand.USER_AGENT)
 
-        val bodyB64 = o.optString("bodyB64", "")
+        val bodyB64 = if (o.isNull("bodyB64")) "" else o.optString("bodyB64", "")
         val bodyStr = if (o.isNull("body")) null else o.optString("body")
         val mt = contentType.toMediaTypeOrNull()
         val needsBody = method == "POST" || method == "PUT" || method == "PATCH"
