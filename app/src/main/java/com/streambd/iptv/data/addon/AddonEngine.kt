@@ -58,6 +58,7 @@ class AddonEngine @Inject constructor(
     private companion object {
         const val TAG = "AddonEngine"
         const val RUN_TIMEOUT_MS = 180_000L
+        const val RESOLVE_TIMEOUT_MS = 25_000L
         const val MAX_BODY_BYTES = 20 * 1024 * 1024
         const val MAX_STORAGE_CHARS = 256_000
         const val MAX_LOG_LINES = 150
@@ -65,6 +66,9 @@ class AddonEngine @Inject constructor(
     }
 
     private val gate = Semaphore(3)
+
+    /** প্লে-টাইম রিজলভ আলাদা গেটে: লম্বা রিফ্রেশের পেছনে আটকে থাকবে না। */
+    private val resolveGate = Semaphore(2)
 
     private val polyfill: String by lazy {
         context.assets.open("addon/polyfill.js").bufferedReader().use { it.readText() }
@@ -85,17 +89,30 @@ class AddonEngine @Inject constructor(
         storage: Map<String, String>,
     ): AddonRunResult = execute(script, manifest, settings, storage, describeOnly = false)
 
+    /**
+     * প্লে করার মুহূর্তে `resolveStream(info)` চালায়। [infoJson] = {ref,name,tvgId,group}।
+     * ফলাফল ([AddonRunResult.m3u]) এখানে JSON স্ট্রিং: {url, userAgent?, referrer?, origin?, headers?, drmScheme?, drmLicense?}।
+     */
+    suspend fun resolve(
+        script: String,
+        manifest: AddonManifest,
+        settings: Map<String, String>,
+        storage: Map<String, String>,
+        infoJson: String,
+    ): AddonRunResult = execute(script, manifest, settings, storage, describeOnly = false, resolveInfo = infoJson)
+
     private suspend fun execute(
         script: String,
         manifest: AddonManifest?,
         settings: Map<String, String>,
         storageIn: Map<String, String>,
         describeOnly: Boolean,
+        resolveInfo: String? = null,
     ): AddonRunResult = withContext(Dispatchers.IO) {
         if (script.length > MAX_SCRIPT_CHARS) {
             return@withContext AddonRunResult(null, "Script is too large.", emptyList(), storageIn)
         }
-        gate.withPermit {
+        (if (resolveInfo != null) resolveGate else gate).withPermit {
             val logLines = ArrayList<String>()
             fun log(line: String) {
                 synchronized(logLines) {
@@ -110,7 +127,7 @@ class AddonEngine @Inject constructor(
             var sent: String? = null
             var failure: String? = null
 
-            val finished = withTimeoutOrNull(RUN_TIMEOUT_MS) {
+            val finished = withTimeoutOrNull(if (resolveInfo != null) RESOLVE_TIMEOUT_MS else RUN_TIMEOUT_MS) {
                 try {
                     quickJs {
                         memoryLimit = 64L * 1024L * 1024L
@@ -193,6 +210,11 @@ class AddonEngine @Inject constructor(
 
                         if (describeOnly) {
                             sent = evaluate<String>("typeof addon === 'undefined' ? '' : JSON.stringify(addon)")
+                        } else if (resolveInfo != null) {
+                            evaluate<Any?>(
+                                "(async function () { try { nativeSend(await __resolveAddon(" + JSONObject.quote(resolveInfo) + ")); } " +
+                                    "catch (e) { nativeFail(String(e && e.message ? e.message : e)); } })();\n;void 0;",
+                            )
                         } else {
                             evaluate<Any?>(
                                 "(async function () { try { nativeSend(await __runAddon()); } " +
@@ -211,7 +233,7 @@ class AddonEngine @Inject constructor(
             }
 
             val error = when {
-                finished == null -> "Timed out after ${RUN_TIMEOUT_MS / 1000}s."
+                finished == null -> "Timed out after ${(if (resolveInfo != null) RESOLVE_TIMEOUT_MS else RUN_TIMEOUT_MS) / 1000}s."
                 failure != null -> failure
                 sent == null -> "The add-on returned nothing."
                 else -> null
