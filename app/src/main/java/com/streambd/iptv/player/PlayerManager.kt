@@ -34,6 +34,8 @@ import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import java.io.IOException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.streambd.iptv.data.addon.AddonResolver
+import com.streambd.iptv.data.addon.ResolvedStream
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.StreamSource
 import com.streambd.iptv.data.db.allSources
@@ -41,6 +43,7 @@ import com.streambd.iptv.data.repo.WatchProgressRepository
 import com.streambd.iptv.data.settings.SettingsStore
 import com.streambd.iptv.data.settings.TrackMode
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -75,6 +78,7 @@ class PlayerManager @Inject constructor(
     private val settings: SettingsStore,
     private val progress: WatchProgressRepository,
     private val okHttp: OkHttpClient,
+    private val addonResolver: AddonResolver,
 ) {
     private companion object {
         const val TAG = "PlayerManager"
@@ -152,6 +156,7 @@ class PlayerManager @Inject constructor(
     private var bufferingSince = 0L
     private val lastGoodSource = HashMap<Long, Int>()
     private var noticeJob: Job? = null
+    private var resolveJob: Job? = null
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -495,9 +500,18 @@ return ExoPlayer.Builder(appContext, renderersFactory)
         resumeAtMs: Long,
         subtitles: List<ExternalSubtitle>,
         notice: String?,
+        resolved: ResolvedStream? = null,
     ) {
         val src = sources.getOrNull(idx) ?: StreamSource(channel.streamUrl, channel.drmScheme, channel.drmLicense)
         sourceIdx = idx.coerceIn(0, (sources.size - 1).coerceAtLeast(0))
+
+        // Add-on লিংক (addon-resolve://...) হলে আগে resolveStream() চালিয়ে আসল লিংক বের করা হবে
+        if (resolved == null) resolveJob?.cancel()
+        val (srcUrl, srcHeaders) = splitHeaders(src.url)
+        if (resolved == null && AddonResolver.isResolvable(srcUrl)) {
+            beginResolve(channel, idx, srcUrl, resumeAtMs, subtitles, notice)
+            return
+        }
 
         retryJob?.cancel()
         retriesLeft = MAX_RETRIES
@@ -514,13 +528,17 @@ return ExoPlayer.Builder(appContext, renderersFactory)
 
         // URL header আগে পার্স করে EFFECTIVE drmScheme/drmLicense বের করা
         // (URL-এর override entity-র ফিল্ডের চেয়ে অগ্রাধিকার পায়)।
-        val (rawUrl, rawHeaders) = splitHeaders(src.url)
+        val resolvedParts = resolved?.let { splitHeaders(it.url) }
+        val rawUrl = resolvedParts?.first ?: srcUrl
+        val rawHeaders = srcHeaders + (resolvedParts?.second ?: emptyMap()) + (resolved?.headers ?: emptyMap())
 
-        val drmScheme = rawHeaders.entries
-            .firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
+        val drmScheme = resolved?.drmScheme
+            ?: rawHeaders.entries
+                .firstOrNull { it.key.equals("drmScheme", ignoreCase = true) }?.value
             ?: src.drmScheme
-        val drmLicense = rawHeaders.entries
-            .firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
+        val drmLicense = resolved?.drmLicense
+            ?: rawHeaders.entries
+                .firstOrNull { it.key.equals("drmLicense", ignoreCase = true) }?.value
             ?: src.drmLicense
 
         val cleanHeaders = rawHeaders.filterKeys {
@@ -584,6 +602,54 @@ return ExoPlayer.Builder(appContext, renderersFactory)
         if (resumeAtMs != C.TIME_UNSET) player.setMediaItem(item, resumeAtMs) else player.setMediaItem(item)
         player.prepare()
         player.playWhenReady = true
+    }
+
+    /** প্লে-টাইম লিংক রিজলভ: সফল হলে [startSource] আবার resolved সহ চলে; ব্যর্থ হলে ব্যাকআপ সোর্স বা এরর। */
+    private fun beginResolve(
+        channel: ChannelEntity,
+        idx: Int,
+        refUrl: String,
+        resumeAtMs: Long,
+        subtitles: List<ExternalSubtitle>,
+        notice: String?,
+    ) {
+        retryJob?.cancel()
+        lastSubtitles = subtitles
+        player.pause()
+        _state.update {
+            it.copy(
+                current = channel,
+                isBuffering = true,
+                error = null,
+                position = 0L,
+                duration = 0L,
+                videoWidth = 0,
+                videoHeight = 0,
+                videoAspect = 0f,
+                videoDecoder = null,
+                audioDecoder = null,
+                droppedFrames = 0,
+                drmInfo = null,
+                sourceIndex = sourceIdx,
+                sourceCount = sources.size.coerceAtLeast(1),
+                sourceNotice = notice,
+            )
+        }
+        if (notice != null) scheduleNoticeClear()
+
+        resolveJob = scope.launch {
+            val r = try {
+                addonResolver.resolve(refUrl, channel.name, channel.tvgId, null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.w(TAG, "add-on resolve failed: ${e.message}")
+                if (tryFailover("resolve failed")) return@launch
+                fail("Could not get the stream: ${e.message ?: "add-on error"}")
+                return@launch
+            }
+            startSource(channel, idx, resumeAtMs, subtitles, notice, resolved = r)
+        }
     }
 
     private fun tryFailover(why: String): Boolean {
@@ -896,6 +962,7 @@ return ExoPlayer.Builder(appContext, renderersFactory)
     fun stopAndClear() {
         saveProgress()
         retryJob?.cancel()
+        resolveJob?.cancel()
         requestHeaders = emptyMap()
         currentItem = null
         sources = emptyList()
