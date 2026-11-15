@@ -316,6 +316,7 @@
   g.m3u = {
     build: function (items, o) {
       o = o || {};
+      var aid = (typeof addon !== 'undefined' && addon && addon.id) ? String(addon.id) : '';
       var out = ['#EXTM3U' + (o.epg ? ' x-tvg-url="' + q(Array.isArray(o.epg) ? o.epg.join(',') : o.epg) + '"' : '')];
       for (var i = 0; i < items.length; i++) {
         var c = items[i];
@@ -336,10 +337,28 @@
           out.push('#KODIPROP:inputstream.adaptive.license_type=' + q(c.drmScheme));
           out.push('#KODIPROP:inputstream.adaptive.license_key=' + q(c.drmLicense));
         }
-        out.push(String(c.url).replace(/[\r\n]+/g, ''));
+        var u = String(c.url).replace(/[\r\n]+/g, '');
+        // resolve:true → URL প্লে করার মুহূর্তে resolveStream() দিয়ে বের হবে
+        if (c.resolve) u = 'addon-resolve://' + aid + '/' + encodeURIComponent(u);
+        out.push(u);
       }
       return out.join('\n') + '\n';
     }
+  };
+
+  // প্লে করার মুহূর্তে চলে: resolveStream(info) → { url, userAgent, referrer, origin, headers, drmScheme, drmLicense } বা শুধু url স্ট্রিং
+  g.__resolveAddon = async function (infoJson) {
+    if (typeof g.resolveStream !== 'function') throw new Error('resolveStream() is not defined');
+    var r = await g.resolveStream(JSON.parse(infoJson));
+    if (typeof r === 'string') r = { url: r };
+    if (!r || typeof r !== 'object' || !r.url) throw new Error('resolveStream() must return a URL or an object with url');
+    var o = { url: String(r.url) };
+    ['userAgent', 'referrer', 'origin', 'drmScheme', 'drmLicense'].forEach(function (k) { if (r[k]) o[k] = String(r[k]); });
+    if (r.headers && typeof r.headers === 'object') {
+      o.headers = {};
+      for (var k in r.headers) if (Object.prototype.hasOwnProperty.call(r.headers, k)) o.headers[k] = String(r.headers[k]);
+    }
+    return JSON.stringify(o);
   };
 
   g.__runAddon = async function () {
