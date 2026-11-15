@@ -2,6 +2,11 @@ package com.streambd.iptv.ui.screens.providers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streambd.iptv.data.addon.AddonException
+import com.streambd.iptv.data.addon.AddonManifest
+import com.streambd.iptv.data.addon.AddonPreview
+import com.streambd.iptv.data.addon.AddonRepository
+import com.streambd.iptv.data.db.AddonEntity
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.data.ftp.FtpBrowser
@@ -26,6 +31,7 @@ class ProvidersViewModel @Inject constructor(
     private val channelRepo: ChannelRepository,
     private val ftpBrowser: FtpBrowser,
     private val xtream: XtreamRepository,
+    private val addonRepo: AddonRepository,
 ) : ViewModel() {
 
     val providers: StateFlow<List<ProviderEntity>> = providerDao.observeAll()
@@ -237,8 +243,130 @@ class ProvidersViewModel @Inject constructor(
     // প্লেলিস্ট ডিলিট করার ফাংশন
     fun deleteProvider(provider: ProviderEntity) {
         viewModelScope.launch {
-            providerDao.deleteById(provider.id)
-            channelRepo.clearProviderData(provider.id)
+            if (provider.type == "ADDON") {
+                addonRepo.remove(provider.id)
+            } else {
+                providerDao.deleteById(provider.id)
+                channelRepo.clearProviderData(provider.id)
+            }
+        }
+    }
+
+    // ───────────────────────── Add-ons ─────────────────────────
+
+    private fun addonMessage(e: Exception, fallback: String): String =
+        (e as? AddonException)?.message ?: (e as? SyncException)?.message ?: e.message ?: fallback
+
+    /** URL বা ফাইলের টেক্সট থেকে Add-on-এর তথ্য (ইনস্টলের আগে দেখানোর জন্য)। */
+    fun previewAddon(url: String?, scriptText: String?, onResult: (AddonPreview?, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = "Loading add-on..."
+            _isSyncing.value = true
+            try {
+                val script = scriptText ?: addonRepo.download(url.orEmpty())
+                onResult(addonRepo.preview(script, if (scriptText == null) url?.trim() else null), null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(null, addonMessage(e, "Could not load the add-on"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
+
+    fun installAddon(preview: AddonPreview, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = "Installing add-on..."
+            _isSyncing.value = true
+            try {
+                val providerId = addonRepo.install(preview)
+                _busyMessage.value = "Running add-on..."
+                val summary = try {
+                    addonRepo.refresh(providerId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    "Installed, but the first run failed: ${addonMessage(e, "error")}"
+                }
+                onResult(true, summary)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(false, addonMessage(e, "Could not install the add-on"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
+
+    fun loadAddon(provider: ProviderEntity, onLoaded: (AddonEntity?) -> Unit) {
+        viewModelScope.launch { onLoaded(addonRepo.forProvider(provider.id)) }
+    }
+
+    /** সেভ করা সেটিংস + ম্যানিফেস্টের ডিফল্ট মিলিয়ে ফর্মের মান। */
+    fun addonSettingValues(addon: AddonEntity, manifest: AddonManifest): Map<String, String> {
+        val saved = addonRepo.jsonToMap(addon.settings)
+        return manifest.settings.associate { it.key to (saved[it.key] ?: it.default) }
+    }
+
+    fun saveAddonSettings(addon: AddonEntity, values: Map<String, String>, onDone: () -> Unit) {
+        viewModelScope.launch {
+            addonRepo.saveSettings(addon, values)
+            onDone()
+        }
+    }
+
+    fun refreshAddon(provider: ProviderEntity, settings: Map<String, String>?, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = "Running add-on..."
+            _isSyncing.value = true
+            try {
+                if (settings != null) addonRepo.forProvider(provider.id)?.let { addonRepo.saveSettings(it, settings) }
+                onResult(true, addonRepo.refresh(provider.id))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(false, addonMessage(e, "The add-on failed"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
+
+    /** ইনস্টলের URL থেকে নতুন ভার্সন আনে। পারমিশন বদলালে আপডেট হয় না (ইউজারকে আবার ইনস্টল করতে হবে)। */
+    fun updateAddon(provider: ProviderEntity, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = "Checking for update..."
+            _isSyncing.value = true
+            try {
+                val a = addonRepo.forProvider(provider.id) ?: throw AddonException("Add-on not found.")
+                val src = a.sourceUrl ?: throw AddonException("This add-on was installed from a file. Install the new file to update it.")
+                val script = addonRepo.download(src)
+                val p = addonRepo.preview(script, src)
+                if (p.manifest.id != a.addonId) throw AddonException("That link is a different add-on.")
+                val old = AddonManifest.parse(a.manifest)
+                if (old.domains.toSet() != p.manifest.domains.toSet() || old.allowLocal != p.manifest.allowLocal) {
+                    throw AddonException("Permissions changed. Remove and reinstall this add-on to review them.")
+                }
+                if (script == a.script) {
+                    onResult(true, "Already up to date.")
+                    return@launch
+                }
+                addonRepo.install(p)
+                _busyMessage.value = "Updating channels..."
+                onResult(true, "Updated to ${p.manifest.version}. " + addonRepo.refresh(provider.id))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(false, addonMessage(e, "Could not update the add-on"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +70,8 @@ fun ProvidersScreen(
     var dialogIsXtream by remember { mutableStateOf(false) }
     var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) }
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
+    var showAddonInstall by remember { mutableStateOf(false) }
+    var addonDetails by remember { mutableStateOf<ProviderEntity?>(null) }
     var addError by remember { mutableStateOf<String?>(null) }
     
     Column(
@@ -113,6 +117,7 @@ fun ProvidersScreen(
                     dialogIsXtream = true
                     showDialog = true
                 },
+                onAddon = { showAddonInstall = true },
             )
         }
 
@@ -122,7 +127,7 @@ fun ProvidersScreen(
                     Icon(Icons.Filled.PlaylistPlay, contentDescription = null, tint = TextMuted, modifier = Modifier.size(64.dp))
                     Spacer(Modifier.height(16.dp))
                     Text("No providers added yet.", color = TextPrimary, fontSize = 18.sp)
-                    Text("Add your own M3U link or an FTP server.", color = TextMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("Add an M3U link, Xtream, an FTP server or an add-on.", color = TextMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         } else {
@@ -136,6 +141,10 @@ fun ProvidersScreen(
                     ProviderGridCard(
                         provider = provider,
                         onEdit = { 
+                            if (provider.type == "ADDON") {
+                                addonDetails = provider
+                                return@ProviderGridCard
+                            }
                             providerToEdit = provider
                             addError = null
                             dialogIsFtp = provider.type == "FTP"
@@ -244,6 +253,26 @@ fun ProvidersScreen(
         )
     }
 
+    if (showAddonInstall) {
+        AddonInstallDialog(
+            vm = vm,
+            onDismiss = { showAddonInstall = false },
+            onDone = { msg ->
+                showAddonInstall = false
+                if (msg.isNotBlank()) Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            },
+        )
+    }
+
+    addonDetails?.let { provider ->
+        AddonDetailsDialog(
+            vm = vm,
+            provider = provider,
+            onDismiss = { addonDetails = null },
+            onMessage = { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() },
+        )
+    }
+
     providerToDelete?.let { provider ->
         ConfirmDialog(
             title = "Delete Provider?",
@@ -265,6 +294,7 @@ private fun AddProviderMenu(
     onM3u: () -> Unit,
     onFtp: () -> Unit,
     onXtream: () -> Unit,
+    onAddon: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -319,6 +349,10 @@ private fun AddProviderMenu(
             AddMenuItem("Xtream Codes", Icons.Filled.Cloud, Modifier) {
                 expanded = false
                 onXtream()
+            }
+            AddMenuItem("Add-on (JS)", Icons.Filled.Extension, Modifier) {
+                expanded = false
+                onAddon()
             }
         }
     }
@@ -378,6 +412,7 @@ private fun ProviderGridCard(
                 when (provider.type.uppercase()) {
                     "FTP" -> Icons.Filled.Dns
                     "XTREAM" -> Icons.Filled.Cloud
+                    "ADDON" -> Icons.Filled.Extension
                     else -> Icons.Filled.PlaylistPlay
                 },
                 contentDescription = null, 
@@ -417,6 +452,7 @@ private fun ProviderGridCard(
         val typeLabel = when (provider.type.uppercase()) {
             "FTP" -> "FTP"
             "XTREAM" -> "XTREAM"
+            "ADDON" -> "ADD-ON"
             else -> null
         }
         Text(
@@ -565,7 +601,7 @@ private fun ProviderDialog(
 }
 
 @Composable
-private fun DialogTextButton(
+internal fun DialogTextButton(
     label: String,
     color: Color,
     modifier: Modifier = Modifier,
@@ -590,7 +626,7 @@ private fun DialogTextButton(
 }
 
 @Composable
-private fun PremiumTextField(
+internal fun PremiumTextField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -598,7 +634,8 @@ private fun PremiumTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
     onNext: (() -> Unit)? = null,
-    onDone: (() -> Unit)? = null
+    onDone: (() -> Unit)? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(4.dp)
@@ -626,6 +663,7 @@ private fun PremiumTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
+            visualTransformation = visualTransformation,
             cursorBrush = SolidColor(Accent),
             textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
