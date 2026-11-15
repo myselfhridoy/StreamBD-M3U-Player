@@ -118,3 +118,29 @@ interface WatchProgressDao {
     @Query("DELETE FROM watch_progress WHERE id NOT IN (SELECT id FROM watch_progress ORDER BY updatedAt DESC LIMIT :keep)")
     suspend fun prune(keep: Int)
 }
+@Dao
+interface AddonDao {
+    @Query("SELECT * FROM addons ORDER BY installedAt DESC")
+    fun observeAll(): Flow<List<AddonEntity>>
+
+    @Query("SELECT * FROM addons WHERE addonId = :addonId")
+    suspend fun getByAddonId(addonId: String): AddonEntity?
+
+    @Query("SELECT * FROM addons WHERE providerId = :providerId")
+    suspend fun getByProviderId(providerId: Long): AddonEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: AddonEntity): Long
+
+    @Update
+    suspend fun update(item: AddonEntity)
+
+    @Query("UPDATE addons SET settings = :settings WHERE id = :id")
+    suspend fun setSettings(id: Long, settings: String)
+
+    @Query("UPDATE addons SET storage = :storage, lastRunAt = :at, lastStatus = :status, lastLog = :log WHERE id = :id")
+    suspend fun setRunResult(id: Long, storage: String, at: Long, status: String?, log: String?)
+
+    @Query("DELETE FROM addons WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}

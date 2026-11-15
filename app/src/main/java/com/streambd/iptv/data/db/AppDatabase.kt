@@ -12,8 +12,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProgramEntity::class,
         ProviderEntity::class,
         WatchProgressEntity::class, // ভার্সন ৫: Continue Watching
+        AddonEntity::class, // ভার্সন ৯: Add-ons
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,35 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun epg(): EpgDao
     abstract fun providers(): ProviderDao
     abstract fun watchProgress(): WatchProgressDao
+    abstract fun addons(): AddonDao
+}
+
+/** ৮ → ৯: Add-ons। শুধু নতুন টেবিল, কিছু মোছে না। */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `addons` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`addonId` TEXT NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`version` TEXT NOT NULL, " +
+                "`script` TEXT NOT NULL, " +
+                "`manifest` TEXT NOT NULL, " +
+                "`settings` TEXT NOT NULL, " +
+                "`storage` TEXT NOT NULL, " +
+                "`enabled` INTEGER NOT NULL, " +
+                "`origin` TEXT NOT NULL, " +
+                "`sourceUrl` TEXT, " +
+                "`verified` INTEGER NOT NULL, " +
+                "`providerId` INTEGER NOT NULL, " +
+                "`installedAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL, " +
+                "`lastRunAt` INTEGER NOT NULL, " +
+                "`lastStatus` TEXT, " +
+                "`lastLog` TEXT)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_addons_addonId` ON `addons` (`addonId`)")
+    }
 }
 
 /** ৭ → ৮: প্লেলিস্ট জুড়ে ব্যাকআপ মার্জ। channels-এ নতুন কলাম, কিছু মোছে না। */

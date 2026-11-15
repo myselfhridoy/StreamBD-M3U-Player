@@ -91,3 +91,34 @@ data class WatchProgressEntity(
     val durationMs: Long,
     val updatedAt: Long,
 )
+
+/**
+ * ইনস্টল করা Add-on (JS স্ক্রিপ্ট)। প্রতিটা Add-on-এর একটা providers সারি থাকে (type = "ADDON",
+ * url = "addon:<addonId>"); চ্যানেলগুলো ওই [providerId]-র অধীনে ইমপোর্ট হয়।
+ */
+@Entity(tableName = "addons", indices = [Index(value = ["addonId"], unique = true)])
+data class AddonEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val addonId: String,
+    val name: String,
+    val version: String,
+    val script: String,
+    /** ইনস্টলের সময় স্ক্রিপ্টের `addon` অবজেক্ট থেকে নেওয়া JSON। */
+    val manifest: String,
+    /** ইউজারের সেটিংস মান (JSON object, key -> string)। */
+    val settings: String,
+    /** Add-on-এর নিজের key-value স্টোরেজ (JSON object)। */
+    val storage: String,
+    val enabled: Boolean,
+    /** "CUSTOM" (ইউজার নিজে URL/ফাইল থেকে) | "CATALOG" (অফিসিয়াল ক্যাটালগ, ভবিষ্যতের জন্য)। */
+    val origin: String,
+    val sourceUrl: String?,
+    /** স্বাক্ষর যাচাই হয়েছে কিনা (ক্যাটালগের জন্য, এখন সবসময় false)। */
+    val verified: Boolean,
+    val providerId: Long,
+    val installedAt: Long,
+    val updatedAt: Long,
+    val lastRunAt: Long,
+    val lastStatus: String?,
+    val lastLog: String?,
+)
