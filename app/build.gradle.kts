@@ -117,6 +117,10 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // ★ নতুন: Add-on সিস্টেম (JS ইঞ্জিন + HTML পার্সার)
+    implementation("io.github.dokar3:quickjs-kt:1.0.18")
+    implementation("org.jsoup:jsoup:1.17.2")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
 
