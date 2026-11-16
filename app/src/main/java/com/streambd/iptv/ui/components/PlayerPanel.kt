@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.WorkspacePremium // নতুন আইকন
@@ -30,6 +31,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -143,6 +145,9 @@ fun PanelRow(
     locked: Boolean = false,
     favorite: Boolean = false,
     isPremium: Boolean = false, // নতুন: প্রিমিয়াম কন্টেন্ট চেনার জন্য
+    /** ফোল্ডার/ফিরে-যাওয়া সারির জন্য: লোগোর জায়গায় আইকন। */
+    leadingIcon: ImageVector? = null,
+    showChevron: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -185,13 +190,17 @@ fun PanelRow(
             modifier = Modifier.size(32.dp),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = logoUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)),
-            )
-            if (isPremium) {
+            if (leadingIcon != null) {
+                Icon(leadingIcon, contentDescription = null, tint = Accent, modifier = Modifier.size(26.dp))
+            } else {
+                AsyncImage(
+                    model = logoUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)),
+                )
+            }
+            if (isPremium && leadingIcon == null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -222,6 +231,9 @@ fun PanelRow(
                 Text(subtitle, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        if (showChevron) {
+            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+        }
         if (locked) {
             Spacer(Modifier.width(6.dp))
             Icon(Icons.Filled.Lock, contentDescription = "Locked", tint = Accent, modifier = Modifier.size(14.dp))
@@ -244,6 +256,8 @@ fun <T> PanelList(
     loading: Boolean = false,
     emptyActionLabel: String? = null,
     onEmptyAction: (() -> Unit)? = null,
+    /** বদলালে (প্রথমবার বাদে) শুরুর সারিতে ফোকাস আবার বসে; ফোল্ডার খোলা/বন্ধ করার সময় দরকার। */
+    focusKey: Any? = null,
     row: @Composable (item: T, modifier: Modifier) -> Unit,
 ) {
     if (items.isEmpty()) {
@@ -281,6 +295,15 @@ fun <T> PanelList(
             withFrameNanos { }
             runCatching { startFocus.requestFocus() }
         }
+    }
+
+    var focusKeySeen by remember { mutableStateOf(false) }
+    LaunchedEffect(focusKey) {
+        if (focusKey == null) return@LaunchedEffect
+        if (!focusKeySeen) { focusKeySeen = true; return@LaunchedEffect }
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { startFocus.requestFocus() }
     }
 
     LazyColumn(
