@@ -71,6 +71,8 @@ fun ProvidersScreen(
     var providerToEdit by remember { mutableStateOf<ProviderEntity?>(null) }
     var providerToDelete by remember { mutableStateOf<ProviderEntity?>(null) }
     var showAddonInstall by remember { mutableStateOf(false) }
+    var showCatalog by remember { mutableStateOf(false) }
+    var catalogPreview by remember { mutableStateOf<com.streambd.iptv.data.addon.AddonPreview?>(null) }
     var addonDetails by remember { mutableStateOf<ProviderEntity?>(null) }
     var addError by remember { mutableStateOf<String?>(null) }
     
@@ -118,6 +120,7 @@ fun ProvidersScreen(
                     showDialog = true
                 },
                 onAddon = { showAddonInstall = true },
+                onCatalog = { showCatalog = true },
             )
         }
 
@@ -264,6 +267,29 @@ fun ProvidersScreen(
         )
     }
 
+    if (showCatalog) {
+        AddonCatalogDialog(
+            vm = vm,
+            onDismiss = { showCatalog = false },
+            onPreview = { p ->
+                showCatalog = false
+                catalogPreview = p
+            },
+        )
+    }
+
+    catalogPreview?.let { p ->
+        AddonInstallDialog(
+            vm = vm,
+            initialPreview = p,
+            onDismiss = { catalogPreview = null },
+            onDone = { msg ->
+                catalogPreview = null
+                if (msg.isNotBlank()) Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            },
+        )
+    }
+
     addonDetails?.let { provider ->
         AddonDetailsDialog(
             vm = vm,
@@ -295,6 +321,7 @@ private fun AddProviderMenu(
     onFtp: () -> Unit,
     onXtream: () -> Unit,
     onAddon: () -> Unit,
+    onCatalog: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -350,7 +377,11 @@ private fun AddProviderMenu(
                 expanded = false
                 onXtream()
             }
-            AddMenuItem("Add-on (JS)", Icons.Filled.Extension, Modifier) {
+            AddMenuItem("Add-on Catalog", Icons.Filled.Extension, Modifier) {
+                expanded = false
+                onCatalog()
+            }
+            AddMenuItem("Add-on (URL / file)", Icons.Filled.Extension, Modifier) {
                 expanded = false
                 onAddon()
             }

@@ -2,6 +2,8 @@ package com.streambd.iptv.ui.screens.providers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streambd.iptv.data.addon.AddonCatalogService
+import com.streambd.iptv.data.addon.CatalogRow
 import com.streambd.iptv.data.addon.AddonException
 import com.streambd.iptv.data.addon.AddonManifest
 import com.streambd.iptv.data.addon.AddonPreview
@@ -32,6 +34,7 @@ class ProvidersViewModel @Inject constructor(
     private val ftpBrowser: FtpBrowser,
     private val xtream: XtreamRepository,
     private val addonRepo: AddonRepository,
+    private val catalog: AddonCatalogService,
 ) : ViewModel() {
 
     val providers: StateFlow<List<ProviderEntity>> = providerDao.observeAll()
@@ -302,6 +305,42 @@ class ProvidersViewModel @Inject constructor(
         }
     }
 
+    /** অফিশিয়াল ক্যাটালগের তালিকা (কিল-সুইচও প্রয়োগ হয়)। */
+    fun loadCatalog(onResult: (List<CatalogRow>?, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = "Loading catalog..."
+            _isSyncing.value = true
+            try {
+                onResult(catalog.rows(), null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(null, addonMessage(e, "Could not load the catalog"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
+
+    /** ক্যাটালগের Add-on ডাউনলোড + সিগনেচার যাচাই; সফল হলে ইনস্টল-প্রিভিউ। */
+    fun previewCatalogAddon(id: String, onResult: (AddonPreview?, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = "Verifying add-on..."
+            _isSyncing.value = true
+            try {
+                onResult(catalog.preview(id), null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(null, addonMessage(e, "Could not load the add-on"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
+
     fun loadAddon(provider: ProviderEntity, onLoaded: (AddonEntity?) -> Unit) {
         viewModelScope.launch { onLoaded(addonRepo.forProvider(provider.id)) }
     }
@@ -344,9 +383,15 @@ class ProvidersViewModel @Inject constructor(
             _isSyncing.value = true
             try {
                 val a = addonRepo.forProvider(provider.id) ?: throw AddonException("Add-on not found.")
-                val src = a.sourceUrl ?: throw AddonException("This add-on was installed from a file. Install the new file to update it.")
-                val script = addonRepo.download(src)
-                val p = addonRepo.preview(script, src)
+                val official = a.origin == "CATALOG"
+                val src = a.sourceUrl
+                if (!official && src == null) throw AddonException("This add-on was installed from a file. Install the new file to update it.")
+                val p = if (official) {
+                    addonRepo.previewCatalog(catalog.fetch(a.addonId))
+                } else {
+                    addonRepo.preview(addonRepo.download(src.orEmpty()), src)
+                }
+                val script = p.script
                 if (p.manifest.id != a.addonId) throw AddonException("That link is a different add-on.")
                 val old = AddonManifest.parse(a.manifest)
                 if (old.domains.toSet() != p.manifest.domains.toSet() || old.allowLocal != p.manifest.allowLocal) {

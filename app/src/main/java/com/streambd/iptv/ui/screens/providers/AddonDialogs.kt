@@ -74,11 +74,13 @@ fun AddonInstallDialog(
     vm: ProvidersViewModel,
     onDismiss: () -> Unit,
     onDone: (String) -> Unit,
+    /** ক্যাটালগ থেকে এলে প্রিভিউ আগে থেকেই তৈরি (সরাসরি নিশ্চিতকরণ ধাপ)। */
+    initialPreview: AddonPreview? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf("") }
-    var preview by remember { mutableStateOf<AddonPreview?>(null) }
+    var preview by remember { mutableStateOf(initialPreview) }
     var error by remember { mutableStateOf<String?>(null) }
     val urlFocus = remember { FocusRequester() }
     val installFocus = remember { FocusRequester() }
@@ -151,17 +153,24 @@ fun AddonInstallDialog(
             Text(networkLine(m), color = if (m.anyDomain) Danger else TextPrimary, fontSize = 12.sp)
             if (m.allowLocal) Text("Can reach devices on your local network", color = Danger, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
-            Text(
-                "Unverified add-on. It runs code on this device. Only install add-ons from sources you trust.",
-                color = TextMuted, fontSize = 11.sp,
-            )
+            if (pv.verified) {
+                Text("Verified by StreamBD (signed)", color = Accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            } else {
+                Text(
+                    "Unverified add-on. It runs code on this device. Only install add-ons from sources you trust.",
+                    color = TextMuted, fontSize = 11.sp,
+                )
+            }
             error?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, color = Danger, fontSize = 12.sp)
             }
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                DialogTextButton("BACK", TextMuted, onClick = { preview = null; error = null })
+                DialogTextButton(
+                    if (initialPreview != null) "CANCEL" else "BACK", TextMuted,
+                    onClick = { if (initialPreview != null) onDismiss() else { preview = null; error = null } },
+                )
                 Spacer(Modifier.width(8.dp))
                 DialogTextButton(
                     if (pv.installedVersion != null) "UPDATE" else "INSTALL",
@@ -232,6 +241,10 @@ fun AddonDetailsDialog(
             }
             Spacer(Modifier.height(8.dp))
             Text(networkLine(m), color = if (m.anyDomain) Danger else TextMuted, fontSize = 11.sp)
+            Text(
+                if (a.verified) "Verified by StreamBD" else "Unverified (custom)",
+                color = if (a.verified) Accent else TextMuted, fontSize = 11.sp,
+            )
             a.lastStatus?.let { Text("Last run: $it", color = TextMuted, fontSize = 11.sp) }
 
             if (m.settings.isNotEmpty()) {
@@ -275,7 +288,7 @@ fun AddonDetailsDialog(
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 DialogTextButton("CLOSE", TextMuted, modifier = Modifier.focusRequester(closeFocus), onClick = onDismiss)
-                if (a.sourceUrl != null) {
+                if (a.sourceUrl != null || a.origin == "CATALOG") {
                     Spacer(Modifier.width(6.dp))
                     DialogTextButton("UPDATE", TextPrimary, onClick = {
                         error = null
@@ -300,6 +313,71 @@ fun AddonDetailsDialog(
     }
 
     LaunchedEffect(a?.id) {
+        delay(100)
+        runCatching { closeFocus.requestFocus() }
+    }
+}
+
+/** অফিশিয়াল ক্যাটালগ: তালিকা দেখে ইনস্টল/আপডেট বেছে নেওয়া। সিগনেচার যাচাই হয়ে প্রিভিউ আসে [onPreview]-এ। */
+@Composable
+fun AddonCatalogDialog(
+    vm: ProvidersViewModel,
+    onDismiss: () -> Unit,
+    onPreview: (AddonPreview) -> Unit,
+) {
+    var rows by remember { mutableStateOf<List<com.streambd.iptv.data.addon.CatalogRow>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val closeFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        vm.loadCatalog { r, msg ->
+            rows = r
+            error = msg
+        }
+    }
+
+    AddonFrame(onDismiss) {
+        Text("Add-on Catalog", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text("Official, signed by StreamBD", color = TextMuted, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+
+        val list = rows
+        when {
+            error != null -> Text(error.orEmpty(), color = Danger, fontSize = 12.sp)
+            list == null -> Text("Loading...", color = TextMuted, fontSize = 13.sp)
+            list.isEmpty() -> Text("No add-ons available yet.", color = TextMuted, fontSize = 13.sp)
+            else -> for (row in list) {
+                val e = row.entry
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Text("${e.name}  ·  v${e.version}", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    if (e.description.isNotBlank()) Text(e.description, color = TextMuted, fontSize = 12.sp)
+                    if (e.author.isNotBlank()) Text("by ${e.author}", color = TextMuted, fontSize = 11.sp)
+                    Spacer(Modifier.height(4.dp))
+                    when {
+                        row.needsNewerApp -> Text("Needs a newer app version", color = Danger, fontSize = 11.sp)
+                        row.installedVersion != null && !row.updateAvailable ->
+                            Text("Installed (v${row.installedVersion})", color = Accent, fontSize = 12.sp)
+                        else -> DialogTextButton(
+                            if (row.updateAvailable) "UPDATE to v${e.version}" else if (row.installedVersion != null) "REPLACE" else "INSTALL",
+                            Accent,
+                            onClick = {
+                                error = null
+                                vm.previewCatalogAddon(e.id) { p, msg ->
+                                    if (p != null) onPreview(p) else error = msg
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            DialogTextButton("CLOSE", TextMuted, modifier = Modifier.focusRequester(closeFocus), onClick = onDismiss)
+        }
+    }
+
+    LaunchedEffect(rows) {
         delay(100)
         runCatching { closeFocus.requestFocus() }
     }
