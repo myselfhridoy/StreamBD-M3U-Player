@@ -2,6 +2,7 @@ package com.streambd.iptv.data.repo
 
 import android.util.Log
 import com.streambd.iptv.data.activation.ActivationRepository
+import com.streambd.iptv.data.addon.AddonCatalogService
 import com.streambd.iptv.data.addon.AddonRepository
 import com.streambd.iptv.data.activation.ActivationState
 import com.streambd.iptv.data.db.ProviderDao
@@ -29,17 +30,20 @@ class AutoRefresher @Inject constructor(
     private val providerDao: ProviderDao,
     private val xtream: XtreamRepository,
     private val addons: AddonRepository,
+    private val catalog: AddonCatalogService,
 ) {
     private companion object {
         const val FIRST_DELAY_MS = 2_000L
         const val CHECK_EVERY_MS = 15L * 60 * 1000
         const val ENTRY_MIN_AGE_MS = 5L * 60 * 1000
+        const val CATALOG_EVERY_MS = 6L * 60 * 60 * 1000
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
 
     @Volatile private var entryRefreshDone = false
+    private var lastCatalogAt = 0L
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -87,6 +91,20 @@ class AutoRefresher @Inject constructor(
 
         val atEntry = !entryRefreshDone
         entryRefreshDone = true
+
+        // অফিশিয়াল Add-on ক্যাটালগ: কিল-সুইচ + অটো-আপডেট (৬ ঘণ্টায় একবার; অ্যাপে ঢোকার সময়ও)
+        val nowMs = System.currentTimeMillis()
+        if (atEntry || nowMs - lastCatalogAt > CATALOG_EVERY_MS) {
+            lastCatalogAt = nowMs
+            try {
+                val n = catalog.syncInBackground()
+                if (n > 0) Log.i(TAG, "add-ons auto-updated: $n")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "add-on catalog sync skipped: ${e.message}")
+            }
+        }
 
         val due = if (atEntry) {
             sync.isPlaylistDue(maxAgeMs = ENTRY_MIN_AGE_MS)
