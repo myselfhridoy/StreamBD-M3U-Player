@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.addon
 
+import android.util.Log
 import com.streambd.iptv.data.db.AddonDao
 import com.streambd.iptv.data.db.AddonEntity
 import com.streambd.iptv.data.db.ProviderDao
@@ -166,6 +167,20 @@ class AddonRepository @Inject constructor(
         addons.setSettings(addon.id, o.toString())
     }
 
+    /** চ্যানেল ক্যাটালগ বদলালে: Catalog থেকে নেওয়া চালু add-on-গুলো নতুন ক্যাটালগ দিয়ে আবার ইমপোর্ট। */
+    suspend fun refreshOfficial() {
+        for (a in addons.observeAll().first()) {
+            if (a.origin != "CATALOG" || !a.enabled) continue
+            try {
+                refresh(a.providerId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("AddonRepository", "official refresh failed for ${a.providerId}: ${e.message}")
+            }
+        }
+    }
+
     /** স্ক্রিপ্ট চালিয়ে চ্যানেল ইমপোর্ট। সফল হলে সারাংশ ফেরত, ব্যর্থ হলে [AddonException]। */
     suspend fun refresh(providerId: Long): String {
         val addon = addons.getByProviderId(providerId) ?: throw AddonException("Add-on not found.")
@@ -191,7 +206,7 @@ class AddonRepository @Inject constructor(
         }
 
         val count = try {
-            channels.import(list, isPremium = false, providerId = providerId)
+            channels.import(list, isPremium = false, providerId = providerId, official = addon.origin == "CATALOG")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
