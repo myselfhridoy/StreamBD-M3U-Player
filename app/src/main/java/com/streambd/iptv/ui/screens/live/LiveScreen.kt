@@ -1,8 +1,12 @@
 package com.streambd.iptv.ui.screens.live
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -15,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
+import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.ui.components.PanelList
 import com.streambd.iptv.ui.components.PanelRow
 import com.streambd.iptv.ui.components.PanelScaffold
@@ -24,6 +29,14 @@ import com.streambd.iptv.ui.player.PlayerDialogs
 import com.streambd.iptv.ui.player.rememberPlayerDialogs
 import com.streambd.iptv.ui.theme.*
 
+/** তালিকার সারি: ফোল্ডার, "ফিরে যান", বা চ্যানেল। */
+private sealed interface LiveRow {
+    val key: Any
+    data class Folder(val folder: LiveFolder) : LiveRow { override val key: Any get() = "f:" + folder.key }
+    data class Up(val title: String) : LiveRow { override val key: Any get() = "up" }
+    data class Chan(val channel: ChannelEntity) : LiveRow { override val key: Any get() = channel.id }
+}
+
 @Composable
 fun LiveScreen(
     preselectChannelId: Long = -1L,
@@ -32,6 +45,11 @@ fun LiveScreen(
     vm: LiveViewModel = hiltViewModel(),
 ) {
     val groups by vm.groups.collectAsStateWithLifecycle()
+    val userGroups by vm.userGroups.collectAsStateWithLifecycle()
+    val hasStreamBd by vm.hasStreamBd.collectAsStateWithLifecycle()
+    val folders by vm.folders.collectAsStateWithLifecycle()
+    val openFolder by vm.openFolder.collectAsStateWithLifecycle()
+    val lastFolder by vm.lastFolder.collectAsStateWithLifecycle()
     val selected by vm.selectedGroup.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
     val allChannels by vm.allChannels.collectAsStateWithLifecycle()
@@ -46,9 +64,21 @@ fun LiveScreen(
 
     val playingId = state.current?.id
 
-    val tabs = remember(groups) {
+    val tabs = remember(userGroups, hasStreamBd) {
         listOf(PanelTab(null, "All"), PanelTab(LIVE_GROUP_FAVORITES, "Favorites")) +
-            groups.map { PanelTab(it.id, it.name) }
+            (if (hasStreamBd) listOf(PanelTab(LIVE_GROUP_STREAMBD, "StreamBD IPTV")) else emptyList()) +
+            userGroups.map { PanelTab(it.id, it.name) }
+    }
+
+    val inStreamBd = selected == LIVE_GROUP_STREAMBD
+    val folderMode = inStreamBd && openFolder == null
+    val folderTitle = folders.firstOrNull { it.key == openFolder }?.name ?: "StreamBD IPTV"
+    val rows = remember(channels, folders, folderMode, inStreamBd, folderTitle) {
+        when {
+            folderMode -> folders.map { LiveRow.Folder(it) }
+            inStreamBd -> listOf<LiveRow>(LiveRow.Up(folderTitle)) + channels.map { LiveRow.Chan(it) }
+            else -> channels.map { LiveRow.Chan(it) }
+        }
     }
 
     val emptyText = when {
@@ -56,6 +86,7 @@ fun LiveScreen(
             "No live channels yet.\nAdd a playlist in Providers (Settings), or try Movies/Series."
         selected == LIVE_GROUP_FAVORITES ->
             "No favorite channels yet.\nLong-press a channel to add one."
+        inStreamBd -> "No channels in this folder."
         else -> "No channels in this group."
     }
 
@@ -78,7 +109,16 @@ fun LiveScreen(
 
     val current = allChannels.firstOrNull { it.id == playingId } ?: state.current
     val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
-    val startIndex = remember(channels, playingId) { channels.indexOfFirst { it.id == playingId } }
+    val startIndex = remember(rows, playingId, folderMode, lastFolder) {
+        when {
+            folderMode -> rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastFolder }.coerceAtLeast(0)
+            else -> {
+                val i = rows.indexOfFirst { it is LiveRow.Chan && it.channel.id == playingId }
+                // ফোল্ডারের ভেতরে প্রথম সারি "ফিরে যান"; চালু চ্যানেল না থাকলে প্রথম চ্যানেলে ফোকাস
+                if (i >= 0) i else if (inStreamBd && rows.size > 1) 1 else 0
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         FullscreenPlayer(
@@ -102,27 +142,48 @@ fun LiveScreen(
             onListOpenChange = { listOpen = it },
             listContent = {
                 PanelScaffold(tabs, selected, vm::selectGroup) {
+                    // ফোল্ডারের ভেতরে Back চাপলে তালিকা বন্ধ না হয়ে ফোল্ডারের তালিকায় ফেরে
+                    BackHandler(enabled = inStreamBd && openFolder != null) { vm.closeFolder() }
                     PanelList(
-                        items = channels,
-                        key = { it.id },
+                        items = rows,
+                        key = { it.key },
                         startIndex = startIndex,
-                        resetKey = selected,
+                        resetKey = Triple(selected, openFolder, folderMode),
+                        focusKey = openFolder,
                         emptyText = emptyText,
                         loading = !loaded,
                         emptyActionLabel = if (allChannels.isEmpty()) "Add a provider" else null,
                         onEmptyAction = onOpenProviders,
-                    ) { channel, rowModifier ->
-                        PanelRow(
-                            title = channel.name,
-                            modifier = rowModifier,
-                            number = "%02d".format(channel.number),
-                            logoUrl = channel.logoUrl,
-                            playing = channel.id == playingId,
-                            locked = channel.isLocked,
-                            favorite = channel.isFavorite,
-                            isPremium = channel.isPremium, // নতুন: প্রিমিয়াম আইকন দেখানোর জন্য
-                            onLongClick = { dialogs.openActions(channel.id) },
-                        ) { vm.requestPlay(channel) }
+                    ) { row, rowModifier ->
+                        when (row) {
+                            is LiveRow.Folder -> PanelRow(
+                                title = row.folder.name,
+                                modifier = rowModifier,
+                                subtitle = "${row.folder.count} channels",
+                                leadingIcon = Icons.Filled.Folder,
+                                showChevron = true,
+                            ) { vm.openFolder(row.folder.key) }
+                            is LiveRow.Up -> PanelRow(
+                                title = row.title,
+                                modifier = rowModifier,
+                                subtitle = "Back to folders",
+                                leadingIcon = Icons.Filled.ArrowBack,
+                            ) { vm.closeFolder() }
+                            is LiveRow.Chan -> {
+                                val channel = row.channel
+                                PanelRow(
+                                    title = channel.name,
+                                    modifier = rowModifier,
+                                    number = "%02d".format(channel.number),
+                                    logoUrl = channel.logoUrl,
+                                    playing = channel.id == playingId,
+                                    locked = channel.isLocked,
+                                    favorite = channel.isFavorite,
+                                    isPremium = channel.isPremium,
+                                    onLongClick = { dialogs.openActions(channel.id) },
+                                ) { vm.requestPlay(channel) }
+                            }
+                        }
                     }
                 }
             },
