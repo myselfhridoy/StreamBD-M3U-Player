@@ -57,6 +57,7 @@ class AddonCatalogService @Inject constructor(
         val (code, device) = creds()
         val list = client.list(baseUrl(), code, device)
         repo.applyKillSwitch(list.blocked)
+        repo.restoreUnblocked(list.entries.map { it.id }, list.blocked)
         val installed = addons.observeAll().first().associateBy { it.addonId }
         return list.entries.map { e ->
             val a = installed[e.id]
@@ -86,6 +87,7 @@ class AddonCatalogService @Inject constructor(
         val (code, device) = creds()
         val list = client.list(baseUrl(), code, device)
         repo.applyKillSwitch(list.blocked)
+        repo.restoreUnblocked(list.entries.map { it.id }, list.blocked)
 
         var updated = 0
         for (a in addons.observeAll().first()) {

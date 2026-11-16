@@ -10,6 +10,7 @@ import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -29,6 +30,8 @@ data class AddonPreview(
     /** শুধু সিগনেচার যাচাই পাস করলেই true। */
     val verified: Boolean = false,
 )
+
+const val KILL_STATUS = "Disabled by StreamBD"
 
 @Singleton
 class AddonRepository @Inject constructor(
@@ -135,8 +138,24 @@ class AddonRepository @Inject constructor(
         for (id in blocked) {
             val a = addons.getByAddonId(id) ?: continue
             if (a.origin != "CATALOG" || !a.enabled) continue
-            addons.update(a.copy(enabled = false, lastStatus = "Disabled by StreamBD"))
+            addons.update(a.copy(enabled = false, lastStatus = KILL_STATUS))
             n++
+        }
+        return n
+    }
+
+    /**
+     * কিল-সুইচ তুলে নেওয়া হলে (ক্যাটালগে আবার চালু, `blocked` এ নেই) শুধু কিল-সুইচে বন্ধ হওয়া Add-on আবার চালু করে।
+     * @return কয়টা চালু হলো
+     */
+    suspend fun restoreUnblocked(available: Collection<String>, blocked: Collection<String>): Int {
+        var n = 0
+        for (a in addons.observeAll().first()) {
+            if (a.enabled || a.origin != "CATALOG" || a.lastStatus != KILL_STATUS) continue
+            if (a.addonId in available && a.addonId !in blocked) {
+                addons.update(a.copy(enabled = true, lastStatus = null))
+                n++
+            }
         }
         return n
     }
