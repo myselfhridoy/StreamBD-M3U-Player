@@ -39,6 +39,7 @@ import com.streambd.iptv.data.repo.AutoRefresher
 import com.streambd.iptv.player.ChannelJumpController
 import com.streambd.iptv.player.PlayerManager
 import com.streambd.iptv.ui.nav.AppNav
+import com.streambd.iptv.ui.notice.NoticeHost
 import com.streambd.iptv.ui.player.VolumeOverlay
 import com.streambd.iptv.ui.theme.*
 import com.streambd.iptv.util.LaunchState
@@ -110,6 +111,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         VolumeOverlay(level = volumeState.level)
                     }
+
+                    // সার্ভার নোটিশ: বাধ্যতামূলক/ঐচ্ছিক আপডেট ও ঘোষণা (সবার ওপরে)
+                    NoticeHost()
                 }
             }
         }
