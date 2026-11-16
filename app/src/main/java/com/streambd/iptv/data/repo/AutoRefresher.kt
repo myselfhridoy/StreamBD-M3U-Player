@@ -5,6 +5,7 @@ import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.addon.AddonCatalogService
 import com.streambd.iptv.data.addon.AddonRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.notice.AppConfigRepository
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.xtream.XtreamRepository
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,7 @@ class AutoRefresher @Inject constructor(
     private val xtream: XtreamRepository,
     private val addons: AddonRepository,
     private val catalog: AddonCatalogService,
+    private val appConfig: AppConfigRepository,
 ) {
     private companion object {
         const val FIRST_DELAY_MS = 2_000L
@@ -44,6 +46,8 @@ class AutoRefresher @Inject constructor(
 
     @Volatile private var entryRefreshDone = false
     private var lastCatalogAt = 0L
+    private var lastConfigAt = 0L
+    @Volatile private var configAtEntry = true
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -52,6 +56,7 @@ class AutoRefresher @Inject constructor(
         if (job?.isActive == true) return
         // প্রতিবার অ্যাপে ঢোকার (onStart) সময় "entry refresh" আবার হবে (৫ মিনিটের বেশি পুরনো হলে)
         entryRefreshDone = false
+        configAtEntry = true
         job = scope.launch {
             delay(FIRST_DELAY_MS)
             while (isActive) {
@@ -74,6 +79,20 @@ class AutoRefresher @Inject constructor(
     }
 
     private suspend fun tick() {
+        // ন্যূনতম ভার্সন/আপডেট নোটিশ/ঘোষণা: অ্যাক্টিভেশনের ওপর নির্ভর করে না, তাই সবার আগে (অ্যাপে ঢোকার সময় + ৬ ঘণ্টায়)
+        val cfgNow = System.currentTimeMillis()
+        if (configAtEntry || cfgNow - lastConfigAt > CATALOG_EVERY_MS) {
+            configAtEntry = false
+            lastConfigAt = cfgNow
+            try {
+                appConfig.refresh()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "app config refresh skipped: ${e.message}")
+            }
+        }
+
         try {
             activation.revalidateIfNeeded()
         } catch (e: CancellationException) {
