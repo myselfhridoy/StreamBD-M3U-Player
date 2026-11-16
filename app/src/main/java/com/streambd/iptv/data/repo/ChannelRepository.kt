@@ -1,6 +1,7 @@
 package com.streambd.iptv.data.repo
 
 import androidx.room.withTransaction
+import com.streambd.iptv.data.catalog.CatalogStore
 import com.streambd.iptv.data.db.AppDatabase
 import com.streambd.iptv.data.db.ChannelDao
 import com.streambd.iptv.data.db.ChannelEntity
@@ -28,6 +29,7 @@ class ChannelRepository @Inject constructor(
     private val db: AppDatabase,
     private val channels: ChannelDao,
     private val groups: GroupDao,
+    private val catalogStore: CatalogStore,
 ) {
     fun liveChannels(): Flow<List<ChannelEntity>> = channels.observeByKind(ChannelKind.LIVE.name)
     fun liveChannelsIn(groupId: Long): Flow<List<ChannelEntity>> = channels.observeByKindAndGroup(ChannelKind.LIVE.name, groupId)
@@ -68,11 +70,14 @@ class ChannelRepository @Inject constructor(
         renumber()
     }
 
-    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L): Int {
+    /** [official] = true: অ্যাডমিনের প্লেলিস্ট/Catalog add-on। সার্ভারের চ্যানেল ক্যাটালগ থাকলে নাম, লোগো, গ্রুপ ও নম্বর তার থেকে বসে; না মিললে "Others"। */
+    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L, official: Boolean = false): Int {
         if (parsedChannels.isEmpty()) return 0
 
+        val matcher = if (official) catalogStore.matcher else null
         val rows = withContext(Dispatchers.Default) {
-            buildRows(parsedChannels, isPremium, providerId)
+            val source = if (matcher == null) parsedChannels else parsedChannels.map { matcher.apply(it, ::epgNameKey) }
+            buildRows(source, isPremium, providerId, matcher?.let { m -> { name: String -> m.groupRank(name) } })
         }
 
         db.withTransaction {
@@ -192,7 +197,7 @@ class ChannelRepository @Inject constructor(
 
     private class ImportRows(val groups: List<GroupEntity>, val channels: List<ChannelEntity>)
 
-    private fun buildRows(parsed: List<ParsedChannel>, isPremium: Boolean, providerId: Long): ImportRows {
+    private fun buildRows(parsed: List<ParsedChannel>, isPremium: Boolean, providerId: Long, groupRank: ((String) -> Int?)? = null): ImportRows {
         val groupRows = LinkedHashMap<Long, GroupEntity>()
         val numbers = HashMap<ChannelKind, Int>()
         val occurrences = HashMap<String, Int>()
@@ -256,6 +261,11 @@ class ChannelRepository @Inject constructor(
                 if (list.isNullOrEmpty()) c else c.copy(sources = StreamSources.encode(list))
             }
         }
-        return ImportRows(groupRows.values.toList(), finalRows)
+        // ক্যাটালগ থাকলে ফোল্ডারের ক্রম ক্যাটালগের গ্রুপ-ক্রম অনুযায়ী; ক্যাটালগে না থাকা গ্রুপ (যেমন Others) শেষে
+        val groupList = groupRows.values.map { g ->
+            if (groupRank == null || g.kind != ChannelKind.LIVE.name) g
+            else g.copy(order = groupRank(g.name) ?: (10_000 + g.order))
+        }
+        return ImportRows(groupList, finalRows)
     }
 }

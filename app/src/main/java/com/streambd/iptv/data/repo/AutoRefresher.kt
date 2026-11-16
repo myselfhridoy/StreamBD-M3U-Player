@@ -5,6 +5,7 @@ import com.streambd.iptv.data.activation.ActivationRepository
 import com.streambd.iptv.data.addon.AddonCatalogService
 import com.streambd.iptv.data.addon.AddonRepository
 import com.streambd.iptv.data.activation.ActivationState
+import com.streambd.iptv.data.catalog.CatalogSync
 import com.streambd.iptv.data.notice.AppConfigRepository
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.xtream.XtreamRepository
@@ -33,6 +34,7 @@ class AutoRefresher @Inject constructor(
     private val addons: AddonRepository,
     private val catalog: AddonCatalogService,
     private val appConfig: AppConfigRepository,
+    private val channelCatalog: CatalogSync,
 ) {
     private companion object {
         const val FIRST_DELAY_MS = 2_000L
@@ -125,7 +127,17 @@ class AutoRefresher @Inject constructor(
             }
         }
 
-        val due = if (atEntry) {
+        // চ্যানেল ক্যাটালগ (নাম/লোগো/গ্রুপ/নম্বর): বদলালে সময়ের সীমা ছাড়াই অফিসিয়াল প্লেলিস্ট আবার সিঙ্ক
+        val catalogChanged = try {
+            channelCatalog.refresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "channel catalog skipped: ${e.message}")
+            false
+        }
+
+        val due = catalogChanged || if (atEntry) {
             sync.isPlaylistDue(maxAgeMs = ENTRY_MIN_AGE_MS)
         } else {
             sync.isPlaylistDue()
@@ -151,6 +163,16 @@ class AutoRefresher @Inject constructor(
                     throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Server playlists sync failed: ${e.message}")
+                }
+            }
+
+            if (catalogChanged) {
+                try {
+                    addons.refreshOfficial()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "official add-ons re-import failed: ${e.message}")
                 }
             }
 

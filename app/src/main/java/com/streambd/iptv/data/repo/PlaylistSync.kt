@@ -116,7 +116,7 @@ class PlaylistSync @Inject constructor(
         if (allChannels.isEmpty()) throw SyncException("No channels found in any of the assigned playlists.")
 
         val count = try {
-            channels.import(allChannels, isPremium, providerId = 0L)
+            channels.import(allChannels, isPremium, providerId = 0L, official = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
