@@ -3,6 +3,7 @@ package com.streambd.iptv.ui.notice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streambd.iptv.data.notice.AppConfigRepository
+import com.streambd.iptv.data.notice.AppUpdater
 import com.streambd.iptv.data.notice.NoticeState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,8 +15,13 @@ import javax.inject.Inject
 @HiltViewModel
 class NoticeViewModel @Inject constructor(
     private val repo: AppConfigRepository,
+    private val updater: AppUpdater,
 ) : ViewModel() {
     val state: StateFlow<NoticeState> = repo.state
+
+    val download: StateFlow<AppUpdater.State> = updater.state
+    fun canUpdateInApp(url: String) = updater.canUpdateInApp(url)
+    fun startUpdate(url: String) = updater.start(url)
 
     private val _checking = MutableStateFlow(false)
     val checking: StateFlow<Boolean> = _checking.asStateFlow()
