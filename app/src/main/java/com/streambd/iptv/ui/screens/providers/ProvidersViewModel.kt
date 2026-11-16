@@ -364,6 +364,14 @@ class ProvidersViewModel @Inject constructor(
             _isSyncing.value = true
             try {
                 if (settings != null) addonRepo.forProvider(provider.id)?.let { addonRepo.saveSettings(it, settings) }
+                // কিল-সুইচে বন্ধ থাকলে আগে ক্যাটালগে দেখে নেওয়া: সার্ভারে আবার চালু হয়ে থাকলে এখনই চালু হবে
+                val cur = addonRepo.forProvider(provider.id)
+                if (cur != null && !cur.enabled && cur.origin == "CATALOG") {
+                    runCatching { catalog.syncInBackground() }
+                    if (addonRepo.forProvider(provider.id)?.enabled != true) {
+                        throw AddonException("This add-on was disabled by StreamBD and is not available right now.")
+                    }
+                }
                 onResult(true, addonRepo.refresh(provider.id))
             } catch (e: CancellationException) {
                 throw e
