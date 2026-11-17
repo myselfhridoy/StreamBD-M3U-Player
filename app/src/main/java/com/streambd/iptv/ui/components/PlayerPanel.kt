@@ -297,13 +297,28 @@ fun <T> PanelList(
         }
     }
 
-    var focusKeySeen by remember { mutableStateOf(false) }
+    // focusKey (ফোল্ডার খোলা/বন্ধ) বদলালে শুরুর সারিতে ফোকাস আবার বসাই। null থেকে null-এ ফেরাও বদল।
+    // নতুন সারির তালিকা ViewModel থেকে একটু পরে আসে, তাই তালিকা স্থির হওয়া পর্যন্ত অপেক্ষা করে ফোকাস দিই।
+    var lastFocusKey by remember { mutableStateOf(focusKey) }
+    var pendingFocus by remember { mutableStateOf(false) }
     LaunchedEffect(focusKey) {
-        if (focusKey == null) return@LaunchedEffect
-        if (!focusKeySeen) { focusKeySeen = true; return@LaunchedEffect }
-        withFrameNanos { }
-        withFrameNanos { }
-        runCatching { startFocus.requestFocus() }
+        if (focusKey != lastFocusKey) {
+            lastFocusKey = focusKey
+            pendingFocus = true
+        }
+    }
+    LaunchedEffect(pendingFocus, items, start, resetKey) {
+        if (!pendingFocus) return@LaunchedEffect
+        delay(120)
+        listState.scrollToItem((start - 2).coerceAtLeast(0))
+        repeat(8) {
+            withFrameNanos { }
+            if (runCatching { startFocus.requestFocus() }.isSuccess) {
+                pendingFocus = false
+                return@LaunchedEffect
+            }
+        }
+        pendingFocus = false
     }
 
     LazyColumn(
