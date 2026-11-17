@@ -13,8 +13,12 @@ android {
         applicationId = "streambdiptv.player"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // ভার্সন আসে GitHub Release-এর ট্যাগ থেকে (v1.2.3 -> -PVERSION_NAME=1.2.3); লোকাল/ডিবাগে ডিফল্ট 1.0.0।
+        // versionCode = major*10000 + minor*100 + patch  (1.0.1 -> 10001, 1.2.3 -> 10203)। প্রতি রিলিজে বাড়ে।
+        val vName = (project.findProperty("VERSION_NAME") as String?)?.trim().orEmpty().ifEmpty { "1.0.0" }
+        val vParts = vName.split(".").map { it.toIntOrNull() ?: 0 }
+        versionCode = vParts.getOrElse(0) { 0 } * 10000 + vParts.getOrElse(1) { 0 } * 100 + vParts.getOrElse(2) { 0 }
+        versionName = vName
         
         buildConfigField("String", "ENCODED_API", "\"aHR0cHM6Ly9zdHJlYW1iZC1hY3RpdmF0aW9uLXNlcnZlci5zdHJlYW1iZGlwdHYud29ya2Vycy5kZXY=\"")
         buildConfigField("boolean", "ACTIVATION_ENABLED", "true")
