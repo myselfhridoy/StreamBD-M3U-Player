@@ -206,7 +206,9 @@ class AddonRepository @Inject constructor(
         }
 
         val count = try {
-            channels.import(list, isPremium = false, providerId = providerId, official = addon.origin == "CATALOG")
+            // Catalog (সাইন করা) add-on অফিসিয়াল: প্রিমিয়াম আইকন পায়, ক্যাটালগ দিয়ে সাজে
+            val official = addon.origin == "CATALOG"
+            channels.import(list, isPremium = official, providerId = providerId, official = official)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
