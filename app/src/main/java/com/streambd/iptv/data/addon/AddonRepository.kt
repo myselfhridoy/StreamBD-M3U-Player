@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.addon
 
+import android.content.Context
 import android.util.Log
 import com.streambd.iptv.data.db.AddonDao
 import com.streambd.iptv.data.db.AddonEntity
@@ -9,6 +10,7 @@ import com.streambd.iptv.data.parser.PlaylistParserFactory
 import com.streambd.iptv.data.repo.ChannelRepository
 import com.streambd.iptv.data.repo.PlaylistSync
 import com.streambd.iptv.data.repo.SyncException
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -33,6 +35,7 @@ data class AddonPreview(
 )
 
 const val KILL_STATUS = "Disabled by StreamBD"
+const val USER_DISABLED = "Disabled by you"
 
 @Singleton
 class AddonRepository @Inject constructor(
@@ -42,9 +45,38 @@ class AddonRepository @Inject constructor(
     private val channels: ChannelRepository,
     private val sync: PlaylistSync,
     private val http: OkHttpClient,
+    @ApplicationContext private val context: Context,
 ) {
     private companion object {
         const val MAX_DOWNLOAD_CHARS = 1_000_000
+        const val PREFS = "streambd_addons"
+        const val KEY_OPT_OUT = "auto_install_opt_out"
+    }
+
+    private val prefs get() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** ইউজার যেসব অফিশিয়াল Add-on নিজে মুছেছে: অটো-ইনস্টল এগুলো আর জোর করে বসায় না। */
+    fun autoInstallOptOut(): Set<String> = prefs.getStringSet(KEY_OPT_OUT, emptySet()).orEmpty().toSet()
+
+    private fun setOptOut(id: String, out: Boolean) {
+        val cur = autoInstallOptOut().toMutableSet()
+        if (if (out) cur.add(id) else cur.remove(id)) prefs.edit().putStringSet(KEY_OPT_OUT, cur).apply()
+    }
+
+    /** ইউজারের নিজের বন্ধ করা: "Disabled by you" (কিল-সুইচ থেকে আলাদা, তাই সার্ভার এটা আবার চালু করে না)। */
+    suspend fun setEnabled(providerId: Long, on: Boolean): String {
+        val a = addons.getByProviderId(providerId) ?: throw AddonException("Add-on not found.")
+        if (!on) {
+            addons.update(a.copy(enabled = false, lastStatus = USER_DISABLED))
+            channels.clearProviderData(providerId) // চ্যানেলগুলো তালিকা থেকে সরে যায়; Enable করলে আবার আসে
+            return "${a.name} is turned off."
+        }
+        addons.update(a.copy(enabled = true, lastStatus = null))
+        return try {
+            refresh(providerId)
+        } catch (e: AddonException) {
+            "Turned on, but the first run failed: ${e.message}"
+        }
     }
 
     fun observeAll() = addons.observeAll()
@@ -87,6 +119,7 @@ class AddonRepository @Inject constructor(
         val now = System.currentTimeMillis()
         val manifestJson = manifestToJson(m)
         val existing = addons.getByAddonId(m.id)
+        if (p.origin == "CATALOG") setOptOut(m.id, false)
 
         if (existing != null) {
             addons.update(
@@ -208,7 +241,7 @@ class AddonRepository @Inject constructor(
         val count = try {
             // Catalog (সাইন করা) add-on অফিসিয়াল: প্রিমিয়াম আইকন পায়, ক্যাটালগ দিয়ে সাজে
             val official = addon.origin == "CATALOG"
-            channels.import(list, isPremium = official, providerId = providerId, official = official)
+            channels.import(list, isPremium = official, providerId = providerId, official = official, keepGroups = manifest.keepGroups)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -250,7 +283,10 @@ class AddonRepository @Inject constructor(
 
     /** Add-on, তার provider সারি ও চ্যানেল মুছে ফেলে। */
     suspend fun remove(providerId: Long) {
-        addons.getByProviderId(providerId)?.let { addons.deleteById(it.id) }
+        addons.getByProviderId(providerId)?.let {
+            if (it.origin == "CATALOG") setOptOut(it.addonId, true) // ইউজার মুছলে অটো-ইনস্টল আর ফেরত আনবে না
+            addons.deleteById(it.id)
+        }
         providers.deleteById(providerId)
         channels.clearProviderData(providerId)
     }
@@ -260,7 +296,7 @@ class AddonRepository @Inject constructor(
         .put("description", m.description).put("author", m.author)
         .put("domains", org.json.JSONArray(m.domains))
         .put("allowLocal", m.allowLocal).put("apiVersion", m.apiVersion)
-        .put("refreshMinutes", m.refreshMinutes)
+        .put("refreshMinutes", m.refreshMinutes).put("keepGroups", m.keepGroups)
         .put(
             "settings",
             org.json.JSONArray().also { arr ->

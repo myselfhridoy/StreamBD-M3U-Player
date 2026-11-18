@@ -18,6 +18,9 @@ data class CatalogRow(
     val updateAvailable: Boolean,
     /** এই অ্যাপ ভার্সনে চলবে না (minAppVersion বেশি)। */
     val needsNewerApp: Boolean,
+    /** ইনস্টল থাকলে তার provider id ও চালু অবস্থা (Disable/Enable বাটনের জন্য)। */
+    val providerId: Long? = null,
+    val enabled: Boolean = true,
 )
 
 /**
@@ -66,6 +69,8 @@ class AddonCatalogService @Inject constructor(
                 installedVersion = a?.version,
                 updateAvailable = a != null && a.origin == "CATALOG" && a.version != e.version,
                 needsNewerApp = e.minAppVersion > BuildConfig.VERSION_CODE,
+                providerId = a?.providerId,
+                enabled = a?.enabled ?: true,
             )
         }
     }
@@ -77,6 +82,34 @@ class AddonCatalogService @Inject constructor(
 
     /** ইনস্টলের আগে যাচাই (সিগনেচার ইত্যাদি) করা প্রিভিউ। */
     suspend fun preview(id: String): AddonPreview = repo.previewCatalog(fetch(id))
+
+    /**
+     * সার্ভারে "auto-install" চালু থাকা, সাইন করা, এই ইউজারের জন্য দৃশ্যমান Add-on গুলো ইনস্টল না থাকলে নিজে ইনস্টল করে।
+     * বাদ যায়: ইউজার নিজে মুছে ফেলেছে এমন; কিল-সুইচে বন্ধ; নতুন অ্যাপ ভার্সন লাগে এমন।
+     * @return নতুন ইনস্টল সংখ্যা
+     */
+    suspend fun autoInstall(): Int {
+        val (code, device) = creds()
+        val list = client.list(baseUrl(), code, device)
+        val have = addons.observeAll().first().map { it.addonId }.toSet()
+        val optOut = repo.autoInstallOptOut()
+        var n = 0
+        for (e in list.entries) {
+            if (!e.autoInstall || e.id in have || e.id in optOut || e.id in list.blocked) continue
+            if (e.minAppVersion > BuildConfig.VERSION_CODE) continue
+            try {
+                val p = repo.previewCatalog(client.get(baseUrl(), code, device, e.id)) // সিগনেচার যাচাই এখানেই
+                val providerId = repo.install(p)
+                runCatching { repo.refresh(providerId) }
+                n++
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                Log.w(TAG, "${e.id}: auto-install failed: ${ex.message}")
+            }
+        }
+        return n
+    }
 
     /**
      * ব্যাকগ্রাউন্ড: কিল-সুইচ + ইনস্টল করা অফিশিয়াল Add-on-এর অটো-আপডেট।

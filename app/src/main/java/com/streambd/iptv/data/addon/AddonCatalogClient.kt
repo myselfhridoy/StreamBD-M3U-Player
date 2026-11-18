@@ -24,6 +24,8 @@ data class CatalogEntry(
     val size: Int,
     val changelog: String,
     val updatedAt: Long,
+    /** সার্ভার চাইলে অ্যাপ এটা ইউজারের ফোনে নিজেই ইনস্টল করে। */
+    val autoInstall: Boolean = true,
 )
 
 /** `blocked` = কিল-সুইচে বন্ধ করা আইডি। */
@@ -59,6 +61,7 @@ class AddonCatalogClient @Inject constructor(private val http: OkHttpClient) {
         minAppVersion = o.optInt("minAppVersion", 0), sha256 = o.optString("sha256"),
         signature = o.optString("signature"), size = o.optInt("size", 0),
         changelog = o.optString("changelog"), updatedAt = o.optLong("updatedAt", 0L),
+        autoInstall = o.optBoolean("autoInstall", true),
     )
 
     private suspend fun post(url: String, body: JSONObject): JSONObject = withContext(Dispatchers.IO) {

@@ -30,6 +30,8 @@ data class AddonManifest(
     val settings: List<AddonSetting>,
     /** অটো-আপডেটের ব্যবধান (মিনিট)। 0 = অটো নয়। ডিফল্ট ৩৬০; ৩০–১৪৪০-এর মধ্যে সীমাবদ্ধ। */
     val refreshMinutes: Int = DEFAULT_REFRESH_MINUTES,
+    /** true = অফিসিয়াল (Catalog) add-on হলেও ক্যাটালগে না মেলা চ্যানেল নিজের group/subgroup রাখে, "Others" এ যায় না। */
+    val keepGroups: Boolean = false,
 ) {
     val anyDomain: Boolean get() = domains.any { it == "*" }
 
@@ -82,6 +84,7 @@ data class AddonManifest(
                 apiVersion = api,
                 settings = settings,
                 refreshMinutes = o.optInt("refreshMinutes", DEFAULT_REFRESH_MINUTES).let { if (it <= 0) 0 else it.coerceIn(30, 1440) },
+                keepGroups = o.optBoolean("keepGroups", false),
             )
         }
     }
