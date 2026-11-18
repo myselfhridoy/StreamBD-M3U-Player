@@ -325,7 +325,10 @@
         if (c.tvgId) a += ' tvg-id="' + q(c.tvgId) + '"';
         if (c.tvgName) a += ' tvg-name="' + q(c.tvgName) + '"';
         if (c.logo) a += ' tvg-logo="' + q(c.logo) + '"';
-        if (c.group) a += ' group-title="' + q(c.group) + '"';
+        // সাব-ক্যাটাগরি: subgroup দিলে "group › subgroup" (অ্যাপে ফোল্ডারের ভেতরে ফোল্ডার, সর্বোচ্চ ২ স্তর)
+        var gt = c.group ? String(c.group) : '';
+        if (c.subgroup) gt = (gt || 'Others') + ' \u203A ' + String(c.subgroup).replace(/\u203A/g, '-');
+        if (gt) a += ' group-title="' + q(gt) + '"';
         if (c.chno) a += ' tvg-chno="' + q(c.chno) + '"';
         if (c.type) a += ' tvg-type="' + q(c.type) + '"';
         out.push(a + ',' + q(c.name));
