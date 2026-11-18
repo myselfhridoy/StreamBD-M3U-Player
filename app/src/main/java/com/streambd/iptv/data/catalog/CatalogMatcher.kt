@@ -115,14 +115,16 @@ class CatalogMatcher(val data: CatalogData) {
     /** ফোল্ডারের ক্রম: ক্যাটালগে না থাকলে null (শেষে যায়)। */
     fun groupRank(name: String): Int? = rank[name]
 
-    /** ইমপোর্টের আগে চ্যানেল রূপান্তর: মিললে ক্যাটালগের নাম/লোগো/গ্রুপ/নম্বর, নইলে "Others"। শুধু Live। */
-    fun apply(p: ParsedChannel, epgKey: (String) -> String): ParsedChannel {
+    /** ইমপোর্টের আগে চ্যানেল রূপান্তর: মিললে ক্যাটালগের নাম/লোগো/গ্রুপ/নম্বর, নইলে "Others" (keepGroups হলে add-on-এর গ্রুপ)। শুধু Live। */
+    fun apply(p: ParsedChannel, epgKey: (String) -> String, keepGroups: Boolean = false): ParsedChannel {
         if (p.kind != ChannelKind.LIVE || p.isNestedPlaylist) return p
-        val m = match(p.name) ?: return p.copy(groupTitle = OTHERS)
+        // keepGroups: মিল না হলে add-on নিজের গ্রুপ (ও সাব-গ্রুপ) রাখে, "Others" এ যায় না (ইভেন্ট add-on-এর জন্য)
+        val m = match(p.name) ?: return if (keepGroups && p.groupTitle.isNotBlank()) p else p.copy(groupTitle = OTHERS)
         val c = m.channel
         return if (m.event) {
             p.copy(
-                groupTitle = c.group,
+                // keepGroups থাকলে add-on-এর নিজের গ্রুপ-ভাগ রাখা হয়
+                groupTitle = if (keepGroups && p.groupTitle.isNotBlank()) p.groupTitle else c.group,
                 logoUrl = p.logoUrl?.takeIf { it.isNotBlank() } ?: c.logo.ifBlank { null },
             )
         } else {
