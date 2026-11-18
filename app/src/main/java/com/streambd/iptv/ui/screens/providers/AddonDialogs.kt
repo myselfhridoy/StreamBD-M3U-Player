@@ -16,6 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -23,6 +27,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -38,7 +43,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-private fun AddonFrame(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun AddonFrame(onDismiss: () -> Unit, maxWidth: Dp = 460.dp, content: @Composable ColumnScope.() -> Unit) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -54,7 +59,7 @@ private fun AddonFrame(onDismiss: () -> Unit, content: @Composable ColumnScope.(
         ) {
             Column(
                 Modifier
-                    .widthIn(max = 380.dp)
+                    .widthIn(max = maxWidth)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .clip(RoundedCornerShape(4.dp))
@@ -287,6 +292,19 @@ fun AddonDetailsDialog(
 
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                DialogTextButton(
+                    if (a.enabled) "TURN OFF" else "TURN ON",
+                    if (a.enabled) Danger else Accent,
+                    onClick = {
+                        error = null
+                        vm.setAddonEnabled(provider.id, !a.enabled) { ok, msg ->
+                            if (ok) { onMessage(msg.orEmpty()); onDismiss() } else { error = msg; load() }
+                        }
+                    },
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 DialogTextButton("CLOSE", TextMuted, modifier = Modifier.focusRequester(closeFocus), onClick = onDismiss)
                 if (a.sourceUrl != null || a.origin == "CATALOG") {
                     Spacer(Modifier.width(6.dp))
@@ -318,7 +336,55 @@ fun AddonDetailsDialog(
     }
 }
 
-/** অফিশিয়াল ক্যাটালগ: তালিকা দেখে ইনস্টল/আপডেট বেছে নেওয়া। সিগনেচার যাচাই হয়ে প্রিভিউ আসে [onPreview]-এ। */
+/** TV-তে স্পষ্ট বাটন: ফোকাসে বড় হয়, সাদা বর্ডার ও উজ্জ্বল ব্যাকগ্রাউন্ড। [primary] = ভরাট অ্যাকসেন্ট রঙ। */
+@Composable
+private fun TvButton(
+    label: String,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    val base = when {
+        primary -> Accent
+        danger -> Danger.copy(alpha = 0.18f)
+        else -> Color.White.copy(alpha = 0.08f)
+    }
+    val fg = when {
+        primary -> Color.Black
+        danger -> Danger
+        else -> TextPrimary
+    }
+    Box(
+        modifier = modifier
+            .heightIn(min = 44.dp)
+            .graphicsLayer { val sc = if (focused) 1.06f else 1f; scaleX = sc; scaleY = sc }
+            .clip(shape)
+            .background(if (focused) (if (primary) Accent else Color.White.copy(alpha = 0.22f)) else base)
+            .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else Divider, shape)
+            .onFocusChanged { focused = it.hasFocus }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (focused && primary) Color.Black else fg, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun StatusChip(text: String, color: Color) {
+    Text(
+        text, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(color.copy(alpha = 0.16f))
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    )
+}
+
+/** অফিশিয়াল ক্যাটালগ: কার্ডের তালিকা; প্রতিটা কার্ডে ইনস্টল/আপডেট/বন্ধ/চালু। TV ও ফোন দুটোতেই চলে। */
 @Composable
 fun AddonCatalogDialog(
     vm: ProvidersViewModel,
@@ -327,58 +393,114 @@ fun AddonCatalogDialog(
 ) {
     var rows by remember { mutableStateOf<List<com.streambd.iptv.data.addon.CatalogRow>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
     val closeFocus = remember { FocusRequester() }
+    val firstFocus = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
+    fun load() {
         vm.loadCatalog { r, msg ->
             rows = r
             error = msg
         }
     }
+    LaunchedEffect(Unit) { load() }
 
-    AddonFrame(onDismiss) {
-        Text("Add-on Catalog", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        Text("Official, signed by StreamBD", color = TextMuted, fontSize = 11.sp)
-        Spacer(Modifier.height(10.dp))
+    AddonFrame(onDismiss, maxWidth = 760.dp) {
+        Text("Add-on Catalog", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Official add-ons, signed by StreamBD", color = TextMuted, fontSize = 13.sp)
+        note?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = Accent, fontSize = 13.sp)
+        }
+        Spacer(Modifier.height(14.dp))
 
         val list = rows
         when {
-            error != null -> Text(error.orEmpty(), color = Danger, fontSize = 12.sp)
-            list == null -> Text("Loading...", color = TextMuted, fontSize = 13.sp)
-            list.isEmpty() -> Text("No add-ons available yet.", color = TextMuted, fontSize = 13.sp)
-            else -> for (row in list) {
+            error != null -> Text(error.orEmpty(), color = Danger, fontSize = 14.sp)
+            list == null -> Text("Loading...", color = TextMuted, fontSize = 15.sp)
+            list.isEmpty() -> Text("No add-ons available yet.", color = TextMuted, fontSize = 15.sp)
+            else -> list.forEachIndexed { index, row ->
                 val e = row.entry
-                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Text("${e.name}  ·  v${e.version}", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    if (e.description.isNotBlank()) Text(e.description, color = TextMuted, fontSize = 12.sp)
-                    if (e.author.isNotBlank()) Text("by ${e.author}", color = TextMuted, fontSize = 11.sp)
-                    Spacer(Modifier.height(4.dp))
-                    when {
-                        row.needsNewerApp -> Text("Needs a newer app version", color = Danger, fontSize = 11.sp)
-                        row.installedVersion != null && !row.updateAvailable ->
-                            Text("Installed (v${row.installedVersion})", color = Accent, fontSize = 12.sp)
-                        else -> DialogTextButton(
-                            if (row.updateAvailable) "UPDATE to v${e.version}" else if (row.installedVersion != null) "REPLACE" else "INSTALL",
-                            Accent,
-                            onClick = {
-                                error = null
-                                vm.previewCatalogAddon(e.id) { p, msg ->
-                                    if (p != null) onPreview(p) else error = msg
-                                }
-                            },
+                var cardFocused by remember(e.id) { mutableStateOf(false) }
+                val cardShape = RoundedCornerShape(14.dp)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .clip(cardShape)
+                        .background(if (cardFocused) Color.White.copy(alpha = 0.10f) else Surface1)
+                        .border(if (cardFocused) 2.dp else 1.dp, if (cardFocused) Accent else Divider, cardShape)
+                        .onFocusChanged { cardFocused = it.hasFocus }
+                        .padding(16.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            e.name, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        Spacer(Modifier.width(10.dp))
+                        Text("v${e.version}", color = TextMuted, fontSize = 12.sp)
+                    }
+                    if (e.author.isNotBlank()) Text("by ${e.author}", color = TextMuted, fontSize = 12.sp)
+                    if (e.description.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(e.description, color = TextMuted, fontSize = 14.sp, lineHeight = 19.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        when {
+                            row.needsNewerApp -> StatusChip("Needs a newer app", Danger)
+                            row.installedVersion == null -> StatusChip("Not installed", TextMuted)
+                            !row.enabled -> StatusChip("Turned off", Danger)
+                            row.updateAvailable -> StatusChip("Update available · installed v${row.installedVersion}", Accent)
+                            else -> StatusChip("Installed · v${row.installedVersion}", Accent)
+                        }
+                    }
+                    if (!row.needsNewerApp) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val firstMod = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                            val installed = row.installedVersion != null
+                            if (!installed || row.updateAvailable) {
+                                TvButton(
+                                    if (!installed) "INSTALL" else "UPDATE to v${e.version}",
+                                    modifier = firstMod, primary = true,
+                                    onClick = {
+                                        error = null
+                                        vm.previewCatalogAddon(e.id) { p, msg ->
+                                            if (p != null) onPreview(p) else error = msg
+                                        }
+                                    },
+                                )
+                            }
+                            val pid = row.providerId
+                            if (installed && pid != null) {
+                                TvButton(
+                                    if (row.enabled) "TURN OFF" else "TURN ON",
+                                    modifier = if (row.updateAvailable) Modifier else firstMod,
+                                    primary = !row.enabled, danger = row.enabled,
+                                    onClick = {
+                                        error = null
+                                        vm.setAddonEnabled(pid, !row.enabled) { ok, msg ->
+                                            if (ok) { note = msg; load() } else error = msg
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            DialogTextButton("CLOSE", TextMuted, modifier = Modifier.focusRequester(closeFocus), onClick = onDismiss)
+            TvButton("CLOSE", modifier = Modifier.focusRequester(closeFocus), onClick = onDismiss)
         }
     }
 
     LaunchedEffect(rows) {
-        delay(100)
-        runCatching { closeFocus.requestFocus() }
+        delay(150)
+        // প্রথম কার্ডের বাটনে ফোকাস; না থাকলে CLOSE এ
+        if (runCatching { firstFocus.requestFocus() }.isFailure) runCatching { closeFocus.requestFocus() }
     }
 }

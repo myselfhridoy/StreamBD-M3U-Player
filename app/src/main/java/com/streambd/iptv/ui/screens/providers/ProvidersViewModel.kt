@@ -323,6 +323,24 @@ class ProvidersViewModel @Inject constructor(
         }
     }
 
+    /** ইউজারের নিজে Add-on বন্ধ/চালু: বন্ধ করলে চ্যানেল তালিকা থেকে সরে, অটো-রিফ্রেশ থামে; চালু করলে আবার আসে। */
+    fun setAddonEnabled(providerId: Long, on: Boolean, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _busyMessage.value = if (on) "Turning on..." else "Turning off..."
+            _isSyncing.value = true
+            try {
+                onResult(true, addonRepo.setEnabled(providerId, on))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResult(false, addonMessage(e, "Could not change the add-on"))
+            } finally {
+                _isSyncing.value = false
+                _busyMessage.value = defaultBusy
+            }
+        }
+    }
+
     /** ক্যাটালগের Add-on ডাউনলোড + সিগনেচার যাচাই; সফল হলে ইনস্টল-প্রিভিউ। */
     fun previewCatalogAddon(id: String, onResult: (AddonPreview?, String?) -> Unit) {
         viewModelScope.launch {
