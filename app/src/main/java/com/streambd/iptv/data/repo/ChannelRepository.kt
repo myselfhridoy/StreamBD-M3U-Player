@@ -71,12 +71,12 @@ class ChannelRepository @Inject constructor(
     }
 
     /** [official] = true: অ্যাডমিনের প্লেলিস্ট/Catalog add-on। সার্ভারের চ্যানেল ক্যাটালগ থাকলে নাম, লোগো, গ্রুপ ও নম্বর তার থেকে বসে; না মিললে "Others"। */
-    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L, official: Boolean = false): Int {
+    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L, official: Boolean = false, keepGroups: Boolean = false): Int {
         if (parsedChannels.isEmpty()) return 0
 
         val matcher = if (official) catalogStore.matcher else null
         val rows = withContext(Dispatchers.Default) {
-            val source = if (matcher == null) parsedChannels else parsedChannels.map { matcher.apply(it, ::epgNameKey) }
+            val source = if (matcher == null) parsedChannels else parsedChannels.map { matcher.apply(it, ::epgNameKey, keepGroups) }
             buildRows(source, isPremium, providerId, matcher?.let { m -> { name: String -> m.groupRank(name) } })
         }
 

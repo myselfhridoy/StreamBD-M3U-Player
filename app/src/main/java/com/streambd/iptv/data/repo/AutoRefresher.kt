@@ -48,6 +48,7 @@ class AutoRefresher @Inject constructor(
 
     @Volatile private var entryRefreshDone = false
     private var lastCatalogAt = 0L
+    private var lastAutoInstallAt = 0L
     private var lastConfigAt = 0L
     @Volatile private var configAtEntry = true
 
@@ -135,6 +136,19 @@ class AutoRefresher @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "channel catalog skipped: ${e.message}")
             false
+        }
+
+        // সাইন করা Add-on অটো-ইনস্টল (চ্যানেল ক্যাটালগ লোড হওয়ার পরে, যাতে প্রথম ইমপোর্টেই সঠিক গ্রুপ বসে)
+        try {
+            if (atEntry || System.currentTimeMillis() - lastAutoInstallAt > CATALOG_EVERY_MS) {
+                val n = catalog.autoInstall()
+                lastAutoInstallAt = System.currentTimeMillis() // ব্যর্থ হলে সেট হয় না: পরের ১৫ মিনিটে আবার চেষ্টা
+                if (n > 0) Log.i(TAG, "add-ons auto-installed: $n")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "add-on auto-install skipped: ${e.message}")
         }
 
         val due = catalogChanged || if (atEntry) {
