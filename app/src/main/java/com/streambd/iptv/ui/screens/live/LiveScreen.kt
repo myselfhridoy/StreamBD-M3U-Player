@@ -33,7 +33,7 @@ import com.streambd.iptv.ui.theme.*
 private sealed interface LiveRow {
     val key: Any
     data class Folder(val folder: LiveFolder) : LiveRow { override val key: Any get() = "f:" + folder.key }
-    data class Up(val title: String) : LiveRow { override val key: Any get() = "up" }
+    data class Up(val title: String, val hint: String) : LiveRow { override val key: Any get() = "up" }
     data class Chan(val channel: ChannelEntity) : LiveRow { override val key: Any get() = channel.id }
 }
 
@@ -49,7 +49,11 @@ fun LiveScreen(
     val hasStreamBd by vm.hasStreamBd.collectAsStateWithLifecycle()
     val folders by vm.folders.collectAsStateWithLifecycle()
     val openFolder by vm.openFolder.collectAsStateWithLifecycle()
+    val openSub by vm.openSub.collectAsStateWithLifecycle()
     val lastFolder by vm.lastFolder.collectAsStateWithLifecycle()
+    val lastSub by vm.lastSub.collectAsStateWithLifecycle()
+    val subFolders by vm.subFolders.collectAsStateWithLifecycle()
+    val listChannels by vm.listChannels.collectAsStateWithLifecycle()
     val selected by vm.selectedGroup.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
     val allChannels by vm.allChannels.collectAsStateWithLifecycle()
@@ -72,12 +76,16 @@ fun LiveScreen(
 
     val inStreamBd = selected == LIVE_GROUP_STREAMBD
     val folderMode = inStreamBd && openFolder == null
-    val folderTitle = folders.firstOrNull { it.key == openFolder }?.name ?: "StreamBD IPTV"
-    val rows = remember(channels, folders, folderMode, inStreamBd, folderTitle) {
+    val topTitle = folders.firstOrNull { it.key == openFolder }?.name ?: "StreamBD IPTV"
+    val openSubName by vm.openSubName.collectAsStateWithLifecycle()
+    val upTitle = if (openSub != null) openSubName else topTitle
+    val upHint = if (openSub != null) "Back to $topTitle" else "Back to folders"
+    val rows = remember(listChannels, subFolders, folders, folderMode, inStreamBd, upTitle, upHint) {
         when {
             folderMode -> folders.map { LiveRow.Folder(it) }
-            inStreamBd -> listOf<LiveRow>(LiveRow.Up(folderTitle)) + channels.map { LiveRow.Chan(it) }
-            else -> channels.map { LiveRow.Chan(it) }
+            inStreamBd -> listOf<LiveRow>(LiveRow.Up(upTitle, upHint)) +
+                subFolders.map { LiveRow.Folder(it) } + listChannels.map { LiveRow.Chan(it) }
+            else -> listChannels.map { LiveRow.Chan(it) }
         }
     }
 
@@ -109,9 +117,11 @@ fun LiveScreen(
 
     val current = allChannels.firstOrNull { it.id == playingId } ?: state.current
     val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
-    val startIndex = remember(rows, playingId, folderMode, lastFolder) {
+    val startIndex = remember(rows, playingId, folderMode, lastFolder, lastSub, openSub) {
         when {
             folderMode -> rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastFolder }.coerceAtLeast(0)
+            inStreamBd && openSub == null && rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastSub } >= 0 ->
+                rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastSub }
             else -> {
                 val i = rows.indexOfFirst { it is LiveRow.Chan && it.channel.id == playingId }
                 // ফোল্ডারের ভেতরে প্রথম সারি "ফিরে যান"; চালু চ্যানেল না থাকলে প্রথম চ্যানেলে ফোকাস
@@ -148,8 +158,8 @@ fun LiveScreen(
                         items = rows,
                         key = { it.key },
                         startIndex = startIndex,
-                        resetKey = Triple(selected, openFolder, folderMode),
-                        focusKey = openFolder,
+                        resetKey = listOf(selected, openFolder, openSub, folderMode),
+                        focusKey = openSub ?: openFolder,
                         emptyText = emptyText,
                         loading = !loaded,
                         emptyActionLabel = if (allChannels.isEmpty()) "Add a provider" else null,
@@ -162,11 +172,11 @@ fun LiveScreen(
                                 subtitle = "${row.folder.count} channels",
                                 leadingIcon = Icons.Filled.Folder,
                                 showChevron = true,
-                            ) { vm.openFolder(row.folder.key) }
+                            ) { vm.openFolder(row.folder.key, row.folder.name) }
                             is LiveRow.Up -> PanelRow(
                                 title = row.title,
                                 modifier = rowModifier,
-                                subtitle = "Back to folders",
+                                subtitle = row.hint,
                                 leadingIcon = Icons.Filled.ArrowBack,
                             ) { vm.closeFolder() }
                             is LiveRow.Chan -> {

@@ -29,8 +29,28 @@ const val LIVE_GROUP_STREAMBD: Long = -2L
 /** ইউজার এখনো কোনো ট্যাব বাছেনি: StreamBD চ্যানেল থাকলে সেই ট্যাব, নইলে All। */
 private const val TAB_UNSET: Long = -100L
 
-/** StreamBD ট্যাবের একটা ফোল্ডার (একই নামের গ্রুপ সব অফিসিয়াল সোর্স মিলিয়ে এক ফোল্ডার)। */
+/**
+ * StreamBD ট্যাবের একটা ফোল্ডার (একই নামের গ্রুপ সব অফিসিয়াল সোর্স মিলিয়ে এক ফোল্ডার)।
+ * [key]: উপরের স্তরে "soccer", সাব-ফোল্ডারে "soccer\u203Apremier league"।
+ */
 data class LiveFolder(val key: String, val name: String, val count: Int)
+
+/** গ্রুপের নামে এই চিহ্ন থাকলে "উপরের › নিচের" = দুই স্তরের ফোল্ডার। (add-on `subgroup` ফিল্ডও এটাই বানায়) */
+const val FOLDER_SEP = '\u203A'
+
+/** গ্রুপের নাম থেকে ফোল্ডার পথ। দুইয়ের বেশি স্তর থাকলে বাকিটা দ্বিতীয় স্তরের নামে যায় (TV ফোকাস নিরাপদ রাখতে)। */
+private data class FolderRef(val topKey: String, val topName: String, val subKey: String?, val subName: String?)
+
+private fun folderRef(rawGroup: String): FolderRef {
+    val raw = rawGroup.trim()
+    val i = raw.indexOf(FOLDER_SEP)
+    val top = (if (i >= 0) raw.substring(0, i) else raw).trim()
+    val sub = if (i >= 0) raw.substring(i + 1).replace(FOLDER_SEP, '-').trim() else ""
+    if (top.isEmpty()) return FolderRef("others", "Others", null, null)
+    val tk = top.lowercase()
+    return if (sub.isEmpty()) FolderRef(tk, top, null, null)
+    else FolderRef(tk, top, tk + FOLDER_SEP + sub.lowercase(), sub)
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -77,28 +97,35 @@ class LiveViewModel @Inject constructor(
         officialChannels.map { it.isNotEmpty() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    /** groupId -> ফোল্ডার key (শুধু অফিসিয়াল গ্রুপ)। একই নামের গ্রুপ এক ফোল্ডার। */
-    private val folderOfGroup: StateFlow<Map<Long, Pair<String, String>>> =
+    /** groupId -> ফোল্ডার পথ (শুধু অফিসিয়াল গ্রুপ)। একই নামের গ্রুপ এক ফোল্ডার। */
+    private val folderOfGroup: StateFlow<Map<Long, FolderRef>> =
         combine(groups, officialProviders) { g, official ->
-            g.filter { it.providerId in official }
-                .associate { it.id to (it.name.trim().lowercase() to it.name.trim().ifBlank { "Others" }) }
+            g.filter { it.providerId in official }.associate { it.id to folderRef(it.name) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** মিল না থাকা/নামহীন গ্রুপের চ্যানেল "Others" ফোল্ডারে। */
-    private fun folderKeyOf(c: ChannelEntity, map: Map<Long, Pair<String, String>>): Pair<String, String> =
-        map[c.groupId]?.takeIf { it.first.isNotBlank() } ?: ("others" to "Others")
+    private fun refOf(c: ChannelEntity, map: Map<Long, FolderRef>): FolderRef =
+        map[c.groupId] ?: FolderRef("others", "Others", null, null)
+
+    /** গ্রুপের ক্রম অনুযায়ী (প্রথম দেখা পথ আগে)। */
+    private fun orderMap(grps: List<GroupEntity>, map: Map<Long, FolderRef>, sub: Boolean): HashMap<String, Int> {
+        val orderOf = HashMap<String, Int>()
+        grps.filter { it.id in map }.sortedWith(compareBy({ it.providerId }, { it.order })).forEach { g ->
+            val r = map.getValue(g.id)
+            val k = if (sub) r.subKey else r.topKey
+            if (k != null) orderOf.putIfAbsent(k, orderOf.size)
+        }
+        return orderOf
+    }
 
     val folders: StateFlow<List<LiveFolder>> =
         combine(officialChannels, folderOfGroup, groups) { chans, map, grps ->
-            val orderOf = HashMap<String, Int>()
-            grps.filter { it.id in map }.sortedWith(compareBy({ it.providerId }, { it.order })).forEach { g ->
-                orderOf.putIfAbsent(map.getValue(g.id).first, orderOf.size)
-            }
+            val orderOf = orderMap(grps, map, sub = false)
             val counts = LinkedHashMap<String, Pair<String, Int>>()
             for (c in chans) {
-                val (key, name) = folderKeyOf(c, map)
-                val prev = counts[key]
-                counts[key] = (prev?.first ?: name) to ((prev?.second ?: 0) + 1)
+                val r = refOf(c, map)
+                val prev = counts[r.topKey]
+                counts[r.topKey] = (prev?.first ?: r.topName) to ((prev?.second ?: 0) + 1)
             }
             counts.map { (k, v) -> LiveFolder(k, v.first, v.second) }
                 .sortedWith(compareBy<LiveFolder> { if (it.key == "others") 1 else 0 }.thenBy { orderOf[it.key] ?: Int.MAX_VALUE })
@@ -107,12 +134,40 @@ class LiveViewModel @Inject constructor(
     /** StreamBD ট্যাবে কোন ফোল্ডার খোলা (null = ফোল্ডারের তালিকা)। */
     private val _openFolder = MutableStateFlow<String?>(null)
     val openFolder: StateFlow<String?> = _openFolder.asStateFlow()
-    /** সর্বশেষ খোলা ফোল্ডার: ফিরে এলে সেখানে ফোকাস রাখার জন্য। */
+    /** খোলা সাব-ফোল্ডার (দ্বিতীয় স্তর), না থাকলে null। */
+    private val _openSub = MutableStateFlow<String?>(null)
+    val openSub: StateFlow<String?> = _openSub.asStateFlow()
+    /** প্রতিটা স্তরের সর্বশেষ খোলা ফোল্ডার: ফিরে এলে সেখানে ফোকাস রাখার জন্য। */
     private val _lastFolder = MutableStateFlow<String?>(null)
     val lastFolder: StateFlow<String?> = _lastFolder.asStateFlow()
+    private val _lastSub = MutableStateFlow<String?>(null)
+    val lastSub: StateFlow<String?> = _lastSub.asStateFlow()
 
-    fun openFolder(key: String) { _lastFolder.value = key; _openFolder.value = key }
-    fun closeFolder() { _openFolder.value = null }
+    private val _openSubName = MutableStateFlow("")
+    val openSubName: StateFlow<String> = _openSubName.asStateFlow()
+
+    fun openFolder(key: String, name: String = "") {
+        if (key.indexOf(FOLDER_SEP) >= 0) { _lastSub.value = key; _openSub.value = key; _openSubName.value = name }
+        else { _lastFolder.value = key; _openFolder.value = key; _openSub.value = null }
+    }
+    /** এক ধাপ পেছনে: সাব-ফোল্ডার থেকে উপরের ফোল্ডারে, সেখান থেকে তালিকায়। */
+    fun closeFolder() { if (_openSub.value != null) _openSub.value = null else _openFolder.value = null }
+
+    /** খোলা ফোল্ডারের সাব-ফোল্ডার (সাব-ফোল্ডার খোলা থাকলে খালি)। */
+    val subFolders: StateFlow<List<LiveFolder>> =
+        combine(officialChannels, folderOfGroup, groups, _openFolder, _openSub) { chans, map, grps, top, sub ->
+            if (top == null || sub != null) return@combine emptyList()
+            val orderOf = orderMap(grps, map, sub = true)
+            val counts = LinkedHashMap<String, Pair<String, Int>>()
+            for (c in chans) {
+                val r = refOf(c, map)
+                if (r.topKey != top || r.subKey == null) continue
+                val prev = counts[r.subKey]
+                counts[r.subKey] = (prev?.first ?: r.subName.orEmpty()) to ((prev?.second ?: 0) + 1)
+            }
+            counts.map { (k, v) -> LiveFolder(k, v.first, v.second) }
+                .sortedBy { orderOf[it.key] ?: Int.MAX_VALUE }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** ইউজারের আসল ট্যাব: না বাছলে StreamBD চ্যানেল থাকলে সেটাই ডিফল্ট। */
     val selectedGroup: StateFlow<Long?> =
@@ -120,16 +175,35 @@ class LiveViewModel @Inject constructor(
             if (picked == TAB_UNSET) (if (has) LIVE_GROUP_STREAMBD else null) else picked
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** বর্তমান দৃশ্যের চ্যানেল। Left/Right zap এই তালিকার ভেতরে ঘোরে। */
+    /** বর্তমান স্কোপের সব চ্যানেল (খোলা ফোল্ডারের সাব-ফোল্ডারসহ)। Left/Right zap এই তালিকার ভেতরে ঘোরে। */
     val channels: StateFlow<List<ChannelEntity>> =
-        combine(allChannels, selectedGroup, _openFolder, officialChannels, folderOfGroup) { all, tab, folder, official, map ->
+        combine(allChannels, selectedGroup, _openFolder, _openSub, officialChannels, folderOfGroup) { a ->
+            @Suppress("UNCHECKED_CAST")
+            val all = a[0] as List<ChannelEntity>
+            val tab = a[1] as Long?
+            val top = a[2] as String?
+            val sub = a[3] as String?
+            @Suppress("UNCHECKED_CAST")
+            val official = a[4] as List<ChannelEntity>
+            @Suppress("UNCHECKED_CAST")
+            val map = a[5] as Map<Long, FolderRef>
             when (tab) {
                 null -> all
                 LIVE_GROUP_FAVORITES -> all.filter { it.isFavorite }
-                LIVE_GROUP_STREAMBD ->
-                    if (folder == null) official else official.filter { folderKeyOf(it, map).first == folder }
+                LIVE_GROUP_STREAMBD -> when {
+                    top == null -> official
+                    sub != null -> official.filter { refOf(it, map).subKey == sub }
+                    else -> official.filter { refOf(it, map).topKey == top }
+                }
                 else -> all.filter { it.groupId == tab }
             }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** তালিকায় সরাসরি দেখানোর চ্যানেল: খোলা ফোল্ডারে সাব-ফোল্ডারের চ্যানেল বাদে শুধু নিজের। */
+    val listChannels: StateFlow<List<ChannelEntity>> =
+        combine(channels, selectedGroup, _openFolder, _openSub, folderOfGroup) { list, tab, top, sub, map ->
+            if (tab == LIVE_GROUP_STREAMBD && top != null && sub == null) list.filter { refOf(it, map).subKey == null }
+            else list
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val playerState: StateFlow<PlayerUiState> = playerManager.state
