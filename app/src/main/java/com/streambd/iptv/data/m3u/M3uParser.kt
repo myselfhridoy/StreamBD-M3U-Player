@@ -42,6 +42,8 @@ data class ParsedChannel(
 
     /** tvg-chno: প্লেলিস্টে ঠিক করা চ্যানেল নম্বর (১–৯৯৯৯)। */
     val chno: Int? = null,
+    /** tvg-subtitle: Movie/Series সারির নিচের ছোট লেখা (সাল, রেটিং, জেনর...)। */
+    val subtitle: String? = null,
 )
 
 object M3uParser {
@@ -153,6 +155,7 @@ object M3uParser {
                         tmdbId = p.tmdbId,
                         seekPreview = p.seekPreview,
                         chno = p.chno,
+                        subtitle = p.subtitle,
                     )
                 }
             }
@@ -197,6 +200,7 @@ object M3uParser {
             tmdbId = attrs["tvg-tmdb"]?.takeIf { it.isNotBlank() },
             seekPreview = attrs["seek_preview"]?.takeIf { it.isNotBlank() },
             chno = parseChno(attrs),
+            subtitle = attrs["tvg-subtitle"]?.takeIf { it.isNotBlank() },
         )
         
         // tvg-rec এবং catchup-enable পার্স করা
@@ -325,6 +329,7 @@ object M3uParser {
         val tmdbId: String?,
         val seekPreview: String?,
         val chno: Int?,
+        val subtitle: String?,
     ) {
         var extGroup: String? = null
         val headers = LinkedHashMap<String, String>()
