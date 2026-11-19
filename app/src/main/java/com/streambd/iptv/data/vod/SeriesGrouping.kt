@@ -18,12 +18,13 @@ data class EpisodeEntry(
     val logoUrl: String?,
     val isLocked: Boolean,
     val isFavorite: Boolean,
+    val subtitle: String? = null,
 )
 
 object SeriesGrouping {
 
     fun groups(items: List<ChannelEntity>): List<SeriesGroup> =
-        items.groupBy { SeriesTitleParser.parse(it.name).series }
+        items.groupBy { seriesOf(it) }
             .map { (name, episodes) ->
                 SeriesGroup(name, episodes.firstOrNull()?.logoUrl, episodes.size)
             }
@@ -31,7 +32,7 @@ object SeriesGrouping {
 
     fun episodes(items: List<ChannelEntity>, seriesName: String): List<EpisodeEntry> =
         items.mapNotNull { channel ->
-            val parsed = SeriesTitleParser.parse(channel.name)
+            val parsed = parsedOf(channel)
             if (parsed.series != seriesName) return@mapNotNull null
             EpisodeEntry(
                 id = channel.id,
@@ -43,6 +44,7 @@ object SeriesGrouping {
                 logoUrl = channel.logoUrl,
                 isLocked = channel.isLocked,
                 isFavorite = channel.isFavorite,
+                subtitle = channel.subtitle,
             )
         }.sortedWith(
             compareBy(
@@ -51,6 +53,16 @@ object SeriesGrouping {
                 { it.fullName },
             ),
         )
+
+    /** add-on/প্লেলিস্ট যদি সিরিজের নাম (serie-title) ও সিজন/এপিসোড নম্বর দেয়, সেটাই সত্য; না হলে নাম থেকে আন্দাজ। */
+    private fun parsedOf(c: ChannelEntity): ParsedSeries {
+        val byName = SeriesTitleParser.parse(c.name)
+        val series = c.serieTitle?.trim()?.takeIf { it.isNotEmpty() } ?: byName.series
+        val title = if (series != byName.series) c.name else byName.title
+        return ParsedSeries(series, c.season ?: byName.season, c.episode ?: byName.episode, title)
+    }
+
+    private fun seriesOf(c: ChannelEntity): String = parsedOf(c).series
 
     private fun buildDisplayName(parsed: ParsedSeries): String {
         val marker = when {
