@@ -248,7 +248,7 @@ class ChannelRepository @Inject constructor(
                 catchupType = p.catchupType, catchupDays = p.catchupDays, catchupSource = p.catchupSource, catchupEnable = p.catchupEnable,
                 tvgShift = p.tvgShift, parentCode = p.parentCode, adult = p.adult, audioTrack = p.audioTrack, videoTrack = p.videoTrack,
                 drmScheme = p.drmScheme, drmLicense = p.drmLicense, season = p.season, episode = p.episode, serieId = p.serieId, serieTitle = p.serieTitle,
-                isPremium = isPremium, providerId = providerId, chno = p.chno,
+                isPremium = isPremium, providerId = providerId, chno = p.chno, subtitle = p.subtitle,
             )
             if (mergeable) mainIndex[key] = channelRows.lastIndex
         }
