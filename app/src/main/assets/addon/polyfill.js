@@ -331,6 +331,11 @@
         if (gt) a += ' group-title="' + q(gt) + '"';
         if (c.chno) a += ' tvg-chno="' + q(c.chno) + '"';
         if (c.type) a += ' tvg-type="' + q(c.type) + '"';
+        // Movie/Series: সিরিজের নাম + সিজন/এপিসোড নম্বর (নাম থেকে আন্দাজের চেয়ে নির্ভরযোগ্য) ও সারির নিচের লেখা
+        if (c.seriesName) a += ' serie-title="' + q(c.seriesName) + '"';
+        if (c.season !== undefined && c.season !== null && c.season !== '') a += ' tvg-season="' + q(c.season) + '"';
+        if (c.episode !== undefined && c.episode !== null && c.episode !== '') a += ' tvg-episode="' + q(c.episode) + '"';
+        if (c.subtitle) a += ' tvg-subtitle="' + q(c.subtitle) + '"';
         out.push(a + ',' + q(c.name));
         if (c.userAgent) out.push('#EXTVLCOPT:http-user-agent=' + q(c.userAgent));
         if (c.referrer) out.push('#EXTVLCOPT:http-referrer=' + q(c.referrer));
