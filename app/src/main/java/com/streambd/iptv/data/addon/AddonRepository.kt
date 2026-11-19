@@ -231,7 +231,12 @@ class AddonRepository @Inject constructor(
             throw AddonException(result.error ?: "The add-on failed.")
         }
 
-        val parsed = PlaylistParserFactory.parse(body)
+        val parsed = try {
+            PlaylistParserFactory.parse(body)
+        } catch (e: OutOfMemoryError) {
+            addons.setRunResult(addon.id, storageJson, now, "Error: out of memory", logText)
+            throw AddonException("Not enough memory to read this add-on's list. Return fewer items per run.")
+        }
         val list = parsed.channels.filter { !it.isNestedPlaylist }
         if (list.isEmpty()) {
             addons.setRunResult(addon.id, storageJson, now, "Error: no channels returned", logText)
@@ -247,6 +252,9 @@ class AddonRepository @Inject constructor(
         } catch (e: Exception) {
             addons.setRunResult(addon.id, storageJson, now, "Error: could not save channels", logText)
             throw AddonException("Could not save the channels on this device.", e)
+        } catch (e: OutOfMemoryError) {
+            addons.setRunResult(addon.id, storageJson, now, "Error: out of memory while saving", logText)
+            throw AddonException("Not enough memory to save the channels. Return fewer items per run.")
         }
 
         var summary = "Imported $count channels."

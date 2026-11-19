@@ -229,6 +229,13 @@ class AddonEngine @Inject constructor(
                 } catch (e: Exception) {
                     if (failure == null) failure = e.message ?: e.javaClass.simpleName
                     true
+                } catch (e: OutOfMemoryError) {
+                    // কম RAM-এর TV বক্সে বড় পেজ/তালিকায় মেমরি শেষ হলে অ্যাপ ক্র্যাশ না করে add-on ব্যর্থ হোক
+                    if (failure == null) failure = "Not enough memory on this device for this add-on. Try fewer items per run."
+                    true
+                } catch (e: StackOverflowError) {
+                    if (failure == null) failure = "The add-on used too much stack (recursion too deep)."
+                    true
                 }
             }
 
