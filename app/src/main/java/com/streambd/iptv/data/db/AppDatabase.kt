@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WatchProgressEntity::class, // ভার্সন ৫: Continue Watching
         AddonEntity::class, // ভার্সন ৯: Add-ons
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +24,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun providers(): ProviderDao
     abstract fun watchProgress(): WatchProgressDao
     abstract fun addons(): AddonDao
+}
+
+/** ৯ → ১০: Movie/Series-এর subtitle কলাম। শুধু কলাম যোগ, কিছু মোছে না। */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `subtitle` TEXT")
+    }
 }
 
 /** ৮ → ৯: Add-ons। শুধু নতুন টেবিল, কিছু মোছে না। */

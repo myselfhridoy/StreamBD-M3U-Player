@@ -54,6 +54,9 @@ data class ChannelEntity(
     /** প্লেলিস্টের tvg-chno: থাকলে চ্যানেল সবসময় এই নম্বর পায়। */
     val chno: Int? = null,
 
+    /** Movie/Series সারির নিচের ছোট লেখা (add-on-এর `subtitle`)। */
+    val subtitle: String? = null,
+
     /** অন্য প্লেলিস্টে একই চ্যানেলের সোর্স (renumber() প্রতিবার নতুন করে হিসাব করে)। */
     val extraSources: String? = null,
     /** true হলে অন্য প্লেলিস্টের মূল চ্যানেলের ব্যাকআপ হয়ে লুকানো আছে; তালিকায় দেখায় না। */
