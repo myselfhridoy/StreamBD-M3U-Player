@@ -360,6 +360,21 @@
   // প্লে করার মুহূর্তে চলে: resolveStream(info) → { url, userAgent, referrer, origin, headers, drmScheme, drmLicense } বা শুধু url স্ট্রিং
   g.__resolveAddon = async function (infoJson) {
     var info0 = JSON.parse(infoJson);
+    if (info0 && info0.mode === 'sources') {
+      // TMDB টাইটেলের সোর্স: findSources(info) → [{name, url, resolve, quality, subtitle, userAgent, referrer, origin}]
+      if (typeof g.findSources !== 'function') throw new Error('findSources() is not defined');
+      var found = await g.findSources(info0);
+      if (!Array.isArray(found)) throw new Error('findSources() must return an array');
+      var srcs = [];
+      for (var j = 0; j < found.length && j < 60; j++) {
+        var f = found[j];
+        if (!f || !f.url) continue;
+        var o3 = { url: String(f.url), name: String(f.name || ''), resolve: !!f.resolve };
+        ['quality', 'subtitle', 'userAgent', 'referrer', 'origin'].forEach(function (k) { if (f[k]) o3[k] = String(f[k]); });
+        srcs.push(o3);
+      }
+      return JSON.stringify({ sources: srcs });
+    }
     if (info0 && info0.mode === 'episodes') {
       // সিরিজ খোলার সময়: listEpisodes(info) → [{name, url, season, episode, logo, subtitle, resolve, userAgent, referrer, origin}]
       if (typeof g.listEpisodes !== 'function') throw new Error('listEpisodes() is not defined');
