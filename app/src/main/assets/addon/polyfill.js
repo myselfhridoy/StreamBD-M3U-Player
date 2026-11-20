@@ -317,7 +317,8 @@
     build: function (items, o) {
       o = o || {};
       var aid = (typeof addon !== 'undefined' && addon && addon.id) ? String(addon.id) : '';
-      var out = ['#EXTM3U' + (o.epg ? ' x-tvg-url="' + q(Array.isArray(o.epg) ? o.epg.join(',') : o.epg) + '"' : '')];
+      var flags = (o.more ? ' x-sb-more="1"' : '') + (o.append ? ' x-sb-append="1"' : '');
+      var out = ['#EXTM3U' + flags + (o.epg ? ' x-tvg-url="' + q(Array.isArray(o.epg) ? o.epg.join(',') : o.epg) + '"' : '')];
       for (var i = 0; i < items.length; i++) {
         var c = items[i];
         if (!c || !c.url || !c.name) continue;
@@ -336,6 +337,8 @@
         if (c.season !== undefined && c.season !== null && c.season !== '') a += ' tvg-season="' + q(c.season) + '"';
         if (c.episode !== undefined && c.episode !== null && c.episode !== '') a += ' tvg-episode="' + q(c.episode) + '"';
         if (c.subtitle) a += ' tvg-subtitle="' + q(c.subtitle) + '"';
+        // lazy:true (type:'series') → এক সিরিজ = এক লাইন; এপিসোড ইউজার সিরিজ খুললে listEpisodes() দিয়ে আসে
+        if (c.lazy) a += ' tvg-serie="@lazy"';
         out.push(a + ',' + q(c.name));
         if (c.userAgent) out.push('#EXTVLCOPT:http-user-agent=' + q(c.userAgent));
         if (c.referrer) out.push('#EXTVLCOPT:http-referrer=' + q(c.referrer));
@@ -356,6 +359,23 @@
 
   // প্লে করার মুহূর্তে চলে: resolveStream(info) → { url, userAgent, referrer, origin, headers, drmScheme, drmLicense } বা শুধু url স্ট্রিং
   g.__resolveAddon = async function (infoJson) {
+    var info0 = JSON.parse(infoJson);
+    if (info0 && info0.mode === 'episodes') {
+      // সিরিজ খোলার সময়: listEpisodes(info) → [{name, url, season, episode, logo, subtitle, resolve, userAgent, referrer, origin}]
+      if (typeof g.listEpisodes !== 'function') throw new Error('listEpisodes() is not defined');
+      var list = await g.listEpisodes(info0);
+      if (!Array.isArray(list)) throw new Error('listEpisodes() must return an array');
+      var eps = [];
+      for (var i = 0; i < list.length && i < 2000; i++) {
+        var e = list[i];
+        if (!e || !e.url) continue;
+        var o2 = { url: String(e.url), name: String(e.name || ''), resolve: !!e.resolve };
+        ['season', 'episode'].forEach(function (k) { if (e[k] !== undefined && e[k] !== null && e[k] !== '') o2[k] = Number(e[k]) || 0; });
+        ['logo', 'subtitle', 'userAgent', 'referrer', 'origin'].forEach(function (k) { if (e[k]) o2[k] = String(e[k]); });
+        eps.push(o2);
+      }
+      return JSON.stringify({ episodes: eps });
+    }
     if (typeof g.resolveStream !== 'function') throw new Error('resolveStream() is not defined');
     var r = await g.resolveStream(JSON.parse(infoJson));
     if (typeof r === 'string') r = { url: r };
@@ -372,7 +392,11 @@
   g.__runAddon = async function () {
     if (typeof g.generatePlaylist !== 'function') throw new Error('generatePlaylist() is not defined');
     var r = await g.generatePlaylist();
-    if (r && typeof r === 'object' && !Array.isArray(r) && Array.isArray(r.channels)) r = g.m3u.build(r.channels, { epg: r.epg });
+    // {items|channels, more:true, append:true}: ধাপে ধাপে স্ক্যান। more=true হলে অ্যাপ নিজেই আবার চালায়;
+    // append=true হলে আগের আইটেম রেখে নতুনগুলো যোগ হয় (প্রথম ধাপে append দেবেন না → পুরনো তালিকা বদলে যাবে)।
+    if (r && typeof r === 'object' && !Array.isArray(r) && (Array.isArray(r.items) || Array.isArray(r.channels))) {
+      r = g.m3u.build(r.items || r.channels, { epg: r.epg, more: !!r.more, append: !!r.append });
+    }
     else if (Array.isArray(r)) r = g.m3u.build(r);
     return r === undefined || r === null ? '' : String(r);
   };
