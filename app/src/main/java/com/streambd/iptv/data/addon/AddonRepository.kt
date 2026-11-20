@@ -48,6 +48,7 @@ class AddonRepository @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private companion object {
+        const val MORE_KEY = "__sb_more"
         const val MAX_DOWNLOAD_CHARS = 1_000_000
         const val PREFS = "streambd_addons"
         const val KEY_OPT_OUT = "auto_install_opt_out"
@@ -215,15 +216,34 @@ class AddonRepository @Inject constructor(
     }
 
     /** স্ক্রিপ্ট চালিয়ে চ্যানেল ইমপোর্ট। সফল হলে সারাংশ ফেরত, ব্যর্থ হলে [AddonException]। */
-    suspend fun refresh(providerId: Long): String {
+    suspend fun refresh(providerId: Long, maxRounds: Int = 1): String {
+        var out: Pair<String, Boolean>
+        var round = 0
+        while (true) {
+            round += 1
+            out = refreshOnce(providerId)
+            if (!out.second || round >= maxRounds) break
+        }
+        return out.first
+    }
+
+    /** (সারাংশ, আরও স্ক্যান বাকি?) */
+    private suspend fun refreshOnce(providerId: Long): Pair<String, Boolean> {
         val addon = addons.getByProviderId(providerId) ?: throw AddonException("Add-on not found.")
         if (!addon.enabled) throw AddonException("This add-on is turned off.")
         val manifest = AddonManifest.parse(addon.manifest)
 
         val result = engine.run(addon.script, manifest, jsonToMap(addon.settings), jsonToMap(addon.storage))
         val logText = result.log.joinToString("\n").take(8_000)
-        val storageJson = JSONObject().also { o -> for ((k, v) in result.storage) o.put(k, v) }.toString()
         val now = System.currentTimeMillis()
+
+        // ধাপে ধাপে স্ক্যান: #EXTM3U লাইনে x-sb-more / x-sb-append
+        val head = result.m3u?.lineSequence()?.firstOrNull { it.isNotBlank() }.orEmpty()
+        val more = head.startsWith("#EXTM3U") && head.contains("x-sb-more=\"1\"")
+        val append = head.startsWith("#EXTM3U") && head.contains("x-sb-append=\"1\"")
+        val storageMap = HashMap(result.storage)
+        if (result.error == null) storageMap[MORE_KEY] = if (more) "1" else "0"
+        val storageJson = JSONObject().also { o -> for ((k, v) in storageMap) o.put(k, v) }.toString()
 
         val body = result.m3u
         if (result.error != null || body == null) {
@@ -238,6 +258,11 @@ class AddonRepository @Inject constructor(
             throw AddonException("Not enough memory to read this add-on's list. Return fewer items per run.")
         }
         val list = parsed.channels.filter { !it.isNestedPlaylist }
+        if (list.isEmpty() && append) {
+            // শেষ ধাপে নতুন কিছু না থাকলেও ঠিক আছে
+            addons.setRunResult(addon.id, storageJson, now, if (more) "OK: scanning continues" else "OK", logText)
+            return "No new items." to more
+        }
         if (list.isEmpty()) {
             addons.setRunResult(addon.id, storageJson, now, "Error: no channels returned", logText)
             throw AddonException("The add-on returned no channels.")
@@ -246,7 +271,7 @@ class AddonRepository @Inject constructor(
         val count = try {
             // Catalog (সাইন করা) add-on অফিসিয়াল: প্রিমিয়াম আইকন পায়, ক্যাটালগ দিয়ে সাজে
             val official = addon.origin == "CATALOG"
-            channels.import(list, isPremium = official, providerId = providerId, official = official, keepGroups = manifest.keepGroups)
+            channels.import(list, isPremium = official, providerId = providerId, official = official, keepGroups = manifest.keepGroups, append = append)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -269,8 +294,8 @@ class AddonRepository @Inject constructor(
                 ""
             }
         }
-        addons.setRunResult(addon.id, storageJson, now, "OK: $count channels", logText)
-        return summary
+        addons.setRunResult(addon.id, storageJson, now, "OK: $count channels" + (if (more) " (more coming)" else ""), logText)
+        return (summary + (if (more) " More will load in the background." else "")) to more
     }
 
     /**
@@ -282,6 +307,12 @@ class AddonRepository @Inject constructor(
         if (!a.enabled) return false
         val m = runCatching { AddonManifest.parse(a.manifest) }.getOrNull() ?: return false
         if (m.refreshMinutes <= 0) return false
+        // স্ক্যান বাকি থাকলে (x-sb-more) ১ মিনিট পরই আবার; এক চেকে কয়েক রাউন্ড
+        val moreLeft = jsonToMap(a.storage)[MORE_KEY] == "1"
+        if (moreLeft && System.currentTimeMillis() - a.lastRunAt >= 60_000L) {
+            refresh(providerId, maxRounds = 8)
+            return true
+        }
         val failed = a.lastStatus?.startsWith("Error") == true
         val minutes = if (failed) minOf(m.refreshMinutes, 30) else m.refreshMinutes
         if (System.currentTimeMillis() - a.lastRunAt < minutes * 60_000L) return false
