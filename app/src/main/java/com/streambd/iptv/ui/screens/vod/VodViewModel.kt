@@ -31,6 +31,20 @@ import javax.inject.Inject
 
 const val VOD_GROUP_FAVORITES: Long = -1L
 
+/** group-title-এ `A › B › C` লিখলে যত খুশি স্তরের ফোল্ডার হয় (add-on: group + subgroup, বা subgroup-এ নিজেই › দিয়ে)। */
+private const val FOLDER_SEP = '\u203A'
+
+private fun folderSegs(name: String): List<String> =
+    name.split(FOLDER_SEP).map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(name.trim()) }
+
+/** ফোল্ডার-ভিউয়ের একটি সারি: ফোল্ডার, মুভি/এপিসোড, বা সিরিজ। */
+sealed interface VodRow {
+    val key: String
+    data class Folder(val name: String, val count: Int?) : VodRow { override val key get() = "f:$name" }
+    data class Item(val item: ChannelEntity) : VodRow { override val key get() = "i:${item.id}" }
+    data class Series(val group: SeriesGroup) : VodRow { override val key get() = "s:${group.name}" }
+}
+
 @HiltViewModel
 class VodViewModel @Inject constructor(
     private val repo: ChannelRepository,
@@ -81,6 +95,73 @@ class VodViewModel @Inject constructor(
                 null -> all
                 VOD_GROUP_FAVORITES -> all.filter { it.isFavorite }
                 else -> all.filter { it.groupId == groupId }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // ── ফোল্ডার নেভিগেশন (যত স্তর) ──
+    /** উপরের ট্যাব: প্রতিটা গ্রুপ-নামের প্রথম অংশ (id = সেই নামের প্রথম গ্রুপের id)। সমতল প্লেলিস্টে আগের মতোই প্রতি গ্রুপে একটা ট্যাব। */
+    val topTabs: StateFlow<List<Pair<Long, String>>> =
+        groups.map { gs ->
+            val seen = HashSet<String>()
+            gs.mapNotNull { g ->
+                val top = folderSegs(g.name).first()
+                if (seen.add(top.lowercase())) g.id to top else null
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** ট্যাবের নিচে কোথায় আছি (ফোল্ডারের নামের তালিকা)। খালি = ট্যাবের মূল স্তর। */
+    private val _path = MutableStateFlow<List<String>>(emptyList())
+    val path: StateFlow<List<String>> = _path.asStateFlow()
+
+    /** প্রতি স্তরে "কোন সারিতে ছিলাম": Back দিলে ঠিক সেখানেই ফোকাস ফেরে। */
+    private val levelFocus = HashMap<String, Int>()
+    private fun levelKey(path: List<String> = _path.value) = (selectedGroupId.value?.toString() ?: "all") + "|" + path.joinToString("/")
+    fun focusFor(): Int = levelFocus[levelKey()] ?: 0
+
+    fun openFolder(name: String, rowIndex: Int) {
+        levelFocus[levelKey()] = rowIndex
+        _path.value = _path.value + name
+        selectedSeries.value = null
+    }
+
+    fun closeFolder() {
+        if (_path.value.isEmpty()) return
+        _path.value = _path.value.dropLast(1)
+    }
+
+    val rows: StateFlow<List<VodRow>> =
+        combine(allItems, groups, selectedGroupId, _path) { all, grps, sel, path ->
+            val segMap = grps.associate { it.id to folderSegs(it.name) }
+            val nested = segMap.values.any { it.size > 1 }
+            fun itemRows(list: List<ChannelEntity>): List<VodRow> =
+                if (kind == ChannelKind.SERIES) SeriesGrouping.groups(list).map { VodRow.Series(it) } else list.map { VodRow.Item(it) }
+
+            when {
+                sel == VOD_GROUP_FAVORITES -> all.filter { it.isFavorite }.map { VodRow.Item(it) }
+                sel == null && !nested -> itemRows(all)
+                !nested -> itemRows(all.filter { it.groupId == sel })
+                else -> {
+                    val top = if (sel == null) null else segMap[sel]?.first()
+                    val base = if (top == null) path else listOf(top) + path
+                    val folders = LinkedHashMap<String, Pair<String, Int>>() // lower → (display, count)
+                    val direct = ArrayList<ChannelEntity>()
+                    for (c in all) {
+                        val s = segMap[c.groupId] ?: continue
+                        if (s.size < base.size) continue
+                        var ok = true
+                        for (i in base.indices) if (!s[i].equals(base[i], ignoreCase = true)) { ok = false; break }
+                        if (!ok) continue
+                        if (s.size == base.size) direct += c
+                        else {
+                            val nm = s[base.size]
+                            val cur = folders[nm.lowercase()]
+                            folders[nm.lowercase()] = nm to ((cur?.second ?: 0) + 1)
+                        }
+                    }
+                    val folderRows = folders.values.sortedWith(compareBy({ !it.first.first().isLetter() }, { it.first.lowercase() }))
+                        .map { VodRow.Folder(it.first, if (kind == ChannelKind.SERIES) null else it.second) }
+                    folderRows + itemRows(direct)
+                }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -136,6 +217,7 @@ class VodViewModel @Inject constructor(
 
     fun selectGroup(id: Long?) {
         selectedGroupId.value = id
+        _path.value = emptyList()
         selectedSeries.value = null
     }
 
@@ -144,7 +226,8 @@ class VodViewModel @Inject constructor(
         lazyJob?.cancel()
         lazyEpisodes.value = emptyList()
         _lazyStatus.value = null
-        val group = seriesGroups.value.firstOrNull { it.name == name }
+        val group = (rows.value.firstNotNullOfOrNull { (it as? VodRow.Series)?.group?.takeIf { g -> g.name == name } }
+            ?: seriesGroups.value.firstOrNull { it.name == name })
         val ref = group?.lazyRef ?: return
         _lazyStatus.value = "Loading episodes…"
         lazyJob = viewModelScope.launch {

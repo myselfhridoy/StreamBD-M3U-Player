@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -55,6 +56,9 @@ fun VodScreen(
     val seriesGrid by vm.seriesGroups.collectAsStateWithLifecycle()
     val episodes by vm.episodes.collectAsStateWithLifecycle()
     val lazyStatus by vm.lazyStatus.collectAsStateWithLifecycle()
+    val rows by vm.rows.collectAsStateWithLifecycle()
+    val path by vm.path.collectAsStateWithLifecycle()
+    val topTabs by vm.topTabs.collectAsStateWithLifecycle()
     val state by vm.playerState.collectAsStateWithLifecycle()
     val unlocked by vm.sessionUnlocked.collectAsStateWithLifecycle()
 
@@ -103,9 +107,9 @@ fun VodScreen(
     // এখান থেকে 'চ্যানেল চালু হলে তালিকা বন্ধ' লজিক সরানো হয়েছে।
     // এখন FullscreenPlayer-এর ৬ সেকেন্ডের অটো-হাইড টাইমার এটি সামলাবে।
 
-    val tabs = remember(groups) {
+    val tabs = remember(topTabs) {
         listOf(PanelTab(null, "All"), PanelTab(VOD_GROUP_FAVORITES, "Favorites")) +
-            groups.map { PanelTab(it.id, it.name) }
+            topTabs.map { PanelTab(it.first, it.second) }
     }
 
     val current = allItems.firstOrNull { it.id == playingId } ?: state.current
@@ -163,53 +167,61 @@ fun VodScreen(
                             }
                         }
 
-                        isSeries && !favoritesFlat -> PanelList(
-                            items = seriesGrid,
-                            key = { it.name },
-                            startIndex = 0,
-                            resetKey = selected,
-                            emptyText = if (groups.isEmpty()) "No series yet.\nAdd a playlist in Providers (Settings)." else "No series in this group.",
-                            emptyActionLabel = if (allItems.isEmpty()) "Add a provider" else null,
-                            onEmptyAction = onOpenProviders,
-                        ) { group, rowModifier ->
-                            // সিরিজ গ্রুপের ক্ষেত্রে বাদ দেওয়া হলো, কারণ এখানে সরাসরি প্রিমিয়াম ফ্ল্যাগ নেই
-                            PanelRow(
-                                title = group.name,
-                                modifier = rowModifier,
-                                logoUrl = group.poster,
-                                subtitle = when {
-                                    group.lazyRef != null -> null
-                                    group.episodeCount == 1 -> "1 episode"
-                                    else -> "${group.episodeCount} episodes"
+                        else -> Column(Modifier.fillMaxSize()) {
+                            if (path.isNotEmpty()) BackRow(path.joinToString(" \u203A "), onClick = vm::closeFolder)
+                            PanelList(
+                                items = rows,
+                                key = { it.key },
+                                startIndex = rows.indexOfFirst { it is VodRow.Item && it.item.id == playingId }
+                                    .takeIf { it >= 0 } ?: vm.focusFor(),
+                                resetKey = selected to path,
+                                focusKey = selected to path,
+                                emptyText = when {
+                                    favoritesFlat -> "No favorite series yet.\nLong-press an episode to add one."
+                                    selected == VOD_GROUP_FAVORITES -> "No favorite $noun yet.\nLong-press an item to add one."
+                                    groups.isEmpty() -> "No $noun yet.\nAdd a playlist in Providers (Settings)."
+                                    else -> "No $noun in this group."
                                 },
-                            ) { vm.openSeries(group.name) }
-                        }
+                                emptyActionLabel = if (allItems.isEmpty()) "Add a provider" else null,
+                                onEmptyAction = onOpenProviders,
+                                modifier = Modifier.weight(1f),
+                            ) { row, rowModifier ->
+                                when (row) {
+                                    is VodRow.Folder -> PanelRow(
+                                        title = row.name,
+                                        modifier = rowModifier,
+                                        subtitle = row.count?.let { if (it == 1) "1 title" else "$it titles" },
+                                        leadingIcon = Icons.Filled.Folder,
+                                        showChevron = true,
+                                    ) { vm.openFolder(row.name, rows.indexOf(row)) }
 
-                        else -> PanelList(
-                            items = items,
-                            key = { it.id },
-                            startIndex = items.indexOfFirst { it.id == playingId },
-                            resetKey = selected,
-                            emptyText = when {
-                                favoritesFlat -> "No favorite series yet.\nLong-press an episode to add one."
-                                selected == VOD_GROUP_FAVORITES -> "No favorite $noun yet.\nLong-press an item to add one."
-                                groups.isEmpty() -> "No $noun yet.\nAdd a playlist in Providers (Settings)."
-                                else -> "No $noun in this group."
-                            },
-                            emptyActionLabel = if (allItems.isEmpty()) "Add a provider" else null,
-                            onEmptyAction = onOpenProviders,
-                        ) { item, rowModifier ->
-                            PanelRow(
-                                title = item.name,
-                                modifier = rowModifier,
-                                logoUrl = item.logoUrl,
-                                subtitle = item.subtitle,
-                                playing = item.id == playingId,
-                                locked = item.isLocked,
-                                favorite = item.isFavorite,
-                                isPremium = item.isPremium, // নতুন: মুভির ক্ষেত্রে প্রিমিয়াম চেক
-                                onLongClick = { dialogs.openActions(item.id) },
-                            ) { pick(item) }
+                                    is VodRow.Series -> PanelRow(
+                                        title = row.group.name,
+                                        modifier = rowModifier,
+                                        logoUrl = row.group.poster,
+                                        subtitle = when {
+                                            row.group.lazyRef != null -> null
+                                            row.group.episodeCount == 1 -> "1 episode"
+                                            else -> "${row.group.episodeCount} episodes"
+                                        },
+                                    ) { vm.openSeries(row.group.name) }
+
+                                    is VodRow.Item -> {
+                                        val item = row.item
+                                        PanelRow(
+                                            title = item.name,
+                                            modifier = rowModifier,
+                                            logoUrl = item.logoUrl,
+                                            subtitle = item.subtitle,
+                                            playing = item.id == playingId,
+                                            locked = item.isLocked,
+                                            favorite = item.isFavorite,
+                                            isPremium = item.isPremium,
+                                            onLongClick = { dialogs.openActions(item.id) },
+                                        ) { pick(item) }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -219,7 +231,8 @@ fun VodScreen(
 
     // FullscreenPlayer-এর নিজের BackHandler আগে নিবন্ধিত, এটা পরে, তাই এটার অগ্রাধিকার বেশি:
     // এপিসোড তালিকা খোলা থাকলে Back প্রথমে সিরিজ তালিকায় ফেরে।
-    BackHandler(enabled = seriesOpen && listOpen) { vm.closeSeries() }
+    // Back: এপিসোড → সিরিজ তালিকা → (যত স্তর) ফোল্ডার → উপরের স্তর; প্রতি ধাপে আগের সারিতে ফোকাস ফেরে
+    BackHandler(enabled = listOpen && (seriesOpen || path.isNotEmpty())) { if (seriesOpen) vm.closeSeries() else vm.closeFolder() }
 
     PlayerDialogs(
         dialogs = dialogs,
