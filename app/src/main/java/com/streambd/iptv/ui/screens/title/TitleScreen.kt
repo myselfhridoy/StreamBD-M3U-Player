@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -120,7 +122,7 @@ fun TitleScreen(onBack: () -> Unit, vm: TitleViewModel = hiltViewModel()) {
 @Composable
 private fun InfoColumn(ui: TitleUi, modifier: Modifier) {
     val d = ui.detail ?: return
-    Column(modifier) {
+    Column(modifier.verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth()) {
             AsyncImage(
                 model = TmdbImages.poster(d.item.poster), contentDescription = null, contentScale = ContentScale.Crop,
@@ -140,10 +142,10 @@ private fun InfoColumn(ui: TitleUi, modifier: Modifier) {
         }
         if (d.tagline.isNotBlank()) Text(d.tagline, color = Accent, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
         Text(
-            d.item.overview, color = TextPrimary, fontSize = 13.sp, maxLines = 9, overflow = TextOverflow.Ellipsis,
+            d.item.overview, color = TextPrimary, fontSize = 13.sp, maxLines = 6, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 8.dp),
         )
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
         Text(TMDB_NOTICE, color = TextMuted, fontSize = 10.sp)
     }
 }
@@ -199,10 +201,14 @@ private fun SourcesPanel(ui: TitleUi, vm: TitleViewModel) {
             ui.sources.isEmpty() -> "No source found in your add-ons."
             else -> "${ui.sources.size} source${if (ui.sources.size == 1) "" else "s"} found"
         }
+        val retryFocus = remember { FocusRequester() }
+        LaunchedEffect(ui.searching, ui.sources.isEmpty()) {
+            if (!ui.searching && ui.sources.isEmpty()) { delay(120); runCatching { retryFocus.requestFocus() } }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
             if (ui.searching) { CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)) }
             Text(status, color = TextMuted, fontSize = 13.sp, modifier = Modifier.weight(1f))
-            if (!ui.searching && !ui.noAddons) Chip("Retry", selected = false) { vm.retrySources() }
+            if (!ui.searching) Chip("Retry", selected = false, modifier = Modifier.focusRequester(retryFocus)) { vm.retrySources() }
             if (vm.isTv && ep != null) { Spacer(Modifier.width(8.dp)); Chip("Episodes", selected = false) { vm.backToEpisodes() } }
         }
         val first = remember { FocusRequester() }
@@ -223,12 +229,12 @@ private fun SourcesPanel(ui: TitleUi, vm: TitleViewModel) {
 }
 
 @Composable
-private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun Chip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Text(
         text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
         color = if (selected) Color.Black else TextPrimary,
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(if (selected) Accent else Surface1)
             .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(16.dp))
