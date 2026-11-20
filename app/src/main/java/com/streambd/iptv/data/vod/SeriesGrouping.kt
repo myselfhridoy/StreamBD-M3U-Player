@@ -6,6 +6,9 @@ data class SeriesGroup(
     val name: String,
     val poster: String?,
     val episodeCount: Int,
+    /** lazy সিরিজ (add-on `lazy:true`): এপিসোড এখনও তালিকায় নেই; এই URL দিয়ে add-on-কে জিজ্ঞেস করতে হবে। */
+    val lazyRef: String? = null,
+    val lazyGroupId: Long = 0L,
 )
 
 data class EpisodeEntry(
@@ -19,19 +22,26 @@ data class EpisodeEntry(
     val isLocked: Boolean,
     val isFavorite: Boolean,
     val subtitle: String? = null,
+    /** lazy এপিসোডের জন্য ডেটাবেসে সারি নেই; প্লেয়ারের জন্য এই অস্থায়ী ChannelEntity। */
+    val lazyEntity: ChannelEntity? = null,
 )
 
 object SeriesGrouping {
 
+    const val LAZY_MARK = "@lazy"
+
     fun groups(items: List<ChannelEntity>): List<SeriesGroup> =
         items.groupBy { seriesOf(it) }
             .map { (name, episodes) ->
-                SeriesGroup(name, episodes.firstOrNull()?.logoUrl, episodes.size)
+                val lazy = episodes.firstOrNull { it.serieId == LAZY_MARK }
+                if (lazy != null) SeriesGroup(name, lazy.logoUrl, 0, lazy.streamUrl, lazy.groupId)
+                else SeriesGroup(name, episodes.firstOrNull()?.logoUrl, episodes.size)
             }
             .sortedBy { it.name.lowercase() }
 
     fun episodes(items: List<ChannelEntity>, seriesName: String): List<EpisodeEntry> =
         items.mapNotNull { channel ->
+            if (channel.serieId == LAZY_MARK) return@mapNotNull null // lazy সিরিজের স্থানধারক সারি, এপিসোড নয়
             val parsed = parsedOf(channel)
             if (parsed.series != seriesName) return@mapNotNull null
             EpisodeEntry(
