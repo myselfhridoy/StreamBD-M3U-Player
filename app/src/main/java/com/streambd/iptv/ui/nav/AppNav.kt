@@ -30,6 +30,7 @@ import com.streambd.iptv.ui.screens.resume.ContinueScreen
 import com.streambd.iptv.ui.screens.search.SearchScreen
 import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
+import com.streambd.iptv.ui.screens.title.TitleScreen
 import com.streambd.iptv.ui.screens.vod.VodScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,6 +53,8 @@ object Routes {
     fun vodPlay(kind: String, channelId: Long) = "vod/$kind?playId=$channelId"
     const val GUIDE = "guide"
     const val SEARCH = "search"
+    const val TITLE = "title/{type}/{id}"
+    fun title(type: String, id: Long) = "title/$type/$id"
     const val CONTINUE = "continue_watching"
     const val SETTINGS = "settings"
     const val ACTIVATION = "activation"
@@ -182,8 +185,16 @@ fun AppNav() {
                 onBack = { nav.popBackStack() },
                 onPickLive = { channel -> nav.navigate(Routes.live(channel.id)) },
                 onPlayVod = { channel -> nav.navigate(Routes.vodPlay(channel.kind, channel.id)) },
+                onOpenTitle = { type, id -> nav.navigate(Routes.title(type, id)) },
             )
         }
+        composable(
+            route = Routes.TITLE,
+            arguments = listOf(
+                navArgument("type") { type = NavType.StringType },
+                navArgument("id") { type = NavType.LongType },
+            ),
+        ) { TitleScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
