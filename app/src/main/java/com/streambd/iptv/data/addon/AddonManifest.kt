@@ -34,6 +34,8 @@ data class AddonManifest(
     val keepGroups: Boolean = false,
     /** true = এই add-on `findSources(info)` দিয়ে TMDB টাইটেলের জন্য মুভি/এপিসোডের সোর্স খুঁজে দিতে পারে। */
     val sources: Boolean = false,
+    /** false = "শুধু সার্চ" add-on: generatePlaylist চালানো হয় না, Movies/Series/Live-এ কিছু যোগ হয় না (শুধু TMDB সার্চের সোর্স)। */
+    val catalog: Boolean = true,
 ) {
     val anyDomain: Boolean get() = domains.any { it == "*" }
 
@@ -88,6 +90,7 @@ data class AddonManifest(
                 refreshMinutes = o.optInt("refreshMinutes", DEFAULT_REFRESH_MINUTES).let { if (it <= 0) 0 else it.coerceIn(30, 1440) },
                 keepGroups = o.optBoolean("keepGroups", false),
                 sources = o.optBoolean("sources", false),
+                catalog = o.optBoolean("catalog", true),
             )
         }
     }
