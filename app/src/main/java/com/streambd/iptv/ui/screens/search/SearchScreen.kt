@@ -53,6 +53,7 @@ fun SearchScreen(
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val tmdbResults by vm.tmdbResults.collectAsStateWithLifecycle()
+    val tmdbError by vm.tmdbError.collectAsStateWithLifecycle()
     val fieldFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
@@ -100,10 +101,15 @@ fun SearchScreen(
                     Modifier.weight(1f).fillMaxWidth(),
                 )
                 query.isNotBlank() && results.isEmpty() && tmdbResults.isEmpty() -> SearchMessage(
-                    "No results match ‘$query’",
+                    "No results match ‘$query’" + (tmdbError?.let { "\n\nMovie search: $it" } ?: ""),
                     Modifier.weight(1f).fillMaxWidth(),
                 )
                 else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                    if (tmdbError != null && tmdbResults.isEmpty()) {
+                        item(key = "tmdb_err") {
+                            Text("Movie search: $tmdbError", color = Danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                        }
+                    }
                     if (tmdbResults.isNotEmpty()) {
                         item(key = "h_tmdb") {
                             SectionHeader(if (query.isBlank()) "Trending" else "Movies & Series — find sources in your add-ons")
