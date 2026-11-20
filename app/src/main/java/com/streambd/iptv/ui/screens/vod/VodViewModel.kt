@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
+import com.streambd.iptv.data.addon.AddonResolver
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.GroupEntity
 import com.streambd.iptv.data.m3u.ChannelKind
@@ -37,6 +38,7 @@ class VodViewModel @Inject constructor(
     private val lockController: LockController,
     private val settingsStore: SettingsStore,
     private val watchProgress: WatchProgressRepository,
+    private val addonResolver: AddonResolver,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -90,10 +92,17 @@ class VodViewModel @Inject constructor(
             if (kind == ChannelKind.SERIES) SeriesGrouping.groups(list) else emptyList()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // lazy সিরিজ (add-on `lazy:true`): এপিসোড ডেটাবেসে নেই, সিরিজ খোলার সময় add-on থেকে আসে
+    private val lazyEpisodes = MutableStateFlow<List<EpisodeEntry>>(emptyList())
+    private val _lazyStatus = MutableStateFlow<String?>(null)
+    /** lazy এপিসোড লোড হচ্ছে ("Loading episodes…") বা ব্যর্থ হয়েছে (কারণ); null = স্বাভাবিক। */
+    val lazyStatus: StateFlow<String?> = _lazyStatus.asStateFlow()
+    private var lazyJob: kotlinx.coroutines.Job? = null
+
     val episodes: StateFlow<List<EpisodeEntry>> =
-        combine(allItems, selectedSeries) { all, seriesName ->
+        combine(allItems, selectedSeries, lazyEpisodes) { all, seriesName, lazy ->
             if (kind == ChannelKind.SERIES && seriesName != null) {
-                SeriesGrouping.episodes(all, seriesName)
+                SeriesGrouping.episodes(all, seriesName).ifEmpty { lazy }
             } else {
                 emptyList()
             }
@@ -132,9 +141,48 @@ class VodViewModel @Inject constructor(
 
     fun openSeries(name: String) {
         selectedSeries.value = name
+        lazyJob?.cancel()
+        lazyEpisodes.value = emptyList()
+        _lazyStatus.value = null
+        val group = seriesGroups.value.firstOrNull { it.name == name }
+        val ref = group?.lazyRef ?: return
+        _lazyStatus.value = "Loading episodes…"
+        lazyJob = viewModelScope.launch {
+            try {
+                val list = addonResolver.listEpisodes(ref, name)
+                val entries = list.map { e ->
+                    val id = java.util.UUID.nameUUIDFromBytes("lazy|$ref|${e.streamUrl}".toByteArray()).mostSignificantBits
+                    val label = e.name.ifBlank {
+                        if (e.season != null && e.episode != null) "S%02dE%02d".format(e.season, e.episode) else name
+                    }
+                    val entity = ChannelEntity(
+                        id = id, number = 0, name = label, logoUrl = e.logo ?: group.poster,
+                        streamUrl = e.streamUrl, groupId = group.lazyGroupId, tvgId = null,
+                        kind = ChannelKind.SERIES.name, season = e.season, episode = e.episode,
+                        serieTitle = name, subtitle = e.subtitle,
+                    )
+                    EpisodeEntry(
+                        id = id, season = e.season, episode = e.episode, displayName = label, fullName = label,
+                        streamUrl = e.streamUrl, logoUrl = e.logo ?: group.poster, isLocked = false, isFavorite = false,
+                        subtitle = e.subtitle, lazyEntity = entity,
+                    )
+                }.sortedWith(compareBy({ it.season ?: Int.MAX_VALUE }, { it.episode ?: Int.MAX_VALUE }, { it.fullName }))
+                lazyEpisodes.value = entries
+                _lazyStatus.value = if (entries.isEmpty()) "No episodes found." else null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _lazyStatus.value = "Could not load episodes: ${e.message ?: "unknown error"}"
+            } catch (e: OutOfMemoryError) {
+                _lazyStatus.value = "Could not load episodes (not enough memory)."
+            }
+        }
     }
 
     fun closeSeries() {
+        lazyJob?.cancel()
+        lazyEpisodes.value = emptyList()
+        _lazyStatus.value = null
         selectedSeries.value = null
     }
 
@@ -155,7 +203,7 @@ class VodViewModel @Inject constructor(
         val i = eps.indexOfFirst { it.id == cur.id }
         if (i < 0) return false
         val nextId = eps.getOrNull(i + 1)?.id ?: return false
-        val next = allItems.value.firstOrNull { it.id == nextId } ?: return false
+        val next = allItems.value.firstOrNull { it.id == nextId } ?: eps.getOrNull(i + 1)?.lazyEntity ?: return false
         if (next.isLocked && !lockController.unlocked.value) return false
         play(next)
         return true

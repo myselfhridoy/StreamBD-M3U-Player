@@ -54,6 +54,7 @@ fun VodScreen(
     val seriesName by vm.selectedSeriesName.collectAsStateWithLifecycle()
     val seriesGrid by vm.seriesGroups.collectAsStateWithLifecycle()
     val episodes by vm.episodes.collectAsStateWithLifecycle()
+    val lazyStatus by vm.lazyStatus.collectAsStateWithLifecycle()
     val state by vm.playerState.collectAsStateWithLifecycle()
     val unlocked by vm.sessionUnlocked.collectAsStateWithLifecycle()
 
@@ -139,7 +140,7 @@ fun VodScreen(
                                 key = { it.id },
                                 startIndex = episodes.indexOfFirst { it.id == playingId },
                                 resetKey = seriesName,
-                                emptyText = "No episodes found.",
+                                emptyText = lazyStatus ?: "No episodes found.",
                                 modifier = Modifier.weight(1f),
                             ) { episode, rowModifier ->
                                 // নতুন: এপিসোডের ক্ষেত্রে allItems থেকে প্রিমিয়াম চেক করা হচ্ছে
@@ -154,9 +155,10 @@ fun VodScreen(
                                     locked = episode.isLocked,
                                     favorite = episode.isFavorite,
                                     isPremium = isPrem, // নতুন
-                                    onLongClick = { dialogs.openActions(episode.id) },
+                                    // lazy এপিসোডের ডেটাবেসে সারি নেই, তাই ফেভারিট/লক মেনু নেই
+                                    onLongClick = if (episode.lazyEntity == null) ({ dialogs.openActions(episode.id) }) else null,
                                 ) {
-                                    allItems.firstOrNull { it.id == episode.id }?.let(::pick)
+                                    (allItems.firstOrNull { it.id == episode.id } ?: episode.lazyEntity)?.let(::pick)
                                 }
                             }
                         }
@@ -175,7 +177,11 @@ fun VodScreen(
                                 title = group.name,
                                 modifier = rowModifier,
                                 logoUrl = group.poster,
-                                subtitle = if (group.episodeCount == 1) "1 episode" else "${group.episodeCount} episodes",
+                                subtitle = when {
+                                    group.lazyRef != null -> null
+                                    group.episodeCount == 1 -> "1 episode"
+                                    else -> "${group.episodeCount} episodes"
+                                },
                             ) { vm.openSeries(group.name) }
                         }
 
