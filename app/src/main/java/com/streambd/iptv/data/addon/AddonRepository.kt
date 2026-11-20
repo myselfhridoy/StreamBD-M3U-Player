@@ -227,11 +227,25 @@ class AddonRepository @Inject constructor(
         return out.first
     }
 
+    /** ম্যানিফেস্টে catalog:false, অথবা ইউজারের "catalog" সেটিং off/no/false/0 হলে add-on শুধু সার্চে ব্যবহার হয়। */
+    private fun isSearchOnly(m: AddonManifest, settings: Map<String, String>): Boolean {
+        if (!m.catalog) return true
+        return settings["catalog"]?.trim()?.lowercase() in setOf("off", "no", "false", "0")
+    }
+
     /** (সারাংশ, আরও স্ক্যান বাকি?) */
     private suspend fun refreshOnce(providerId: Long): Pair<String, Boolean> {
         val addon = addons.getByProviderId(providerId) ?: throw AddonException("Add-on not found.")
         if (!addon.enabled) throw AddonException("This add-on is turned off.")
         val manifest = AddonManifest.parse(addon.manifest)
+
+        // শুধু-সার্চ add-on: স্ক্যান নেই, তালিকায় কিছু যোগ হয় না
+        if (isSearchOnly(manifest, jsonToMap(addon.settings))) {
+            // আগের স্ক্যানের তালিকা ও কার্সর মুছে দেওয়া হয় (পরে আবার on করলে নতুন করে শুরু)
+            channels.clearProviderData(addon.providerId)
+            addons.update(addon.copy(storage = "{}", lastRunAt = System.currentTimeMillis(), lastStatus = null, lastLog = "Search-only add-on: no catalog to scan."))
+            return "Search-only add-on: nothing to scan. It is used from Search." to false
+        }
 
         val result = engine.run(addon.script, manifest, jsonToMap(addon.settings), jsonToMap(addon.storage))
         val logText = result.log.joinToString("\n").take(8_000)
@@ -306,7 +320,7 @@ class AddonRepository @Inject constructor(
         val a = addons.getByProviderId(providerId) ?: return false
         if (!a.enabled) return false
         val m = runCatching { AddonManifest.parse(a.manifest) }.getOrNull() ?: return false
-        if (m.refreshMinutes <= 0) return false
+        if (m.refreshMinutes <= 0 || isSearchOnly(m, jsonToMap(a.settings))) return false
         // স্ক্যান বাকি থাকলে (x-sb-more) ১ মিনিট পরই আবার; এক চেকে কয়েক রাউন্ড
         val moreLeft = jsonToMap(a.storage)[MORE_KEY] == "1"
         if (moreLeft && System.currentTimeMillis() - a.lastRunAt >= 60_000L) {
@@ -336,6 +350,7 @@ class AddonRepository @Inject constructor(
         .put("domains", org.json.JSONArray(m.domains))
         .put("allowLocal", m.allowLocal).put("apiVersion", m.apiVersion)
         .put("refreshMinutes", m.refreshMinutes).put("keepGroups", m.keepGroups)
+        .put("sources", m.sources).put("catalog", m.catalog)
         .put(
             "settings",
             org.json.JSONArray().also { arr ->
