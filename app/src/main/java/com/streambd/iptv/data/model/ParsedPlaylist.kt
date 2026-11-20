@@ -9,4 +9,7 @@ import com.streambd.iptv.data.m3u.ParsedChannel
 data class ParsedPlaylist(
     val channels: List<ParsedChannel>,
     val epgUrls: List<String> = emptyList(),
+    /** `#EXTM3U x-sb-folders="1"`: প্লেলিস্ট চায় Live TV-তে `A › B › C` ফোল্ডার হয়ে দেখাক। */
+    val folders: Boolean = false,
 )
+
