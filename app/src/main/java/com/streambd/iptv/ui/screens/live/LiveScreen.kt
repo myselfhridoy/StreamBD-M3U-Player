@@ -47,12 +47,10 @@ fun LiveScreen(
     val groups by vm.groups.collectAsStateWithLifecycle()
     val userGroups by vm.userGroups.collectAsStateWithLifecycle()
     val hasStreamBd by vm.hasStreamBd.collectAsStateWithLifecycle()
+    val folderTabs by vm.folderTabs.collectAsStateWithLifecycle()
+    val inFolderTab by vm.inFolderTab.collectAsStateWithLifecycle()
+    val path by vm.path.collectAsStateWithLifecycle()
     val folders by vm.folders.collectAsStateWithLifecycle()
-    val openFolder by vm.openFolder.collectAsStateWithLifecycle()
-    val openSub by vm.openSub.collectAsStateWithLifecycle()
-    val lastFolder by vm.lastFolder.collectAsStateWithLifecycle()
-    val lastSub by vm.lastSub.collectAsStateWithLifecycle()
-    val subFolders by vm.subFolders.collectAsStateWithLifecycle()
     val listChannels by vm.listChannels.collectAsStateWithLifecycle()
     val selected by vm.selectedGroup.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
@@ -68,23 +66,21 @@ fun LiveScreen(
 
     val playingId = state.current?.id
 
-    val tabs = remember(userGroups, hasStreamBd) {
+    val tabs = remember(userGroups, hasStreamBd, folderTabs) {
         listOf(PanelTab(null, "All"), PanelTab(LIVE_GROUP_FAVORITES, "Favorites")) +
             (if (hasStreamBd) listOf(PanelTab(LIVE_GROUP_STREAMBD, "StreamBD IPTV")) else emptyList()) +
+            folderTabs.map { PanelTab(it.first, it.second) } +
             userGroups.map { PanelTab(it.id, it.name) }
     }
 
     val inStreamBd = selected == LIVE_GROUP_STREAMBD
-    val folderMode = inStreamBd && openFolder == null
-    val topTitle = folders.firstOrNull { it.key == openFolder }?.name ?: "StreamBD IPTV"
-    val openSubName by vm.openSubName.collectAsStateWithLifecycle()
-    val upTitle = if (openSub != null) openSubName else topTitle
-    val upHint = if (openSub != null) "Back to $topTitle" else "Back to folders"
-    val rows = remember(listChannels, subFolders, folders, folderMode, inStreamBd, upTitle, upHint) {
+    val tabName = tabs.firstOrNull { it.id == selected }?.label ?: "folders"
+    val upTitle = path.lastOrNull().orEmpty()
+    val upHint = "Back to " + (path.dropLast(1).lastOrNull() ?: if (inStreamBd) "folders" else tabName)
+    val rows = remember(listChannels, folders, inFolderTab, path, upTitle, upHint) {
         when {
-            folderMode -> folders.map { LiveRow.Folder(it) }
-            inStreamBd -> listOf<LiveRow>(LiveRow.Up(upTitle, upHint)) +
-                subFolders.map { LiveRow.Folder(it) } + listChannels.map { LiveRow.Chan(it) }
+            inFolderTab -> (if (path.isNotEmpty()) listOf<LiveRow>(LiveRow.Up(upTitle, upHint)) else emptyList()) +
+                folders.map { LiveRow.Folder(it) } + listChannels.map { LiveRow.Chan(it) }
             else -> listChannels.map { LiveRow.Chan(it) }
         }
     }
@@ -94,7 +90,7 @@ fun LiveScreen(
             "No live channels yet.\nAdd a playlist in Providers (Settings), or try Movies/Series."
         selected == LIVE_GROUP_FAVORITES ->
             "No favorite channels yet.\nLong-press a channel to add one."
-        inStreamBd -> "No channels in this folder."
+        inFolderTab -> "No channels in this folder."
         else -> "No channels in this group."
     }
 
@@ -117,16 +113,15 @@ fun LiveScreen(
 
     val current = allChannels.firstOrNull { it.id == playingId } ?: state.current
     val groupName = groups.firstOrNull { it.id == current?.groupId }?.name ?: "Live"
-    val startIndex = remember(rows, playingId, folderMode, lastFolder, lastSub, openSub) {
+    val startIndex = remember(rows, playingId, path, selected) {
+        val playing = rows.indexOfFirst { it is LiveRow.Chan && it.channel.id == playingId }
+        val remembered = vm.focusFor() // এই স্তর থেকে সর্বশেষ যে ফোল্ডার খুলেছিলাম (ফিরলে সেখানে)
         when {
-            folderMode -> rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastFolder }.coerceAtLeast(0)
-            inStreamBd && openSub == null && rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastSub } >= 0 ->
-                rows.indexOfFirst { it is LiveRow.Folder && it.folder.key == lastSub }
-            else -> {
-                val i = rows.indexOfFirst { it is LiveRow.Chan && it.channel.id == playingId }
-                // ফোল্ডারের ভেতরে প্রথম সারি "ফিরে যান"; চালু চ্যানেল না থাকলে প্রথম চ্যানেলে ফোকাস
-                if (i >= 0) i else if (inStreamBd && rows.size > 1) 1 else 0
-            }
+            playing >= 0 -> playing
+            remembered in rows.indices -> remembered
+            // ফোল্ডারের ভেতরে প্রথম সারি "ফিরে যান"; তার পরের সারিতে ফোকাস
+            path.isNotEmpty() && rows.size > 1 -> 1
+            else -> 0
         }
     }
 
@@ -153,13 +148,13 @@ fun LiveScreen(
             listContent = {
                 PanelScaffold(tabs, selected, vm::selectGroup) {
                     // ফোল্ডারের ভেতরে Back চাপলে তালিকা বন্ধ না হয়ে ফোল্ডারের তালিকায় ফেরে
-                    BackHandler(enabled = inStreamBd && openFolder != null) { vm.closeFolder() }
+                    BackHandler(enabled = inFolderTab && path.isNotEmpty()) { vm.closeFolder() }
                     PanelList(
                         items = rows,
                         key = { it.key },
                         startIndex = startIndex,
-                        resetKey = listOf(selected, openFolder, openSub, folderMode),
-                        focusKey = openSub ?: openFolder,
+                        resetKey = listOf(selected, path),
+                        focusKey = listOf(selected, path),
                         emptyText = emptyText,
                         loading = !loaded,
                         emptyActionLabel = if (allChannels.isEmpty()) "Add a provider" else null,
@@ -172,7 +167,7 @@ fun LiveScreen(
                                 subtitle = "${row.folder.count} channels",
                                 leadingIcon = Icons.Filled.Folder,
                                 showChevron = true,
-                            ) { vm.openFolder(row.folder.key, row.folder.name) }
+                            ) { vm.openFolder(row.folder.name, rows.indexOf(row)) }
                             is LiveRow.Up -> PanelRow(
                                 title = row.title,
                                 modifier = rowModifier,
