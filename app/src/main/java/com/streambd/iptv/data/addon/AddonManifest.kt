@@ -32,6 +32,8 @@ data class AddonManifest(
     val refreshMinutes: Int = DEFAULT_REFRESH_MINUTES,
     /** true = অফিসিয়াল (Catalog) add-on হলেও ক্যাটালগে না মেলা চ্যানেল নিজের group/subgroup রাখে, "Others" এ যায় না। */
     val keepGroups: Boolean = false,
+    /** true = এই add-on `findSources(info)` দিয়ে TMDB টাইটেলের জন্য মুভি/এপিসোডের সোর্স খুঁজে দিতে পারে। */
+    val sources: Boolean = false,
 ) {
     val anyDomain: Boolean get() = domains.any { it == "*" }
 
@@ -85,6 +87,7 @@ data class AddonManifest(
                 settings = settings,
                 refreshMinutes = o.optInt("refreshMinutes", DEFAULT_REFRESH_MINUTES).let { if (it <= 0) 0 else it.coerceIn(30, 1440) },
                 keepGroups = o.optBoolean("keepGroups", false),
+                sources = o.optBoolean("sources", false),
             )
         }
     }

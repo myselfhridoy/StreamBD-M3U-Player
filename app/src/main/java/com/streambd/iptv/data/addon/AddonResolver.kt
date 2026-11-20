@@ -38,6 +38,20 @@ class AddonResolver @Inject constructor(
         const val SCHEME = "addon-resolve://"
 
         fun isResolvable(url: String) = url.startsWith(SCHEME, ignoreCase = true)
+
+        /**
+         * add-on-এর একটা লিংক-অবজেক্ট (`url`, `resolve`, `userAgent`, `referrer`, `origin`) থেকে প্লেয়ারকে দেওয়ার URL।
+         * resolve:true হলে প্লে-টাইমে resolveStream() চলে; নইলে সরাসরি লিংক (হেডার `|k=v` সাফিক্সে)।
+         */
+        fun streamUrlFor(addonId: String, e: JSONObject): String? {
+            val u = e.optString("url").trim()
+            if (u.isEmpty()) return null
+            if (e.optBoolean("resolve")) return SCHEME + addonId + "/" + java.net.URLEncoder.encode(u, "UTF-8")
+            val hdr = ArrayList<String>()
+            fun add(key: String, field: String) { e.optString(field).takeIf { it.isNotBlank() }?.let { hdr += "$key=" + java.net.URLEncoder.encode(it, "UTF-8") } }
+            add("User-Agent", "userAgent"); add("Referer", "referrer"); add("Origin", "origin")
+            return if (hdr.isEmpty()) u else (if (u.contains('|')) "$u&" else "$u|") + hdr.joinToString("&")
+        }
     }
 
     /** [url] = `addon-resolve://<addonId>/<urlencoded ref>` (হেডার-সাফিক্স ছাড়া)। */
@@ -117,14 +131,7 @@ class AddonResolver @Inject constructor(
             val e = arr.optJSONObject(i) ?: continue
             val u = e.optString("url").trim()
             if (u.isEmpty()) continue
-            val stream = if (e.optBoolean("resolve")) {
-                SCHEME + addonId + "/" + java.net.URLEncoder.encode(u, "UTF-8")
-            } else {
-                val hdr = ArrayList<String>()
-                fun add(key: String, field: String) { e.optString(field).takeIf { it.isNotBlank() }?.let { hdr += "$key=" + java.net.URLEncoder.encode(it, "UTF-8") } }
-                add("User-Agent", "userAgent"); add("Referer", "referrer"); add("Origin", "origin")
-                if (hdr.isEmpty()) u else (if (u.contains('|')) "$u&" else "$u|") + hdr.joinToString("&")
-            }
+            val stream = streamUrlFor(addonId, e) ?: continue
             out += LazyEpisode(
                 name = e.optString("name"),
                 streamUrl = stream,
