@@ -37,6 +37,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.streambd.iptv.data.db.ChannelEntity
+import com.streambd.iptv.data.tmdb.TmdbImages
+import com.streambd.iptv.data.tmdb.TmdbItem
+import com.streambd.iptv.ui.screens.title.TMDB_NOTICE
 import com.streambd.iptv.ui.theme.*
 
 @Composable
@@ -44,10 +47,12 @@ fun SearchScreen(
     onBack: () -> Unit,
     onPickLive: (ChannelEntity) -> Unit,
     onPlayVod: (ChannelEntity) -> Unit,
+    onOpenTitle: (type: String, id: Long) -> Unit = { _, _ -> },
     vm: SearchViewModel = hiltViewModel(),
 ) {
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
+    val tmdbResults by vm.tmdbResults.collectAsStateWithLifecycle()
     val fieldFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
@@ -90,23 +95,76 @@ fun SearchScreen(
             }
 
             when {
-                query.isBlank() -> SearchMessage(
+                query.isBlank() && tmdbResults.isEmpty() -> SearchMessage(
                     "Start typing to search all content",
                     Modifier.weight(1f).fillMaxWidth(),
                 )
-                results.isEmpty() -> SearchMessage(
+                query.isNotBlank() && results.isEmpty() && tmdbResults.isEmpty() -> SearchMessage(
                     "No results match ‘$query’",
                     Modifier.weight(1f).fillMaxWidth(),
                 )
                 else -> LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                    items(results, key = { it.id }) { channel ->
-                        SearchResultRow(channel) {
-                            if (channel.kind == "LIVE") onPickLive(channel) else onPlayVod(channel)
+                    if (tmdbResults.isNotEmpty()) {
+                        item(key = "h_tmdb") {
+                            SectionHeader(if (query.isBlank()) "Trending" else "Movies & Series — find sources in your add-ons")
                         }
+                        items(tmdbResults, key = { "t_${it.type}_${it.id}" }) { t ->
+                            TmdbRow(t) { onOpenTitle(t.type, t.id) }
+                        }
+                    }
+                    if (results.isNotEmpty()) {
+                        item(key = "h_local") { SectionHeader("In your playlists") }
+                        items(results, key = { it.id }) { channel ->
+                            SearchResultRow(channel) {
+                                if (channel.kind == "LIVE") onPickLive(channel) else onPlayVod(channel)
+                            }
+                        }
+                    }
+                    item(key = "tmdb_notice") {
+                        if (tmdbResults.isNotEmpty()) Text(
+                            TMDB_NOTICE, color = TextMuted, fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(text, color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+}
+
+@Composable
+private fun TmdbRow(t: TmdbItem, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp)).background(if (focused) Panel else Color.Transparent)
+            .border(2.dp, if (focused) Accent else Color.Transparent, RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = TmdbImages.poster(t.poster), contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.width(48.dp).height(72.dp).clip(RoundedCornerShape(6.dp)).background(Surface1),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(t.title, color = TextPrimary, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val meta = listOfNotNull(t.year.takeIf { it.isNotBlank() }, t.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) }).joinToString("  ·  ")
+            if (meta.isNotEmpty()) Text(meta, color = TextMuted, fontSize = 12.sp)
+            if (t.overview.isNotBlank()) Text(t.overview, color = TextMuted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        val isTv = t.type == "tv"
+        Text(
+            if (isTv) "SERIES" else "MOVIE", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(if (isTv) Color(0xFF30A46C) else Danger).padding(horizontal = 6.dp, vertical = 2.dp),
+        )
     }
 }
 
@@ -190,3 +248,4 @@ private fun SearchResultRow(channel: ChannelEntity, onClick: () -> Unit) {
         )
     }
 }
+
