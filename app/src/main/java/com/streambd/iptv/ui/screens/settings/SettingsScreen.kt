@@ -47,6 +47,7 @@ import com.streambd.iptv.ui.components.ConfirmDialog
 import com.streambd.iptv.ui.components.LanguageDialog
 import com.streambd.iptv.ui.components.PinDialog
 import com.streambd.iptv.ui.components.SeekStepDialog // ★ নতুন ইমপোর্ট
+import com.streambd.iptv.ui.screens.title.TMDB_NOTICE
 import com.streambd.iptv.ui.theme.*
 import com.streambd.iptv.util.isTelevision
 import kotlinx.coroutines.launch
@@ -231,6 +232,12 @@ fun SettingsScreen(
             InfoRow("Expiration Date", expiryText)
             InfoRow("App", "${Brand.NAME} $APP_VERSION")
             ActionRow("Licenses", onClick = { dlg = Sd.Licenses })
+            Text(
+                TMDB_NOTICE,
+                color = TextMuted,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
 
             Spacer(Modifier.height(48.dp))
         }
@@ -390,7 +397,7 @@ fun SettingsScreen(
 
         Sd.Licenses -> ConfirmDialog(
             title = "Open-source licenses",
-            body = "AndroidX, Jetpack Compose, Media3, Room, DataStore, Hilt, OkHttp, Coil — each under Apache-2.0. Poppins/Nunito (when bundled) under SIL OFL 1.1.\n\nThis app uses FFmpeg (libavcodec) for audio decoding, licensed under the GNU LGPL v2.1 or later (https://ffmpeg.org). FFmpeg is built without GPL components, as a separate shared library that can be replaced.",
+            body = "AndroidX, Jetpack Compose, Media3, Room, DataStore, Hilt, OkHttp, Coil — each under Apache-2.0. Poppins/Nunito (when bundled) under SIL OFL 1.1.\n\nThis app uses FFmpeg (libavcodec) for audio decoding, licensed under the GNU LGPL v2.1 or later (https://ffmpeg.org). FFmpeg is built without GPL components, as a separate shared library that can be replaced.\n\n$TMDB_NOTICE",
             confirmLabel = "CLOSE",
             confirmIsDangerous = false,
             onCancel = { dlg = Sd.None },
