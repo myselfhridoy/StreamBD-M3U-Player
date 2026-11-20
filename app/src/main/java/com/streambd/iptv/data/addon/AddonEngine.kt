@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.addon
 
+import android.app.ActivityManager
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -65,10 +66,18 @@ class AddonEngine @Inject constructor(
         const val MAX_SCRIPT_CHARS = 1_000_000
     }
 
-    private val gate = Semaphore(3)
+    /** কম RAM-এর ডিভাইসে (TV বক্স) JS মেমরি ও রেসপন্স সীমা ছোট: ব্যর্থ হলে সাধারণ ত্রুটি, অ্যাপ ক্র্যাশ নয়। */
+    private val lowMem: Boolean by lazy {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        am == null || am.isLowRamDevice || am.memoryClass <= 128 || (am.largeMemoryClass in 1..320)
+    }
+    private val jsMemoryLimit get() = if (lowMem) 24L * 1024L * 1024L else 64L * 1024L * 1024L
+    private val maxBodyBytes get() = if (lowMem) 4 * 1024 * 1024 else MAX_BODY_BYTES
+
+    private val gate = Semaphore(if (lowMem) 1 else 3)
 
     /** প্লে-টাইম রিজলভ আলাদা গেটে: লম্বা রিফ্রেশের পেছনে আটকে থাকবে না। */
-    private val resolveGate = Semaphore(2)
+    private val resolveGate = Semaphore(if (lowMem) 1 else 2)
 
     private val polyfill: String by lazy {
         context.assets.open("addon/polyfill.js").bufferedReader().use { it.readText() }
@@ -130,7 +139,7 @@ class AddonEngine @Inject constructor(
             val finished = withTimeoutOrNull(if (resolveInfo != null) RESOLVE_TIMEOUT_MS else RUN_TIMEOUT_MS) {
                 try {
                     quickJs {
-                        memoryLimit = 64L * 1024L * 1024L
+                        memoryLimit = jsMemoryLimit
 
                         function("nativeLog") { args ->
                             val level = args.getOrNull(0)?.toString() ?: "I"
@@ -375,7 +384,7 @@ class AddonEngine @Inject constructor(
             val n = input.read(buf)
             if (n < 0) break
             total += n
-            if (total > MAX_BODY_BYTES) throw IOException("Response too large")
+            if (total > maxBodyBytes) throw IOException("Response too large")
             out.write(buf, 0, n)
         }
         return out.toByteArray()
