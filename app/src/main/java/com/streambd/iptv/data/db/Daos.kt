@@ -123,6 +123,9 @@ interface AddonDao {
     @Query("SELECT * FROM addons ORDER BY installedAt DESC")
     fun observeAll(): Flow<List<AddonEntity>>
 
+    @Query("SELECT * FROM addons WHERE enabled = 1")
+    suspend fun getEnabled(): List<AddonEntity>
+
     @Query("SELECT * FROM addons WHERE addonId = :addonId")
     suspend fun getByAddonId(addonId: String): AddonEntity?
 
