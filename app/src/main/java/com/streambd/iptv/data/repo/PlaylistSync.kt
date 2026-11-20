@@ -39,6 +39,7 @@ class PlaylistSync @Inject constructor(
     private val http: OkHttpClient,
     private val channels: ChannelRepository,
     private val epg: EpgRepository,
+    private val folderProviders: com.streambd.iptv.data.settings.FolderProviders,
 ) {
     private companion object {
         const val TAG = "PlaylistSync"
@@ -53,6 +54,8 @@ class PlaylistSync @Inject constructor(
 
     private val prefs = context.getSharedPreferences("streambd_sync", Context.MODE_PRIVATE)
     private val playlistLock = Mutex()
+    /** শেষ fetchPlaylistData()-র মূল প্লেলিস্ট ফোল্ডার চেয়েছে কি না (playlistLock-এর ভেতরে ব্যবহার)। */
+    private var lastFolders = false
 
     private suspend fun fetchPlaylistData(rootUrl: String): Pair<List<ParsedChannel>, List<String>> {
         val allChannels = mutableListOf<ParsedChannel>()
@@ -71,6 +74,7 @@ class PlaylistSync @Inject constructor(
 
             if (body.isBlank() || body.firstOrNull { !it.isWhitespace() } == '<') return
             val parsed = PlaylistParserFactory.parse(body)
+            if (depth == 0) lastFolders = parsed.folders
             allEpgUrls.addAll(parsed.epgUrls)
             for (channel in parsed.channels) {
                 if (channel.isNestedPlaylist) fetchRecursive(channel.streamUrl, depth + 1)
@@ -86,6 +90,7 @@ class PlaylistSync @Inject constructor(
         if (channelsList.isEmpty()) throw SyncException("No channels found.")
         
         val count = channels.import(channelsList, isPremium = false, providerId = providerId)
+        folderProviders.set(providerId, lastFolders)
         
         prefs.edit().putLong(KEY_PLAYLIST_OK, System.currentTimeMillis()).apply()
         SyncedPlaylist(count, epgs)
