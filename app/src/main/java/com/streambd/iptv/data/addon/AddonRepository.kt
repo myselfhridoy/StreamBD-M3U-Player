@@ -230,7 +230,9 @@ class AddonRepository @Inject constructor(
     /** ম্যানিফেস্টে catalog:false, অথবা ইউজারের "catalog" সেটিং off/no/false/0 হলে add-on শুধু সার্চে ব্যবহার হয়। */
     private fun isSearchOnly(m: AddonManifest, settings: Map<String, String>): Boolean {
         if (!m.catalog) return true
-        return settings["catalog"]?.trim()?.lowercase() in setOf("off", "no", "false", "0")
+        // ইউজারের মান, না থাকলে ম্যানিফেস্টের ডিফল্ট
+        val v = (settings["catalog"] ?: m.settings.firstOrNull { it.key == "catalog" }?.default)?.trim()?.lowercase()
+        return v in setOf("off", "no", "false", "0")
     }
 
     /** (সারাংশ, আরও স্ক্যান বাকি?) */
