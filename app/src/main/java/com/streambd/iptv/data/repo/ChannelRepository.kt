@@ -71,7 +71,7 @@ class ChannelRepository @Inject constructor(
     }
 
     /** [official] = true: অ্যাডমিনের প্লেলিস্ট/Catalog add-on। সার্ভারের চ্যানেল ক্যাটালগ থাকলে নাম, লোগো, গ্রুপ ও নম্বর তার থেকে বসে; না মিললে "Others"। */
-    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L, official: Boolean = false, keepGroups: Boolean = false): Int {
+    suspend fun import(parsedChannels: List<ParsedChannel>, isPremium: Boolean = false, providerId: Long = 0L, official: Boolean = false, keepGroups: Boolean = false, append: Boolean = false): Int {
         if (parsedChannels.isEmpty()) return 0
 
         val matcher = if (official) catalogStore.matcher else null
@@ -87,9 +87,12 @@ class ChannelRepository @Inject constructor(
             val locked = channels.lockedIds().toHashSet()
 
             // পুরো ডেটাবেস ক্লিয়ার না করে, শুধু এই নির্দিষ্ট প্রোভাইডারের ডেটা ক্লিয়ার করা হচ্ছে
-            channels.clearByProvider(providerId)
-            groups.clearByProvider(providerId)
-            
+            // append = ধাপে ধাপে স্ক্যান: আগের আইটেম রেখে নতুনগুলো যোগ/বদল হয়
+            if (!append) {
+                channels.clearByProvider(providerId)
+                groups.clearByProvider(providerId)
+            }
+
             groups.upsert(rows.groups)
             rows.channels.chunked(2_000).forEach { chunk ->
                 channels.upsert(chunk.map {
