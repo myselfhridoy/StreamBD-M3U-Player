@@ -46,7 +46,9 @@ class SourceFinder @Inject constructor(
 ) {
     /** কয়টা add-on খুঁজতে পারে (UI-তে "Searching N add-ons…")। */
     suspend fun capableAddons(): List<AddonEntity> = addons.getEnabled().filter {
-        runCatching { AddonManifest.parse(it.manifest).sources }.getOrDefault(false)
+        runCatching { AddonManifest.parse(it.manifest).sources }.getOrDefault(false) ||
+            // পুরোনো ইনস্টলে ম্যানিফেস্ট ইনস্টলের সময়ের; স্ক্রিপ্টে findSources থাকলেই চলবে
+            it.script.contains("findSources")
     }
 
     fun find(query: TitleQuery, list: List<AddonEntity>): Flow<SourceBatch> = channelFlow {
