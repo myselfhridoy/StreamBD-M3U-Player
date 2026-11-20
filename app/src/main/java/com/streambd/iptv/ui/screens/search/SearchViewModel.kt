@@ -40,12 +40,17 @@ class SearchViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** TMDB: ৩+ অক্ষরে সার্চ, ফাঁকা থাকলে ট্রেন্ডিং। ব্যর্থ হলে চুপচাপ খালি (লোকাল সার্চ চলতেই থাকে)। */
+    private val _tmdbError = MutableStateFlow<String?>(null)
+    /** TMDB ব্যর্থ হলে কারণটা স্ক্রিনে দেখানোর জন্য (খালি ফল আর ত্রুটি আলাদা)। */
+    val tmdbError: StateFlow<String?> = _tmdbError.asStateFlow()
+
     val tmdbResults: StateFlow<List<TmdbItem>> = _query
         .debounce(450L)
         .map { it.trim() }
         .distinctUntilChanged()
         .flatMapLatest { q ->
             flow {
+                _tmdbError.value = null
                 emit(
                     when {
                         q.isEmpty() -> tmdb.trending()
@@ -53,7 +58,10 @@ class SearchViewModel @Inject constructor(
                         else -> emptyList()
                     },
                 )
-            }.catch { emit(emptyList()) }
+            }.catch { e ->
+                _tmdbError.value = e.message ?: "Movie search failed"
+                emit(emptyList())
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
