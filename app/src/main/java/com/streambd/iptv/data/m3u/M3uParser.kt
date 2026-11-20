@@ -67,7 +67,7 @@ object M3uParser {
         val epgUrls = parseEpgUrlsFromHeader(globalAttrs)
         val channels = parseChannels(cleaned.lineSequence(), globalAttrs)
         
-        return ParsedPlaylist(channels, epgUrls)
+        return ParsedPlaylist(channels, epgUrls, folders = globalAttrs["x-sb-folders"] == "1")
     }
 
     private fun parseHeader(line: String): Map<String, String> {
