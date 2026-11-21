@@ -202,10 +202,14 @@ fun AddonInstallDialog(
 private fun webLine(m: AddonManifest): String? =
     if (m.web) "Opens web pages in the app (a built-in browser) so you can complete human verification, then plays the stream it finds." else null
 
-private fun networkLine(m: AddonManifest): String = when {
-    m.anyDomain -> "Network: ANY website"
-    m.domains.isEmpty() -> "Network: none"
-    else -> "Network: " + m.domains.joinToString(", ")
+private fun networkLine(m: AddonManifest): String {
+    val eff = m.effectiveDomains(emptyMap())
+    val extra = if (m.domainSettings.isEmpty()) "" else "  (+ any site you enter in the add-on's settings)"
+    return when {
+        m.anyDomain -> "Network: ANY website"
+        eff.isEmpty() && extra.isEmpty() -> "Network: none"
+        else -> "Network: " + eff.joinToString(", ") + extra
+    }
 }
 
 /** ইনস্টল করা Add-on-এর তথ্য, সেটিংস ফর্ম, Refresh/Update। */
