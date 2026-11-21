@@ -158,6 +158,7 @@ fun AddonInstallDialog(
             Spacer(Modifier.height(10.dp))
             Text("PERMISSIONS", color = Accent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             Text(networkLine(m), color = if (m.anyDomain) Danger else TextPrimary, fontSize = 12.sp)
+            webLine(m)?.let { Text(it, color = Danger, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
             if (m.allowLocal) Text("Can reach devices on your local network", color = Danger, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
             if (pv.verified) {
@@ -197,6 +198,9 @@ fun AddonInstallDialog(
         runCatching { if (pv == null) urlFocus.requestFocus() else installFocus.requestFocus() }
     }
 }
+
+private fun webLine(m: AddonManifest): String? =
+    if (m.web) "Opens web pages in the app (a built-in browser) so you can complete human verification, then plays the stream it finds." else null
 
 private fun networkLine(m: AddonManifest): String = when {
     m.anyDomain -> "Network: ANY website"
@@ -248,6 +252,7 @@ fun AddonDetailsDialog(
             }
             Spacer(Modifier.height(8.dp))
             Text(networkLine(m), color = if (m.anyDomain) Danger else TextMuted, fontSize = 11.sp)
+            webLine(m)?.let { Text(it, color = Danger, fontSize = 11.sp) }
             Text(
                 if (a.verified) "Verified by StreamBD" else "Unverified (custom)",
                 color = if (a.verified) Accent else TextMuted, fontSize = 11.sp,
