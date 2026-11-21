@@ -393,6 +393,17 @@
     }
     if (typeof g.resolveStream !== 'function') throw new Error('resolveStream() is not defined');
     var r = await g.resolveStream(JSON.parse(infoJson));
+    if (r && typeof r === 'object' && r.web && typeof r.web === 'object') {
+      // {web:{url, referrer?, userAgent?, hosts?, title?, hint?, timeoutSec?}}: অ্যাপ নিজের WebView খুলবে, ব্যবহারকারী মানব-যাচাই করবে,
+      // অ্যাপ .m3u8 ধরে চালাবে। কুকি/সেশন কখনো add-on স্ক্রিপ্টে আসে না।
+      var w = r.web;
+      if (!w.url) throw new Error('resolveStream(): web.url is required');
+      var wo = { url: String(w.url) };
+      ['referrer', 'userAgent', 'title', 'hint'].forEach(function (k) { if (w[k]) wo[k] = String(w[k]); });
+      if (Array.isArray(w.hosts)) wo.hosts = w.hosts.map(String).slice(0, 20);
+      if (w.timeoutSec) wo.timeoutSec = Math.max(20, Math.min(600, Number(w.timeoutSec) || 120));
+      return JSON.stringify({ web: wo });
+    }
     if (typeof r === 'string') r = { url: r };
     if (!r || typeof r !== 'object' || !r.url) throw new Error('resolveStream() must return a URL or an object with url');
     var o = { url: String(r.url) };
