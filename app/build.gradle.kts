@@ -123,7 +123,7 @@ dependencies {
 
     // ★ নতুন: Add-on সিস্টেম (JS ইঞ্জিন + HTML পার্সার)
     implementation("io.github.dokar3:quickjs-kt:1.0.0-alpha13")
-    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("org.jsoup:jsoup:1.15.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
