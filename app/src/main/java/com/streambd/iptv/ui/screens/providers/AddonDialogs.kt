@@ -20,6 +20,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -265,6 +267,12 @@ fun AddonDetailsDialog(
                             if (on) Accent else TextMuted,
                             onClick = { values[s.key] = if (on) "false" else "true" },
                         )
+                    } else if (s.type == "select" && s.options.isNotEmpty()) {
+                        SelectSetting(
+                            value = values[s.key].orEmpty(),
+                            options = s.options,
+                            onPick = { values[s.key] = it },
+                        )
                     } else {
                         PremiumTextField(
                             value = values[s.key].orEmpty(),
@@ -373,6 +381,43 @@ private fun TvButton(
     }
 }
 
+/** ড্রপডাউন: বাটনে বর্তমান মান ▾; চাপলে নিচে বিকল্পগুলো খোলে, একটা বাছলে বন্ধ হয়। */
+@Composable
+private fun SelectSetting(
+    value: String,
+    options: List<com.streambd.iptv.data.addon.SettingOption>,
+    onPick: (String) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val current = options.firstOrNull { it.value.equals(value, ignoreCase = true) }
+    val firstFocus = remember { FocusRequester() }
+    Column(Modifier.fillMaxWidth()) {
+        TvButton(
+            label = (current?.label ?: value.ifBlank { "Select" }) + "   ▾",
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { open = !open },
+        )
+        if (open) {
+            Spacer(Modifier.height(6.dp))
+            options.forEachIndexed { i, o ->
+                val selected = current?.value == o.value
+                TvButton(
+                    label = (if (selected) "✓  " else "     ") + o.label,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp)
+                        .let { if (selected || (current == null && i == 0)) it.focusRequester(firstFocus) else it },
+                    primary = selected,
+                    onClick = { onPick(o.value); open = false },
+                )
+            }
+        }
+    }
+    LaunchedEffect(open) {
+        if (open) { delay(80); runCatching { firstFocus.requestFocus() } }
+    }
+}
+
 @Composable
 private fun StatusChip(text: String, color: Color) {
     Text(
@@ -396,6 +441,7 @@ fun AddonCatalogDialog(
     var note by remember { mutableStateOf<String?>(null) }
     val closeFocus = remember { FocusRequester() }
     val firstFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
 
     fun load() {
         vm.loadCatalog { r, msg ->
@@ -422,48 +468,52 @@ fun AddonCatalogDialog(
             else -> list.forEachIndexed { index, row ->
                 val e = row.entry
                 var cardFocused by remember(e.id) { mutableStateOf(false) }
-                val cardShape = RoundedCornerShape(14.dp)
-                Column(
+                val bring = remember(e.id) { BringIntoViewRequester() }
+                val cardShape = RoundedCornerShape(12.dp)
+                val installed = row.installedVersion != null
+                val pid = row.providerId
+                Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp)
+                        .padding(bottom = 8.dp)
+                        .bringIntoViewRequester(bring)
                         .clip(cardShape)
                         .background(if (cardFocused) Color.White.copy(alpha = 0.10f) else Surface1)
                         .border(if (cardFocused) 2.dp else 1.dp, if (cardFocused) Accent else Divider, cardShape)
-                        .onFocusChanged { cardFocused = it.hasFocus }
-                        .padding(16.dp),
+                        .onFocusChanged {
+                            cardFocused = it.hasFocus
+                            // ফোকাস পেলে পুরো কার্ড (ওপর-নিচ দুই দিক) দৃশ্যমান করা
+                            if (it.hasFocus) scope.launch { runCatching { bring.bringIntoView() } }
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            e.name, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text("v${e.version}", color = TextMuted, fontSize = 12.sp)
-                    }
-                    if (e.author.isNotBlank()) Text("by ${e.author}", color = TextMuted, fontSize = 12.sp)
-                    if (e.description.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(e.description, color = TextMuted, fontSize = 14.sp, lineHeight = 19.sp)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                e.name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("v${e.version}", color = TextMuted, fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(4.dp))
                         when {
                             row.needsNewerApp -> StatusChip("Needs a newer app", Danger)
-                            row.installedVersion == null -> StatusChip("Not installed", TextMuted)
+                            !installed -> StatusChip("Not installed", TextMuted)
                             !row.enabled -> StatusChip("Turned off", Danger)
-                            row.updateAvailable -> StatusChip("Update available · installed v${row.installedVersion}", Accent)
+                            row.updateAvailable -> StatusChip("Update · installed v${row.installedVersion}", Accent)
                             else -> StatusChip("Installed · v${row.installedVersion}", Accent)
                         }
                     }
                     if (!row.needsNewerApp) {
-                        Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.width(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             val firstMod = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
-                            val installed = row.installedVersion != null
                             if (!installed || row.updateAvailable) {
                                 TvButton(
-                                    if (!installed) "INSTALL" else "UPDATE to v${e.version}",
+                                    if (!installed) "INSTALL" else "UPDATE",
                                     modifier = firstMod, primary = true,
                                     onClick = {
                                         error = null
@@ -473,7 +523,6 @@ fun AddonCatalogDialog(
                                     },
                                 )
                             }
-                            val pid = row.providerId
                             if (installed && pid != null) {
                                 TvButton(
                                     if (row.enabled) "TURN OFF" else "TURN ON",
