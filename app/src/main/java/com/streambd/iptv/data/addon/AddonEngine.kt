@@ -131,7 +131,7 @@ class AddonEngine @Inject constructor(
 
             val store = HashMap(storageIn)
             val jar = MemoryCookieJar()
-            val client = buildClient(manifest, jar)
+            val client = buildClient(manifest, jar, settings)
 
             var sent: String? = null
             var failure: String? = null
@@ -263,8 +263,8 @@ class AddonEngine @Inject constructor(
 
     private fun errJson(msg: String): String = JSONObject().put("error", msg).toString()
 
-    private fun buildClient(manifest: AddonManifest?, jar: CookieJar): OkHttpClient {
-        val domains = manifest?.domains.orEmpty()
+    private fun buildClient(manifest: AddonManifest?, jar: CookieJar, settings: Map<String, String>): OkHttpClient {
+        val domains = manifest?.effectiveDomains(settings).orEmpty()
         val any = domains.any { it == "*" }
         val allowLocal = manifest?.allowLocal == true
 

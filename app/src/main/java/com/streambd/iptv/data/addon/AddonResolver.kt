@@ -91,9 +91,12 @@ class AddonResolver @Inject constructor(
             val wUrl = w.optString("url").trim()
             val host = runCatching { java.net.URI(wUrl) }.getOrNull()
             if (host?.scheme?.lowercase() != "https" || host.host.isNullOrBlank()) throw AddonException("The add-on asked for an invalid web page.")
-            if (!manifest.allowsHost(host.host)) throw AddonException("Blocked by add-on permissions: ${host.host}")
+            val values = toMap(addon.settings)
+            if (!manifest.allowsHost(host.host, values)) {
+                throw AddonException("The site ${host.host} is not allowed for this add-on. If the website changed its address, enter the new address in the add-on's settings.")
+            }
             val hosts = w.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.optString(it).lowercase() } }.orEmpty()
-                .filter { it.isNotBlank() && manifest.allowsHost(it) }
+                .filter { it.isNotBlank() && manifest.allowsHost(it, values) }
             val timeout = w.optInt("timeoutSec", 120).coerceIn(20, 600)
             val req = WebRequest(
                 id = 0L, addonName = addon.name, url = wUrl,

@@ -43,14 +43,32 @@ data class AddonManifest(
     val catalog: Boolean = true,
     /** true = add-on প्লে-টাইমে `{web:{url,...}}` দিয়ে অ্যাপের WebView (ব্যবহারকারীর মানব-যাচাইসহ) চাইতে পারে। ইনস্টলের সময় আলাদা অনুমতি দেখায়। */
     val web: Boolean = false,
+    /** এই সেটিংগুলোর মানে ইউজার যে সাইট/হোস্ট লেখেন (একাধিক হলে কমা বা স্পেস দিয়ে), সেগুলোও `domains`-এর মতো অনুমোদিত। সাইট ডোমেইন বদলালে add-on পুনরায় ইনস্টল ছাড়াই সেটিংসে নতুনটা দিলেই চলে। */
+    val domainSettings: List<String> = emptyList(),
 ) {
     val anyDomain: Boolean get() = domains.any { it == "*" }
 
-    /** [host] ঘোষিত `domains`-এর মধ্যে (বা তার সাবডোমেইন) কিনা। */
-    fun allowsHost(host: String): Boolean {
+    /** `domains` + `domainSettings`-এর বর্তমান মান থেকে পাওয়া হোস্ট (মান না থাকলে সেটিংয়ের ডিফল্ট)। */
+    fun effectiveDomains(values: Map<String, String>): List<String> {
+        if (domainSettings.isEmpty()) return domains
+        val out = ArrayList(domains)
+        for (k in domainSettings) {
+            val raw = (values[k] ?: settings.firstOrNull { it.key == k }?.default).orEmpty()
+            for (part in raw.split(',', ' ', '\n', ';')) {
+                val t = part.trim()
+                if (t.isEmpty()) continue
+                val h = runCatching { java.net.URI(if (t.contains("://")) t else "https://$t").host }.getOrNull()?.lowercase()
+                if (!h.isNullOrBlank() && h !in out) out += h
+            }
+        }
+        return out
+    }
+
+    /** [host] অনুমোদিত (ঘোষিত `domains`, বা [values] অনুযায়ী `domainSettings`) কিনা; সাবডোমেইনও চলে। */
+    fun allowsHost(host: String, values: Map<String, String> = emptyMap()): Boolean {
         if (anyDomain) return true
         val h = host.lowercase()
-        return domains.any { h == it || h.endsWith(".$it") }
+        return effectiveDomains(values).any { h == it || h.endsWith(".$it") }
     }
 
     companion object {
@@ -122,6 +140,7 @@ data class AddonManifest(
                 sources = o.optBoolean("sources", false),
                 catalog = o.optBoolean("catalog", true),
                 web = o.optBoolean("web", false),
+                domainSettings = o.optJSONArray("domainSettings")?.let { a -> (0 until a.length()).map { a.optString(it).trim() }.filter { it.isNotEmpty() } }.orEmpty(),
             )
         }
     }
