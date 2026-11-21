@@ -357,7 +357,15 @@ class AddonRepository @Inject constructor(
             "settings",
             org.json.JSONArray().also { arr ->
                 for (s in m.settings) {
-                    arr.put(JSONObject().put("key", s.key).put("label", s.label).put("type", s.type).put("default", s.default))
+                    arr.put(
+                        JSONObject().put("key", s.key).put("label", s.label).put("type", s.type).put("default", s.default)
+                            .put(
+                                "options",
+                                org.json.JSONArray().also { oa ->
+                                    for (o in s.options) oa.put(JSONObject().put("value", o.value).put("label", o.label))
+                                },
+                            ),
+                    )
                 }
             },
         )
