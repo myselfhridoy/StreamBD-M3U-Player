@@ -8,12 +8,17 @@ class AddonException(message: String, cause: Throwable? = null) : Exception(mess
 /** অ্যাপ এই API ভার্সন পর্যন্ত বোঝে। নতুন API-র Add-on পুরনো অ্যাপে ইনস্টল হবে না। */
 const val ADDON_API_VERSION = 1
 
+/** "select" সেটিংয়ের একটা বিকল্প: [value] সেভ হয়, [label] দেখায়। */
+data class SettingOption(val value: String, val label: String)
+
 data class AddonSetting(
     val key: String,
     val label: String,
-    /** "text" | "password" | "boolean" */
+    /** "text" | "password" | "boolean" | "select" */
     val type: String,
     val default: String,
+    /** শুধু type="select"-এর জন্য। add-on-এ `options: ['on','off']` বা `[{value:'on',label:'Show'}]`। */
+    val options: List<SettingOption> = emptyList(),
 )
 
 data class AddonManifest(
@@ -68,12 +73,28 @@ data class AddonManifest(
                 val s = sArr.optJSONObject(i) ?: continue
                 val key = s.optString("key").trim()
                 if (key.isEmpty()) continue
-                val type = s.optString("type", "text").lowercase().let { if (it in setOf("text", "password", "boolean")) it else "text" }
+                val type = s.optString("type", "text").lowercase().let { if (it in setOf("text", "password", "boolean", "select")) it else "text" }
+                val opts = ArrayList<SettingOption>()
+                s.optJSONArray("options")?.let { oa ->
+                    for (j in 0 until oa.length()) {
+                        val x = oa.opt(j)
+                        if (x is JSONObject) {
+                            val v = x.optString("value").trim()
+                            if (v.isNotEmpty()) opts += SettingOption(v, x.optString("label").ifBlank { v })
+                        } else if (x != null) {
+                            val v = x.toString().trim()
+                            if (v.isNotEmpty()) opts += SettingOption(v, v)
+                        }
+                    }
+                }
+                // বিকল্প না থাকলে select সাধারণ টেক্সট হয়ে যায়
+                val finalType = if (type == "select" && opts.isEmpty()) "text" else type
                 settings += AddonSetting(
                     key = key,
                     label = s.optString("label").ifBlank { key },
-                    type = type,
+                    type = finalType,
                     default = if (s.has("default")) s.opt("default").toString() else "",
+                    options = opts,
                 )
             }
 
