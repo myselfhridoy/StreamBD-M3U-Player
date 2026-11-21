@@ -430,6 +430,7 @@ private fun StatusChip(text: String, color: Color) {
 }
 
 /** অফিশিয়াল ক্যাটালগ: কার্ডের তালিকা; প্রতিটা কার্ডে ইনস্টল/আপডেট/বন্ধ/চালু। TV ও ফোন দুটোতেই চলে। */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AddonCatalogDialog(
     vm: ProvidersViewModel,
