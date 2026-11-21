@@ -37,7 +37,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -415,6 +418,24 @@ private fun AddMenuItem(
     )
 }
 
+/** কার্ডের ছোট আইকন বাটন: ফোকাসে গোল ব্যাকগ্রাউন্ড + সাদা বর্ডার + বড় আইকন, তাই রিমোটে স্পষ্ট বোঝা যায়। */
+@Composable
+private fun CardIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, tint: Color, onClick: () -> Unit) {
+    var f by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(if (f) tint.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.06f))
+            .border(if (f) 2.dp else 0.dp, if (f) Color.White else Color.Transparent, CircleShape)
+            .onFocusChanged { f = it.isFocused }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = desc, tint = if (f) Color.White else tint, modifier = Modifier.size(if (f) 22.dp else 18.dp))
+    }
+}
+
 @Composable
 private fun ProviderGridCard(
     provider: ProviderEntity, 
@@ -452,29 +473,9 @@ private fun ProviderGridCard(
             )
             
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Edit, 
-                        contentDescription = "Edit", 
-                        tint = TextMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Delete, 
-                        contentDescription = "Delete", 
-                        tint = Danger,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                CardIconButton(Icons.Filled.Edit, "Edit", TextPrimary, onEdit)
+                Spacer(Modifier.width(6.dp))
+                CardIconButton(Icons.Filled.Delete, "Delete", Danger, onDelete)
             }
         }
         
@@ -670,6 +671,9 @@ internal fun PremiumTextField(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(4.dp)
+    // কার্সর সবসময় টেক্সটের শেষে (ফোকাসে ও বাইরে থেকে মান বদলালে); নইলে "|on" হয়ে থাকে
+    var tfv by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    LaunchedEffect(value) { if (tfv.text != value) tfv = TextFieldValue(value, TextRange(value.length)) }
 
     Box(
         Modifier
@@ -691,8 +695,8 @@ internal fun PremiumTextField(
             Text(placeholder, color = TextMuted.copy(alpha = 0.6f), fontSize = 14.sp)
         }
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            value = tfv,
+            onValueChange = { tfv = it; if (it.text != value) onValueChange(it.text) },
             singleLine = true,
             visualTransformation = visualTransformation,
             cursorBrush = SolidColor(Accent),
@@ -702,7 +706,9 @@ internal fun PremiumTextField(
                 onNext = { onNext?.invoke() },
                 onDone = { onDone?.invoke() }
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { if (it.isFocused) tfv = tfv.copy(selection = TextRange(tfv.text.length)) }
         )
     }
 }
