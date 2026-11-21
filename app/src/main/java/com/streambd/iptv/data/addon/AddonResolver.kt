@@ -33,6 +33,7 @@ data class LazyEpisode(
 class AddonResolver @Inject constructor(
     private val addons: AddonDao,
     private val engine: AddonEngine,
+    private val webResolver: WebResolveManager,
 ) {
     companion object {
         const val SCHEME = "addon-resolve://"
@@ -83,6 +84,30 @@ class AddonResolver @Inject constructor(
         if (r.error != null || body == null) throw AddonException(r.error ?: "The add-on returned no link.")
 
         val o = JSONObject(body)
+
+        // add-on অ্যাপের WebView চেয়েছে (মানব-যাচাই + .m3u8 ক্যাপচার)
+        o.optJSONObject("web")?.let { w ->
+            if (!manifest.web) throw AddonException("This add-on is not allowed to open web pages.")
+            val wUrl = w.optString("url").trim()
+            val host = runCatching { java.net.URI(wUrl) }.getOrNull()
+            if (host?.scheme?.lowercase() != "https" || host.host.isNullOrBlank()) throw AddonException("The add-on asked for an invalid web page.")
+            if (!manifest.allowsHost(host.host)) throw AddonException("Blocked by add-on permissions: ${host.host}")
+            val hosts = w.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.optString(it).lowercase() } }.orEmpty()
+                .filter { it.isNotBlank() && manifest.allowsHost(it) }
+            val timeout = w.optInt("timeoutSec", 120).coerceIn(20, 600)
+            val req = WebRequest(
+                id = 0L, addonName = addon.name, url = wUrl,
+                referrer = w.optString("referrer").takeIf { it.isNotBlank() },
+                userAgent = w.optString("userAgent").takeIf { it.isNotBlank() },
+                title = w.optString("title").ifBlank { name },
+                hint = w.optString("hint").takeIf { it.isNotBlank() },
+                hosts = hosts, timeoutSec = timeout,
+            )
+            val cap = kotlinx.coroutines.withTimeoutOrNull((timeout + 10) * 1000L) { webResolver.capture(req) }
+                ?: throw AddonException("Verification timed out.")
+            return ResolvedStream(url = cap.url, headers = cap.headers, drmScheme = null, drmLicense = null)
+        }
+
         val stream = o.optString("url").trim()
         if (stream.isEmpty()) throw AddonException("The add-on returned no link.")
 

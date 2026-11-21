@@ -41,8 +41,17 @@ data class AddonManifest(
     val sources: Boolean = false,
     /** false = "শুধু সার্চ" add-on: generatePlaylist চালানো হয় না, Movies/Series/Live-এ কিছু যোগ হয় না (শুধু TMDB সার্চের সোর্স)। */
     val catalog: Boolean = true,
+    /** true = add-on প्লে-টাইমে `{web:{url,...}}` দিয়ে অ্যাপের WebView (ব্যবহারকারীর মানব-যাচাইসহ) চাইতে পারে। ইনস্টলের সময় আলাদা অনুমতি দেখায়। */
+    val web: Boolean = false,
 ) {
     val anyDomain: Boolean get() = domains.any { it == "*" }
+
+    /** [host] ঘোষিত `domains`-এর মধ্যে (বা তার সাবডোমেইন) কিনা। */
+    fun allowsHost(host: String): Boolean {
+        if (anyDomain) return true
+        val h = host.lowercase()
+        return domains.any { h == it || h.endsWith(".$it") }
+    }
 
     companion object {
         const val DEFAULT_REFRESH_MINUTES = 360
@@ -112,6 +121,7 @@ data class AddonManifest(
                 keepGroups = o.optBoolean("keepGroups", false),
                 sources = o.optBoolean("sources", false),
                 catalog = o.optBoolean("catalog", true),
+                web = o.optBoolean("web", false),
             )
         }
     }

@@ -352,7 +352,7 @@ class AddonRepository @Inject constructor(
         .put("domains", org.json.JSONArray(m.domains))
         .put("allowLocal", m.allowLocal).put("apiVersion", m.apiVersion)
         .put("refreshMinutes", m.refreshMinutes).put("keepGroups", m.keepGroups)
-        .put("sources", m.sources).put("catalog", m.catalog)
+        .put("sources", m.sources).put("catalog", m.catalog).put("web", m.web)
         .put(
             "settings",
             org.json.JSONArray().also { arr ->
