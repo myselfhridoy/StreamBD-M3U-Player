@@ -32,6 +32,7 @@ import com.streambd.iptv.ui.screens.settings.SettingsScreen
 import com.streambd.iptv.ui.screens.splash.SplashScreen
 import com.streambd.iptv.ui.screens.title.TitleScreen
 import com.streambd.iptv.ui.screens.vod.VodScreen
+import com.streambd.iptv.ui.web.WebResolveHost
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -217,4 +218,7 @@ fun AppNav() {
             )
         }
     }
+
+    // add-on-এর "WebView-এ যাচাই করে স্ট্রিম ধরো" অনুরোধ এলে পূর্ণ-পর্দা WebView দেখায় (যেকোনো স্ক্রিনের ওপরে)
+    WebResolveHost()
 }
