@@ -53,7 +53,8 @@ data class AddonManifest(
         if (domainSettings.isEmpty()) return domains
         val out = ArrayList(domains)
         for (k in domainSettings) {
-            val raw = (values[k] ?: settings.firstOrNull { it.key == k }?.default).orEmpty()
+            // খালি মান (ইউজার মুছে সেভ করলে) হলে ডিফল্টে ফেরা: add-on-ও খালি হলে ডিফল্ট ধরে
+            val raw = values[k]?.takeIf { it.isNotBlank() } ?: settings.firstOrNull { it.key == k }?.default.orEmpty()
             for (part in raw.split(',', ' ', '\n', ';')) {
                 val t = part.trim()
                 if (t.isEmpty()) continue
