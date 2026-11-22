@@ -221,7 +221,7 @@ private fun SourcesPanel(ui: TitleUi, vm: TitleViewModel) {
                     modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
                 ) { vm.play(s) }
             }
-            if (ui.sourceErrors.isNotEmpty() && !ui.searching && ui.sources.isEmpty()) {
+            if (ui.sourceErrors.isNotEmpty() && !ui.searching) {
                 items(ui.sourceErrors) { Text(it, color = TextMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp)) }
             }
         }
