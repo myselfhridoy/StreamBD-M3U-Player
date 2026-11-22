@@ -420,7 +420,8 @@ class ProvidersViewModel @Inject constructor(
                 val script = p.script
                 if (p.manifest.id != a.addonId) throw AddonException("That link is a different add-on.")
                 val old = AddonManifest.parse(a.manifest)
-                if (old.domains.toSet() != p.manifest.domains.toSet() || old.allowLocal != p.manifest.allowLocal) {
+                if (old.domains.toSet() != p.manifest.domains.toSet() || old.domainSettings.toSet() != p.manifest.domainSettings.toSet() ||
+                    old.allowLocal != p.manifest.allowLocal || old.web != p.manifest.web) {
                     throw AddonException("Permissions changed. Remove and reinstall this add-on to review them.")
                 }
                 if (script == a.script) {
