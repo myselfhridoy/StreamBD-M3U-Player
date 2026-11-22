@@ -52,22 +52,27 @@ class SourceFinder @Inject constructor(
     }
 
     fun find(query: TitleQuery, list: List<AddonEntity>): Flow<SourceBatch> = channelFlow {
-        for (a in list) {
-            launch {
-                val batch = try {
-                    SourceBatch(a.name, runOne(a, query))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: AddonException) {
-                    SourceBatch(a.name, emptyList(), e.message)
-                } catch (e: Exception) {
-                    SourceBatch(a.name, emptyList(), e.message ?: "failed")
-                } catch (e: OutOfMemoryError) {
-                    SourceBatch(a.name, emptyList(), "not enough memory")
-                }
+        // এক-এক করে চলে (একসাথে চালালে কিছু add-on "returned nothing" দিচ্ছিল); প্রতিটার ফল শেষ হওয়া মাত্র পাঠানো হয়
+        launch {
+            for (a in list) {
+                var batch = attempt(a, query)
+                // JS ইঞ্জিন কখনো ফল না দিয়ে শেষ হয়ে যায়: একবার আবার চেষ্টা
+                if (batch.error?.contains("returned nothing") == true) batch = attempt(a, query)
                 send(batch)
             }
         }
+    }
+
+    private suspend fun attempt(a: AddonEntity, query: TitleQuery): SourceBatch = try {
+        SourceBatch(a.name, runOne(a, query))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: AddonException) {
+        SourceBatch(a.name, emptyList(), e.message)
+    } catch (e: Exception) {
+        SourceBatch(a.name, emptyList(), e.message ?: "failed")
+    } catch (e: OutOfMemoryError) {
+        SourceBatch(a.name, emptyList(), "not enough memory")
     }
 
     private suspend fun runOne(a: AddonEntity, q: TitleQuery): List<TitleSource> {
