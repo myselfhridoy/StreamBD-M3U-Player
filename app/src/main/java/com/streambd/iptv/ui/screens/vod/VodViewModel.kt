@@ -53,6 +53,7 @@ class VodViewModel @Inject constructor(
     private val settingsStore: SettingsStore,
     private val watchProgress: WatchProgressRepository,
     private val addonResolver: AddonResolver,
+    private val xtream: com.streambd.iptv.data.xtream.XtreamRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -232,7 +233,11 @@ class VodViewModel @Inject constructor(
         _lazyStatus.value = "Loading episodes…"
         lazyJob = viewModelScope.launch {
             try {
-                val list = addonResolver.listEpisodes(ref, name)
+                val list = if (ref.startsWith(com.streambd.iptv.data.xtream.XtreamApi.SERIES_SCHEME)) {
+                    xtream.listEpisodes(ref)
+                } else {
+                    addonResolver.listEpisodes(ref, name)
+                }
                 val entries = list.map { e ->
                     val id = java.util.UUID.nameUUIDFromBytes("lazy|$ref|${e.streamUrl}".toByteArray()).mostSignificantBits
                     val label = e.name.ifBlank {
