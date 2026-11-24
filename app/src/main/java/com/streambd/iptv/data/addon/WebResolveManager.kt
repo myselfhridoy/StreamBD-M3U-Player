@@ -19,6 +19,8 @@ data class WebRequest(
     /** WebView এই হোস্টগুলোতে (এবং [url]-এর হোস্টে) যেতে পারবে; অন্য কোথাও নেভিগেশন ব্লক। */
     val hosts: List<String>,
     val timeoutSec: Int,
+    /** পেজ খোলার অনুরোধে যোগ হবে এমন বাড়তি হেডার (Referer/User-Agent বাদে; ওগুলোর নিজস্ব ফিল্ড আছে)। */
+    val headers: Map<String, String> = emptyMap(),
 )
 
 /** WebView-এ ধরা স্ট্রিম: প্লেয়ারকে এই URL ও হেডার দিয়ে চালাতে হবে। */
