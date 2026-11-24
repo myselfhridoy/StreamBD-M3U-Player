@@ -3,6 +3,7 @@ package com.streambd.iptv.data.xtream
 import com.streambd.iptv.Brand
 import com.streambd.iptv.data.m3u.ChannelKind
 import com.streambd.iptv.data.m3u.ParsedChannel
+import com.streambd.iptv.data.vod.SeriesGrouping
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -31,8 +32,8 @@ import kotlin.math.max
  *  - VOD categories + streams
  *  - xmltv.php EPG URL
  *
- * Series (get_series / get_series_info) v2-তে lazy loading দিয়ে যোগ করা উচিত।
- * প্রতিটি series-এর জন্য আলাদা API call লাগে, তাই initial sync-এ করা উচিত নয়।
+ * Series: sync-এ শুধু সিরিজের তালিকা (get_series) আসে, এপিসোড নয়। সিরিজ খোলার সময়
+ * [seriesEpisodes] (get_series_info) একটিমাত্র অনুরোধে সেই সিরিজের এপিসোড আনে (lazy)।
  */
 @Singleton
 class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
@@ -44,6 +45,20 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
         .build()
 
     companion object {
+
+        /** সিরিজের স্থানধারক সারির URL: `xtream-series://<providerId>/<seriesId>`। প্লেয়ারে কখনো যায় না। */
+        const val SERIES_SCHEME = "xtream-series://"
+
+        fun seriesRef(providerId: Long, seriesId: Int): String = "$SERIES_SCHEME$providerId/$seriesId"
+
+        /** @return providerId to seriesId, বা null */
+        fun parseSeriesRef(ref: String): Pair<Long, Int>? {
+            if (!ref.startsWith(SERIES_SCHEME)) return null
+            val parts = ref.removePrefix(SERIES_SCHEME).substringBefore('|').split('/')
+            val p = parts.getOrNull(0)?.toLongOrNull() ?: return null
+            val s = parts.getOrNull(1)?.toIntOrNull() ?: return null
+            return p to s
+        }
 
         /**
          * ইউজার যেভাবেই লিখুক (`host:8080`, `http://host:8080/player_api.php`,
@@ -136,6 +151,7 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
     suspend fun loadCatalog(
         credentials: XtreamCredentials,
         knownAuth: XtreamAuth? = null,
+        providerId: Long = 0L,
     ): XtreamCatalog = coroutineScope {
         val auth = knownAuth ?: authenticate(credentials)
 
@@ -151,25 +167,31 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
         val liveD = async { safe { liveStreams(credentials) } }
         val vodCatsD = async { safe { categories(credentials, "get_vod_categories") } }
         val vodD = async { safe { vodStreams(credentials) } }
+        // সিরিজ ঐচ্ছিক: panel সমর্থন না করলে/ব্যর্থ হলে বাকি catalog আটকাবে না
+        val serCatsD = async { safe { categories(credentials, "get_series_categories") } }
+        val serD = async { safe { seriesList(credentials) } }
 
         val (liveCats, e1) = liveCatsD.await()
         val (live, e2) = liveD.await()
         val (vodCats, e3) = vodCatsD.await()
         val (vod, e4) = vodD.await()
+        val (serCats, _) = serCatsD.await()
+        val (series, _) = serD.await()
         val firstError = e1 ?: e2 ?: e3 ?: e4
 
-        if (live.isEmpty() && vod.isEmpty()) {
+        if (live.isEmpty() && vod.isEmpty() && series.isEmpty()) {
             throw XtreamException(
-                firstError?.message ?: "No live or movie channels found in this Xtream account.",
+                firstError?.message ?: "No live, movie or series items found in this Xtream account.",
                 firstError,
             )
         }
 
         XtreamCatalog(
-            channels = buildChannels(credentials, live, liveCats, vod, vodCats),
+            channels = buildChannels(credentials, live, liveCats, vod, vodCats, series, serCats, providerId),
             epgUrl = xmltvUrl(credentials),
             liveCount = live.size,
             movieCount = vod.size,
+            seriesCount = series.size,
             auth = auth,
         )
     }
@@ -316,6 +338,82 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
         }
     }
 
+    private suspend fun seriesList(credentials: XtreamCredentials): List<XtreamSeries> {
+        val body = request(apiUrl(credentials, "get_series"), credentials.userAgent)
+        val array = try {
+            JSONArray(body)
+        } catch (e: Exception) {
+            throw XtreamException("Unexpected series response from the Xtream server.", e)
+        }
+        return buildList(array.length()) {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.intOrNull("series_id") ?: continue
+                add(
+                    XtreamSeries(
+                        seriesId = id,
+                        name = o.text("name") ?: "Series $id",
+                        cover = o.text("cover"),
+                        categoryId = o.text("category_id"),
+                        rating = o.text("rating"),
+                        year = o.text("releaseDate")?.take(4) ?: o.text("release_date")?.take(4) ?: o.text("year"),
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * একটি সিরিজের সব এপিসোড (get_series_info, এক অনুরোধ)। panel-ভেদে `episodes` হয় {"1":[...],"2":[...]} অবজেক্ট,
+     * নয়তো অ্যারের অ্যারে; দুটোই সামলানো হয়।
+     */
+    suspend fun seriesEpisodes(credentials: XtreamCredentials, seriesId: Int): List<XtreamEpisode> {
+        val url = apiUrl(credentials, "get_series_info").newBuilder()
+            .addQueryParameter("series_id", seriesId.toString()).build()
+        val body = request(url, credentials.userAgent)
+        val root = try {
+            JSONObject(body)
+        } catch (e: Exception) {
+            throw XtreamException("Unexpected episode response from the Xtream server.", e)
+        }
+        val eps = root.opt("episodes")
+        val out = ArrayList<XtreamEpisode>()
+
+        fun addEpisode(o: JSONObject, seasonHint: Int?) {
+            val id = o.text("id") ?: return
+            val info = o.optJSONObject("info")
+            val season = o.intOrNull("season") ?: seasonHint
+            val epNum = o.intOrNull("episode_num")
+            val duration = info?.text("duration")
+            val rating = info?.text("rating")
+            out += XtreamEpisode(
+                id = id,
+                title = o.text("title") ?: "",
+                season = season,
+                episode = epNum,
+                extension = o.text("container_extension"),
+                image = info?.text("movie_image"),
+                subtitle = listOfNotNull(duration, rating?.let { "★ $it" }).joinToString(" · ").ifBlank { null },
+            )
+        }
+
+        fun addList(arr: JSONArray, seasonHint: Int?) {
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { addEpisode(it, seasonHint) }
+        }
+
+        when (eps) {
+            is JSONObject -> eps.keys().forEach { key ->
+                val season = key.trim().toIntOrNull()
+                eps.optJSONArray(key)?.let { addList(it, season) }
+            }
+            is JSONArray -> for (i in 0 until eps.length()) {
+                val item = eps.opt(i)
+                if (item is JSONArray) addList(item, i + 1) else if (item is JSONObject) addEpisode(item, null)
+            }
+        }
+        return out
+    }
+
     private suspend fun request(url: HttpUrl, userAgent: String?): String =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
@@ -362,6 +460,9 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
         liveCats: List<XtreamCategory>,
         vod: List<XtreamVodStream>,
         vodCats: List<XtreamCategory>,
+        series: List<XtreamSeries> = emptyList(),
+        seriesCats: List<XtreamCategory> = emptyList(),
+        providerId: Long = 0L,
     ): List<ParsedChannel> {
         val liveCategories = liveCats.associateBy { it.id }
         val vodCategories = vodCats.associateBy { it.id }
@@ -402,6 +503,23 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
                 kind = ChannelKind.MOVIE,
                 adult = stream.isAdult,
                 chno = stream.num?.takeIf { it in 1..9999 },
+            )
+        }
+
+        // সিরিজ: স্থানধারক সারি (serieId = "@lazy"); এপিসোড খোলার সময় get_series_info থেকে আসে
+        val seriesCategories = seriesCats.associateBy { it.id }
+        for (s in series) {
+            val group = seriesCategories[s.categoryId]?.name?.takeIf { it.isNotBlank() } ?: "Series"
+            out += ParsedChannel(
+                name = s.name,
+                logoUrl = s.cover,
+                groupTitle = group,
+                tvgId = null,
+                streamUrl = seriesRef(providerId, s.seriesId),
+                kind = ChannelKind.SERIES,
+                serieId = SeriesGrouping.LAZY_MARK,
+                serieTitle = s.name,
+                subtitle = listOfNotNull(s.year, s.rating?.let { "★ $it" }).joinToString(" · ").ifBlank { null },
             )
         }
 
@@ -448,3 +566,4 @@ private fun JSONObject.bool(key: String): Boolean {
         else -> false
     }
 }
+
