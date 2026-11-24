@@ -129,7 +129,7 @@ object M3uParser {
                         logoUrl = p.logo,
                         groupTitle = group,
                         tvgId = p.tvgId,
-                        streamUrl = withHeaders(line, p.headers),
+                        streamUrl = withHeaders(line, p.headers).let { u -> p.web?.let { WebEntry.wrap(u, it) } ?: u },
                         kind = if (isPlaylist) ChannelKind.LIVE else classify(p.tvgType, group, name, line),
                         isNestedPlaylist = isPlaylist,
                         
@@ -206,6 +206,7 @@ object M3uParser {
         // tvg-rec এবং catchup-enable পার্স করা
         pending.tvgRec = attrs["tvg-rec"]?.toIntOrNull() ?: 0
         pending.catchupEnable = attrs["catchup-enable"] == "1" || attrs["catchup-enable"]?.toBoolean() == true
+        pending.web = WebEntry.fromAttrs(attrs)
         
         return pending
     }
@@ -331,6 +332,8 @@ object M3uParser {
         val chno: Int?,
         val subtitle: String?,
     ) {
+        /** x-web="1" এন্ট্রি (ওয়েব-পেজ থেকে স্ট্রিম ধরা): বিস্তারিত [WebEntry]-তে। */
+        var web: WebEntry.Spec? = null
         var extGroup: String? = null
         val headers = LinkedHashMap<String, String>()
         var drmScheme: String? = null
