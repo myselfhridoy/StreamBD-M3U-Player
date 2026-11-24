@@ -83,6 +83,8 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
     // shouldInterceptRequest ব্যাকগ্রাউন্ড থ্রেডে চলে; WebView.getUrl() সেখানে ডাকা যাবে না, তাই শেষ পেজ URL আলাদা রাখা
     val lastPage = remember { java.util.concurrent.atomic.AtomicReference(req.url) }
 
+    var pageLoads by remember { mutableStateOf(0) }
+
     // পেজ লুকানো থাকে; শুধু যাচাই-চ্যালেঞ্জ ধরা পড়লে (বা ১২ সেকেন্ডেও স্ট্রিম না মিললে, ভরসা হিসেবে) দেখানো হয়
     var showPage by remember { mutableStateOf(false) }
     LaunchedEffect(req.id) {
@@ -92,6 +94,30 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
     LaunchedEffect(req.id) {
         delay(req.timeoutSec * 1000L)
         manager.cancel(req.id, "Verification timed out.")
+    }
+    // ভরসা: পেজ লোড হওয়ার ৮ সেকেন্ড পরও কোনো .m3u8 অনুরোধ না ধরা পড়লে (প্লেয়ার ক্লিক/বিজ্ঞাপনের অপেক্ষায় থাকতে পারে),
+    // পেজের নিজের HTML-এ বসানো প্রথম https .m3u8 ঠিকানা (যেমন Next.js ডেটা) নেওয়া হয়। Referer/Origin = পেজের অরিজিন।
+    LaunchedEffect(req.id, pageLoads) {
+        if (pageLoads == 0) return@LaunchedEffect
+        delay(8_000L)
+        if (done.get()) return@LaunchedEffect
+        val w = webRef ?: return@LaunchedEffect
+        val js = "(function(){try{var h=document.documentElement.outerHTML.split('\\\\/').join('/');" +
+            "var m=h.match(/https:\\/\\/[^\"'\\s<>\\\\]+?\\.m3u8[^\"'\\s<>\\\\]*/);return m?m[0]:''}catch(e){return ''}})()"
+        w.evaluateJavascript(js) { raw ->
+            val found = runCatching { org.json.JSONArray("[$raw]").optString(0) }.getOrDefault("")
+            android.util.Log.i("WebResolve", "html scan: " + (if (found.isBlank()) "nothing" else Uri.parse(found).host))
+            if (found.startsWith("https://") && done.compareAndSet(false, true)) {
+                val pageUrl = Uri.parse(lastPage.get())
+                val origin = "${pageUrl.scheme}://${pageUrl.host}"
+                val cap = WebCapture(
+                    url = found,
+                    headers = linkedMapOf("User-Agent" to w.settings.userAgentString, "Referer" to "$origin/", "Origin" to origin),
+                )
+                status = "Stream found"
+                manager.complete(req.id, cap)
+            }
+        }
     }
     DisposableEffect(req.id) {
         onDispose {
@@ -170,13 +196,18 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
 
                             override fun onPageFinished(view: WebView, url: String?) {
                                 if (!done.get()) status = "Waiting for the stream… (complete verification if shown)"
+                                pageLoads += 1
                             }
 
                             // নিষ্ক্রিয় পর্যবেক্ষণ: সবসময় null ফেরত (অনুরোধ বন্ধ/বদল নয়)
                             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                                 val u = request.url
+                                (u.path ?: "").lowercase().let { pl ->
+                                    if (pl.endsWith(".m3u8") || pl.endsWith(".mpd") || pl.contains("manifest") || pl.contains("playlist"))
+                                        android.util.Log.i("WebResolve", "media request: ${u.scheme}://${u.host}${u.path}")
+                                }
                                 // Cloudflare-এর যাচাই-চ্যালেঞ্জ লোড হচ্ছে → এখন পেজ দেখাতে হবে
-                                if (u.host.equals("challenges.cloudflare.com", true) || (u.path ?: "").contains("/cdn-cgi/challenge-platform/")) {
+                                if ((u.path ?: "").contains("/cdn-cgi/challenge-platform/")) {
                                     main.post { showPage = true }
                                 }
                                 if (u.scheme == "https" && (u.path ?: "").endsWith(".m3u8", ignoreCase = true) && done.compareAndSet(false, true)) {
