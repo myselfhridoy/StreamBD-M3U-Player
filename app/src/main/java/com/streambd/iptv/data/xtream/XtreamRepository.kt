@@ -1,5 +1,6 @@
 package com.streambd.iptv.data.xtream
 
+import com.streambd.iptv.data.addon.LazyEpisode
 import com.streambd.iptv.data.db.ProviderDao
 import com.streambd.iptv.data.db.ProviderEntity
 import com.streambd.iptv.data.repo.ChannelRepository
@@ -31,6 +32,7 @@ data class XtreamSyncSummary(
     val channels: Int,
     val live: Int,
     val movies: Int,
+    val series: Int = 0,
     val programs: Int,
     val epgError: String?,
     val epgUrl: String,
@@ -39,7 +41,11 @@ data class XtreamSyncSummary(
 ) {
     fun message(): String = buildString {
         append("Added $channels channels")
-        if (live > 0 || movies > 0) append(" ($live live, $movies movies)")
+        if (live > 0 || movies > 0 || series > 0) {
+            append(" ($live live, $movies movies")
+            if (series > 0) append(", $series series")
+            append(")")
+        }
         when {
             epgError != null -> append(". TV guide: $epgError")
             programs > 0 -> append(", $programs guide entries")
@@ -166,7 +172,7 @@ class XtreamRepository @Inject constructor(
             provider.userAgent,
         )
 
-        val catalog = api.loadCatalog(credentials, knownAuth)
+        val catalog = api.loadCatalog(credentials, knownAuth, provider.id)
         val count = channels.import(
             catalog.channels,
             isPremium = false,
@@ -195,10 +201,37 @@ class XtreamRepository @Inject constructor(
             channels = count,
             live = catalog.liveCount,
             movies = catalog.movieCount,
+            series = catalog.seriesCount,
             programs = programs,
             epgError = epgError,
             epgUrl = catalog.epgUrl,
         )
+    }
+
+    /**
+     * সিরিজ খোলার সময় (VodViewModel): `xtream-series://<providerId>/<seriesId>` থেকে এপিসোড তালিকা আনে।
+     */
+    suspend fun listEpisodes(ref: String): List<LazyEpisode> {
+        val (providerId, seriesId) = XtreamApi.parseSeriesRef(ref)
+            ?: throw XtreamException("Invalid series link.")
+        val provider = providers.getById(providerId)
+            ?: throw XtreamException("This Xtream server was removed. Refresh the playlist.")
+        val credentials = credentials(
+            provider.url, provider.username.orEmpty(), provider.password.orEmpty(), provider.userAgent,
+        )
+        return api.seriesEpisodes(credentials, seriesId).map { e ->
+            val label = e.title.ifBlank {
+                if (e.season != null && e.episode != null) "S%02dE%02d".format(e.season, e.episode) else "Episode ${e.id}"
+            }
+            LazyEpisode(
+                name = label,
+                streamUrl = api.seriesUrl(credentials, e.id, e.extension),
+                season = e.season,
+                episode = e.episode,
+                logo = e.image,
+                subtitle = e.subtitle,
+            )
+        }
     }
 
     /** Add/Edit dialog-এ "Test" বাটনের জন্য (ভবিষ্যতে UI-তে যোগ করা যায়)। */
@@ -232,3 +265,4 @@ class XtreamRepository @Inject constructor(
         )
     }
 }
+
