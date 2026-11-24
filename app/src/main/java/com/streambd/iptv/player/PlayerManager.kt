@@ -36,6 +36,8 @@ import java.io.IOException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.streambd.iptv.data.addon.AddonResolver
 import com.streambd.iptv.data.addon.ResolvedStream
+import com.streambd.iptv.data.addon.WebPlayResolver
+import com.streambd.iptv.data.m3u.WebEntry
 import com.streambd.iptv.data.db.ChannelEntity
 import com.streambd.iptv.data.db.StreamSource
 import com.streambd.iptv.data.db.allSources
@@ -79,6 +81,7 @@ class PlayerManager @Inject constructor(
     private val progress: WatchProgressRepository,
     private val okHttp: OkHttpClient,
     private val addonResolver: AddonResolver,
+    private val webPlay: WebPlayResolver,
 ) {
     private companion object {
         const val TAG = "PlayerManager"
@@ -508,7 +511,7 @@ return ExoPlayer.Builder(appContext, renderersFactory)
         // Add-on লিংক (addon-resolve://...) হলে আগে resolveStream() চালিয়ে আসল লিংক বের করা হবে
         if (resolved == null) resolveJob?.cancel()
         val (srcUrl, srcHeaders) = splitHeaders(src.url)
-        if (resolved == null && AddonResolver.isResolvable(srcUrl)) {
+        if (resolved == null && (AddonResolver.isResolvable(srcUrl) || WebEntry.isWeb(srcUrl))) {
             beginResolve(channel, idx, srcUrl, resumeAtMs, subtitles, notice)
             return
         }
@@ -639,7 +642,8 @@ return ExoPlayer.Builder(appContext, renderersFactory)
 
         resolveJob = scope.launch {
             val r = try {
-                addonResolver.resolve(refUrl, channel.name, channel.tvgId, null)
+                if (WebEntry.isWeb(refUrl)) webPlay.resolve(refUrl, channel.name)
+                else addonResolver.resolve(refUrl, channel.name, channel.tvgId, null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
