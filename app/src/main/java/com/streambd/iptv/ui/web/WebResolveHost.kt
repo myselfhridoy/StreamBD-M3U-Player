@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +86,7 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
     // পেজ লুকানো থাকে; শুধু যাচাই-চ্যালেঞ্জ ধরা পড়লে (বা ১২ সেকেন্ডেও স্ট্রিম না মিললে, ভরসা হিসেবে) দেখানো হয়
     var showPage by remember { mutableStateOf(false) }
     LaunchedEffect(req.id) {
-        delay(12_000L)
+        delay(20_000L)
         showPage = true
     }
     LaunchedEffect(req.id) {
@@ -105,8 +107,11 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
         onDismissRequest = { manager.cancel(req.id, "Cancelled.") },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = false),
     ) {
-        Column(Modifier.fillMaxSize().background(Color.Black).statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // পেজ লুকানো থাকলে উইন্ডোর ডিম/অন্ধকার নেই: ব্যবহারকারী কিছুই দেখে না, নিচে প্লেয়ারই থাকে (Back চাপলে বাতিল)
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect { dialogWindow?.setDimAmount(if (showPage) 0.6f else 0f) }
+        Column(Modifier.fillMaxSize().background(if (showPage) Color.Black else Color.Transparent).statusBarsPadding().navigationBarsPadding()) {
+            if (showPage) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(req.title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
@@ -136,6 +141,12 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
                         settings.allowFileAccess = false
                         settings.allowContentAccess = false
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        // পুরোনো WebView (যেমন Chrome 52) Cloudflare-এর চ্যালেঞ্জ চালাতে পারে না: ঝুলে না থেকে সাথে সাথে জানানো
+                        val chromeMajor = Regex("Chrome/(\\d+)").find(settings.userAgentString.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+                        val tooOld = chromeMajor != null && chromeMajor < 80
+                        if (tooOld) {
+                            main.post { manager.cancel(req.id, "This device's web engine (WebView v$chromeMajor) is too old for the human-verification page. Try this channel on a phone, or update Android System WebView.") }
+                        }
                         settings.userAgentString = req.userAgent ?: cleanUserAgent(settings.userAgentString)
                         val cm = CookieManager.getInstance()
                         cm.setAcceptCookie(true)
@@ -190,23 +201,16 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
                         webRef = this
                         // পুরোনো WebView (Android 7 TX3) এই ম্যাপ থেকে remove() করে: অপরিবর্তনযোগ্য mapOf/emptyMap দিলে ক্র্যাশ। তাই পরিবর্তনযোগ্য HashMap।
                         val ref = req.referrer
-                        if (ref != null) loadUrl(req.url, HashMap<String, String>().apply { put("Referer", ref) }) else loadUrl(req.url)
+                        if (tooOld) Unit else if (ref != null) loadUrl(req.url, HashMap<String, String>().apply { put("Referer", ref) }) else loadUrl(req.url)
                     }
                 },
             )
             if (!showPage) {
                 // পেজ লুকানো: ট্যাপ ধরে ফেলে (নিচের WebView-তে যাবে না) + অপেক্ষার চিহ্ন
                 Box(
-                    Modifier.fillMaxSize().background(Color.Black)
+                    Modifier.fillMaxSize()
                         .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {},
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Accent)
-                        Spacer(Modifier.height(12.dp))
-                        Text(req.title, color = TextPrimary, fontSize = 14.sp)
-                    }
-                }
+                )
             }
             }
         }
