@@ -200,8 +200,11 @@ private fun WebResolveDialog(req: WebRequest, manager: WebResolveManager) {
                         }
                         webRef = this
                         // পুরোনো WebView (Android 7 TX3) এই ম্যাপ থেকে remove() করে: অপরিবর্তনযোগ্য mapOf/emptyMap দিলে ক্র্যাশ। তাই পরিবর্তনযোগ্য HashMap।
-                        val ref = req.referrer
-                        if (tooOld) Unit else if (ref != null) loadUrl(req.url, HashMap<String, String>().apply { put("Referer", ref) }) else loadUrl(req.url)
+                        val pageHeaders = HashMap<String, String>().apply {
+                            putAll(req.headers)
+                            req.referrer?.let { put("Referer", it) }
+                        }
+                        if (tooOld) Unit else if (pageHeaders.isNotEmpty()) loadUrl(req.url, pageHeaders) else loadUrl(req.url)
                     }
                 },
             )
