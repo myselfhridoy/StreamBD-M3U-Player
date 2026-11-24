@@ -67,6 +67,26 @@ data class XtreamVodStream(
     val isAdult: Boolean,
 )
 
+data class XtreamSeries(
+    val seriesId: Int,
+    val name: String,
+    val cover: String?,
+    val categoryId: String?,
+    val rating: String?,
+    val year: String?,
+)
+
+/** get_series_info থেকে একটি এপিসোড। */
+data class XtreamEpisode(
+    val id: String,
+    val title: String,
+    val season: Int?,
+    val episode: Int?,
+    val extension: String?,
+    val image: String?,
+    val subtitle: String?,
+)
+
 /**
  * এক sync-এ যা যা দরকার:
  * - চ্যানেল (Live + Movie)
@@ -78,6 +98,7 @@ data class XtreamCatalog(
     val epgUrl: String,
     val liveCount: Int,
     val movieCount: Int,
+    val seriesCount: Int = 0,
     val auth: XtreamAuth,
 )
 
@@ -85,3 +106,4 @@ class XtreamException(
     message: String,
     cause: Throwable? = null,
 ) : Exception(message, cause)
+
