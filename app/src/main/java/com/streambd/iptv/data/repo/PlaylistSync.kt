@@ -21,6 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLException
 import kotlin.coroutines.cancellation.CancellationException
+import com.streambd.iptv.util.LogSafe
 
 class SyncException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -69,7 +70,7 @@ class PlaylistSync @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 if (depth == 0) throw SyncException(friendly(e), e)
-                else { Log.w(TAG, "Failed nested playlist $targetUrl: ${e.message}"); return }
+                else { Log.w(TAG, "Failed nested playlist ${LogSafe.url(targetUrl)}: ${e.message}"); return }
             }
 
             if (body.isBlank() || body.firstOrNull { !it.isWhitespace() } == '<') return
