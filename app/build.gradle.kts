@@ -126,6 +126,11 @@ dependencies {
     implementation("org.jsoup:jsoup:1.15.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // ইউনিট টেস্ট (./gradlew testDebugUnitTest)। org.json আলাদা দেওয়া দরকার, কারণ Android-এর নিজের org.json টেস্টে স্টাব মাত্র।
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20231013")
 }
 
 kapt { correctErrorTypes = true }
+
