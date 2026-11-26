@@ -2,6 +2,7 @@ package com.streambd.iptv.player.cenc
 
 import android.net.Uri
 import android.util.Log
+import com.streambd.iptv.util.LogSafe
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -45,21 +46,21 @@ internal class CencDecryptingDataSource(
                 try {
                     upstream.close()
                 } catch (e: Throwable) {
-                    Log.w(TAG, "upstream.close failed for $url", e)
+                    Log.w(TAG, "upstream.close failed for ${LogSafe.url(url)}", e)
                 }
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "upstream read failed for $url", e)
+            Log.e(TAG, "upstream read failed for ${LogSafe.url(url)}", e)
             throw if (e is IOException) e else IOException("upstream failed: ${e.message}", e)
         }
 
         // ---- Classify + transform ----
         val out = try {
             val kind = classify(raw)
-            Log.d(TAG, "classify ${raw.size}B ${kind.name} → $url")
+            Log.d(TAG, "classify ${raw.size}B ${kind.name} → ${LogSafe.url(url)}")
             transformSafe(kind, raw, url)
         } catch (e: Throwable) {
-            Log.e(TAG, "transform failed for $url", e)
+            Log.e(TAG, "transform failed for ${LogSafe.url(url)}", e)
             raw  // fall through with raw bytes
         }
 
@@ -93,7 +94,7 @@ internal class CencDecryptingDataSource(
         Kind.ISO_BMFF_INIT -> try {
             InitSegmentTransformer.transform(raw)
         } catch (e: Throwable) {
-            Log.e(TAG, "Init transform failed for $url", e); raw
+            Log.e(TAG, "Init transform failed for ${LogSafe.url(url)}", e); raw
         }
         Kind.ISO_BMFF_MEDIA -> {
             val key = keyRef.get()
@@ -103,7 +104,7 @@ internal class CencDecryptingDataSource(
             } else try {
                 MediaSegmentTransformer.transform(raw, key)
             } catch (e: Throwable) {
-                Log.e(TAG, "Media transform failed for $url", e); raw
+                Log.e(TAG, "Media transform failed for ${LogSafe.url(url)}", e); raw
             }
         }
         Kind.OTHER -> raw
@@ -175,3 +176,4 @@ internal object MpdStripper {
         return r
     }
 }
+
