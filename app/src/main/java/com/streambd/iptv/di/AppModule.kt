@@ -31,7 +31,9 @@ object AppModule {
     fun provideDb(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "streambd.db")
             .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10) // ডেটা অক্ষত থাকে
-            .fallbackToDestructiveMigration()
+            // শুধু অতি পুরোনো (৪-এর আগের) ভার্সন মোছা হবে। ভবিষ্যতে ভার্সন বাড়িয়ে MIGRATION লিখতে ভুলে গেলে আগে যেমন
+            // চুপচাপ সব ডেটা মুছে যেত, এখন তেমন হবে না: টেস্টেই ক্র্যাশ করে ধরা পড়বে।
+            .fallbackToDestructiveMigrationFrom(1, 2, 3)
             .build()
 
     @Provides fun provideChannelDao(db: AppDatabase): ChannelDao = db.channels()
@@ -47,3 +49,4 @@ object AppModule {
         .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 }
+
