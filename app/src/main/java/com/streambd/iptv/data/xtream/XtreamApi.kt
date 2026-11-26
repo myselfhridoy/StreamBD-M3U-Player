@@ -338,80 +338,14 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
         }
     }
 
-    private suspend fun seriesList(credentials: XtreamCredentials): List<XtreamSeries> {
-        val body = request(apiUrl(credentials, "get_series"), credentials.userAgent)
-        val array = try {
-            JSONArray(body)
-        } catch (e: Exception) {
-            throw XtreamException("Unexpected series response from the Xtream server.", e)
-        }
-        return buildList(array.length()) {
-            for (i in 0 until array.length()) {
-                val o = array.optJSONObject(i) ?: continue
-                val id = o.intOrNull("series_id") ?: continue
-                add(
-                    XtreamSeries(
-                        seriesId = id,
-                        name = o.text("name") ?: "Series $id",
-                        cover = o.text("cover"),
-                        categoryId = o.text("category_id"),
-                        rating = o.text("rating"),
-                        year = o.text("releaseDate")?.take(4) ?: o.text("release_date")?.take(4) ?: o.text("year"),
-                    ),
-                )
-            }
-        }
-    }
+    private suspend fun seriesList(credentials: XtreamCredentials): List<XtreamSeries> =
+        XtreamParsers.series(request(apiUrl(credentials, "get_series"), credentials.userAgent))
 
-    /**
-     * একটি সিরিজের সব এপিসোড (get_series_info, এক অনুরোধ)। panel-ভেদে `episodes` হয় {"1":[...],"2":[...]} অবজেক্ট,
-     * নয়তো অ্যারের অ্যারে; দুটোই সামলানো হয়।
-     */
+    /** একটি সিরিজের সব এপিসোড (get_series_info, এক অনুরোধ)। পার্সিং: [XtreamParsers.episodes]। */
     suspend fun seriesEpisodes(credentials: XtreamCredentials, seriesId: Int): List<XtreamEpisode> {
         val url = apiUrl(credentials, "get_series_info").newBuilder()
             .addQueryParameter("series_id", seriesId.toString()).build()
-        val body = request(url, credentials.userAgent)
-        val root = try {
-            JSONObject(body)
-        } catch (e: Exception) {
-            throw XtreamException("Unexpected episode response from the Xtream server.", e)
-        }
-        val eps = root.opt("episodes")
-        val out = ArrayList<XtreamEpisode>()
-
-        fun addEpisode(o: JSONObject, seasonHint: Int?) {
-            val id = o.text("id") ?: return
-            val info = o.optJSONObject("info")
-            val season = o.intOrNull("season") ?: seasonHint
-            val epNum = o.intOrNull("episode_num")
-            val duration = info?.text("duration")
-            val rating = info?.text("rating")
-            out += XtreamEpisode(
-                id = id,
-                title = o.text("title") ?: "",
-                season = season,
-                episode = epNum,
-                extension = o.text("container_extension"),
-                image = info?.text("movie_image"),
-                subtitle = listOfNotNull(duration, rating?.let { "★ $it" }).joinToString(" · ").ifBlank { null },
-            )
-        }
-
-        fun addList(arr: JSONArray, seasonHint: Int?) {
-            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { addEpisode(it, seasonHint) }
-        }
-
-        when (eps) {
-            is JSONObject -> eps.keys().forEach { key ->
-                val season = key.trim().toIntOrNull()
-                eps.optJSONArray(key)?.let { addList(it, season) }
-            }
-            is JSONArray -> for (i in 0 until eps.length()) {
-                val item = eps.opt(i)
-                if (item is JSONArray) addList(item, i + 1) else if (item is JSONObject) addEpisode(item, null)
-            }
-        }
-        return out
+        return XtreamParsers.episodes(request(url, credentials.userAgent))
     }
 
     private suspend fun request(url: HttpUrl, userAgent: String?): String =
@@ -534,20 +468,6 @@ class XtreamApi @Inject constructor(baseClient: OkHttpClient) {
 
 // ───────────────────────── org.json helpers ─────────────────────────
 
-private fun JSONObject.text(key: String): String? {
-    if (!has(key) || isNull(key)) return null
-    return optString(key).trim().takeIf { it.isNotEmpty() && it != "null" }
-}
-
-private fun JSONObject.intOrNull(key: String): Int? {
-    if (!has(key) || isNull(key)) return null
-    return when (val value = opt(key)) {
-        is Number -> value.toInt()
-        is String -> value.trim().toIntOrNull()
-        else -> null
-    }
-}
-
 private fun JSONObject.longOrNull(key: String): Long? {
     if (!has(key) || isNull(key)) return null
     return when (val value = opt(key)) {
@@ -566,4 +486,5 @@ private fun JSONObject.bool(key: String): Boolean {
         else -> false
     }
 }
+
 
